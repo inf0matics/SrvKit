@@ -10,7 +10,9 @@ const PASSWORD = 'correct horse battery staple e2e'
 
 test('first start shows the setup screen with a regenerable suggestion', async ({ page }) => {
   await page.goto('/')
-  await expect(page.getByRole('heading', { name: 'Initial Setup' })).toBeVisible()
+  // Setup mode is identified by the suggestion + Save button (hero heading is
+  // always the "SrvKit" wordmark).
+  await expect(page.getByRole('button', { name: 'Save & continue' })).toBeVisible()
 
   const suggestion = page.getByTestId('suggestion')
   await expect(suggestion).not.toHaveText('…')
@@ -23,7 +25,7 @@ test('first start shows the setup screen with a regenerable suggestion', async (
 
 test('completing setup lands on the dashboard shell and survives a reload', async ({ page }) => {
   await page.goto('/')
-  await page.getByPlaceholder('Your own password').fill(PASSWORD)
+  await page.getByPlaceholder('Your own passphrase').fill(PASSWORD)
   await page.getByRole('button', { name: 'Save & continue' }).click()
 
   // /app redirects to /app/dashboard, rendered inside the shell.
@@ -37,6 +39,16 @@ test('completing setup lands on the dashboard shell and survives a reload', asyn
   await expect(page.getByRole('link', { name: 'Dashboard' })).toBeVisible()
 })
 
+test('login screen shows the SrvKit hero, tagline and version', async ({ page }) => {
+  await page.goto('/')
+  await expect(page.getByRole('img', { name: 'SrvKit' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'SrvKit', exact: true })).toBeVisible()
+  await expect(
+    page.getByText('Host monitoring, Docker health, automated backups.'),
+  ).toBeVisible()
+  await expect(page.getByTestId('version')).toHaveText(/^SrvKit · v\d+\.\d+\.\d+$/)
+})
+
 test('setup endpoint is gone once initialized (404)', async ({ request }) => {
   const setup = await request.post('/api/auth/setup', { data: { password: 'x' } })
   expect(setup.status()).toBe(404)
@@ -48,23 +60,23 @@ test('unauthenticated access to /app redirects to the login screen', async ({ pa
   await page.goto('/app')
   await expect(page).toHaveURL(/\/$/)
   await expect(page.getByRole('heading', { name: 'SrvKit', exact: true })).toBeVisible()
-  await expect(page.getByPlaceholder('Password')).toBeVisible()
+  await expect(page.getByPlaceholder('Passphrase')).toBeVisible()
 })
 
 test('unauthenticated access to /app/dashboard also redirects', async ({ page }) => {
   await page.goto('/app/dashboard')
   await expect(page).toHaveURL(/\/$/)
-  await expect(page.getByPlaceholder('Password')).toBeVisible()
+  await expect(page.getByPlaceholder('Passphrase')).toBeVisible()
 })
 
 test('wrong password shows an error, correct password reaches the dashboard', async ({ page }) => {
   await page.goto('/')
-  await page.getByPlaceholder('Password').fill('definitely wrong')
+  await page.getByPlaceholder('Passphrase').fill('definitely wrong')
   await page.getByRole('button', { name: 'Login', exact: true }).click()
   await expect(page.getByTestId('login-error')).toBeVisible()
   await expect(page).toHaveURL(/\/$/)
 
-  await page.getByPlaceholder('Password').fill(PASSWORD)
+  await page.getByPlaceholder('Passphrase').fill(PASSWORD)
   await page.getByRole('button', { name: 'Login', exact: true }).click()
   await expect(page).toHaveURL(/\/app\/dashboard$/)
   await expect(page.getByText('SrvKit')).toBeVisible() // sidebar wordmark
@@ -73,7 +85,7 @@ test('wrong password shows an error, correct password reaches the dashboard', as
 test('logout endpoint clears the session', async ({ page }) => {
   // Sign in, then log out via the API (no logout UI in this shell spec).
   await page.goto('/')
-  await page.getByPlaceholder('Password').fill(PASSWORD)
+  await page.getByPlaceholder('Passphrase').fill(PASSWORD)
   await page.getByRole('button', { name: 'Login', exact: true }).click()
   await expect(page).toHaveURL(/\/app\/dashboard$/)
 
@@ -83,7 +95,7 @@ test('logout endpoint clears the session', async ({ page }) => {
   // Session gone → protected route bounces back to login.
   await page.goto('/app/dashboard')
   await expect(page).toHaveURL(/\/$/)
-  await expect(page.getByPlaceholder('Password')).toBeVisible()
+  await expect(page.getByPlaceholder('Passphrase')).toBeVisible()
 })
 
 test('"Can\'t login?" modal shows the CLI reset command', async ({ page }) => {

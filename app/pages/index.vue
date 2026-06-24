@@ -15,6 +15,8 @@ const mode = computed<'setup' | 'login'>(() =>
   status.value?.initialized ? 'login' : 'setup',
 )
 
+const version = useRuntimeConfig().public.version
+
 const submitting = ref(false)
 
 /* ---------------- Setup mode ---------------- */
@@ -67,11 +69,11 @@ async function login() {
     })
     await navigateTo('/app')
   } catch (e: unknown) {
-    const status = (e as { statusCode?: number }).statusCode
+    const code = (e as { statusCode?: number }).statusCode
     error.value =
-      status === 429
+      code === 429
         ? 'Too many attempts. Wait a minute and try again.'
-        : 'Incorrect password.'
+        : 'Incorrect passphrase.'
   } finally {
     submitting.value = false
   }
@@ -82,70 +84,75 @@ const cliCommand = 'docker exec srvkit srvkit change-password "your new passphra
 </script>
 
 <template>
-  <div class="tsp-center">
-    <!-- ===================== SETUP ===================== -->
-    <div v-if="mode === 'setup'" class="tsp-card">
-      <h1>SrvKit — Initial Setup</h1>
+  <div class="landing">
+    <main class="hero">
+      <img
+        src="/srvkit-icon.svg"
+        width="96"
+        height="96"
+        alt="SrvKit"
+        class="logo"
+      >
+      <h1 class="wordmark">SrvKit</h1>
+      <p class="tagline">Host monitoring, Docker health, automated backups.</p>
 
-      <p class="tsp-muted">Suggested passphrase:</p>
-      <code class="tsp-code" data-testid="suggestion">{{ suggestion || '…' }}</code>
+      <!-- ===================== SETUP ===================== -->
+      <div v-if="mode === 'setup'" class="form">
+        <p class="form-label">Suggested passphrase:</p>
+        <code class="tsp-code" data-testid="suggestion">{{ suggestion || '…' }}</code>
 
-      <div class="row">
-        <button class="tsp-btn" :disabled="!suggestion" @click="copy(suggestion)">
-          {{ copied ? 'Copied!' : 'Copy' }}
+        <div class="form-row">
+          <button class="tsp-btn" :disabled="!suggestion" @click="copy(suggestion)">
+            {{ copied ? 'Copied!' : 'Copy' }}
+          </button>
+          <button class="tsp-btn" @click="loadSuggestion">Regenerate</button>
+        </div>
+
+        <p class="form-label or">Or enter your own:</p>
+        <input
+          v-model="customPassword"
+          class="tsp-input"
+          type="text"
+          placeholder="Your own passphrase"
+          autocomplete="off"
+        >
+
+        <button
+          class="tsp-btn tsp-btn-primary tsp-btn-block submit"
+          :disabled="submitting || (!suggestion && !customPassword.trim())"
+          @click="save"
+        >
+          Save &amp; continue
         </button>
-        <button class="tsp-btn" @click="loadSuggestion">Regenerate</button>
+
+        <p class="warn">Write this down — there is no password recovery.</p>
       </div>
 
-      <p class="tsp-muted or">Or enter your own:</p>
-      <input
-        v-model="customPassword"
-        class="tsp-input"
-        type="text"
-        placeholder="Your own password"
-        autocomplete="off"
-      >
-
-      <button
-        class="tsp-btn tsp-btn-primary tsp-btn-block save"
-        :disabled="submitting || (!suggestion && !customPassword.trim())"
-        @click="save"
-      >
-        Save &amp; continue
-      </button>
-
-      <p class="tsp-error warn">
-        Write this down — there is no password recovery.
-      </p>
-    </div>
-
-    <!-- ===================== LOGIN ===================== -->
-    <div v-else class="tsp-card">
-      <h1>SrvKit</h1>
-
-      <form @submit.prevent="login">
+      <!-- ===================== LOGIN ===================== -->
+      <form v-else class="form" @submit.prevent="login">
         <input
           v-model="password"
           class="tsp-input"
           type="password"
-          placeholder="Password"
+          placeholder="Passphrase"
           autocomplete="current-password"
           autofocus
         >
         <p v-if="error" class="tsp-error" data-testid="login-error">{{ error }}</p>
         <button
-          class="tsp-btn tsp-btn-primary tsp-btn-block save"
+          class="tsp-btn tsp-btn-primary tsp-btn-block submit"
           type="submit"
           :disabled="submitting"
         >
           Login
         </button>
+        <button type="button" class="tsp-link-muted cant" @click="showHelp = true">
+          Can't login?
+        </button>
       </form>
+    </main>
 
-      <div class="cant">
-        <button class="tsp-link-muted" @click="showHelp = true">Can't login?</button>
-      </div>
-    </div>
+    <footer class="footer" data-testid="version">SrvKit · v{{ version }}</footer>
 
     <!-- ===================== HELP MODAL ===================== -->
     <div v-if="showHelp" class="overlay" @click.self="showHelp = false">
@@ -158,7 +165,7 @@ const cliCommand = 'docker exec srvkit srvkit change-password "your new passphra
         </div>
         <p class="tsp-muted">Passwords can only be changed via the command line:</p>
         <code class="tsp-code">{{ cliCommand }}</code>
-        <button class="tsp-btn" @click="copy(cliCommand)">
+        <button class="tsp-btn copy-cli" @click="copy(cliCommand)">
           {{ copied ? 'Copied!' : 'Copy' }}
         </button>
         <p class="tsp-muted note">All active sessions will be logged out immediately.</p>
@@ -168,29 +175,95 @@ const cliCommand = 'docker exec srvkit srvkit change-password "your new passphra
 </template>
 
 <style scoped>
-h1 {
-  margin: 0 0 1.25rem;
-  font-size: 1.5rem;
-}
-.row {
+.landing {
+  min-height: 100svh;
   display: flex;
-  gap: 0.5rem;
-  margin-top: 0.75rem;
+  flex-direction: column;
+  background: var(--tsp-bg);
 }
-.or {
-  margin-top: 1.5rem;
+
+.hero {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 48px 24px 32px;
 }
-.save {
+
+.logo {
+  display: block;
+  border-radius: 18px;
+}
+
+.wordmark {
+  margin: 18px 0 0;
+  font-family: 'Space Grotesk', system-ui, sans-serif;
+  font-weight: 700;
+  font-size: clamp(2.5rem, 8vw, 4rem);
+  line-height: 1;
+  letter-spacing: -0.02em;
+  color: var(--tsp-text);
+}
+
+.tagline {
+  max-width: 480px;
+  margin: 16px 0 36px;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--tsp-text-muted);
+  line-height: 1.6;
+}
+
+/* Form embedded directly in the hero — no card. */
+.form {
+  width: 100%;
+  max-width: 360px;
+  text-align: left;
+}
+
+.form-label {
+  margin: 0 0 0.4rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--tsp-text-muted);
+}
+
+.form-label.or {
   margin-top: 1.25rem;
 }
-.warn {
-  margin-top: 1rem;
-  margin-bottom: 0;
+
+.form-row {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.6rem;
 }
+
+.submit {
+  margin-top: 1.25rem;
+}
+
+.warn {
+  margin: 1rem 0 0;
+  font-size: 0.85rem;
+  color: var(--tsp-danger);
+}
+
 .cant {
-  margin-top: 1rem;
+  display: block;
+  margin: 1rem auto 0;
   text-align: center;
 }
+
+.footer {
+  align-self: flex-end;
+  padding: 16px 20px 20px;
+  font-size: 12px;
+  color: var(--tsp-text-muted);
+}
+
+/* ---------------- Modal ---------------- */
 .overlay {
   position: fixed;
   inset: 0;
@@ -200,18 +273,27 @@ h1 {
   justify-content: center;
   padding: 1.5rem;
 }
+
 .modal-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  margin-bottom: 0.5rem;
 }
+
 .modal-head h2 {
   margin: 0;
   font-size: 1.2rem;
 }
+
 .close {
   padding: 0.25rem 0.5rem;
 }
+
+.copy-cli {
+  margin-top: 0.75rem;
+}
+
 .note {
   margin-bottom: 0;
 }
