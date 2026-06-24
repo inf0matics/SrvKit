@@ -6,7 +6,7 @@
 <title>trips — UI Mockup</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Space+Grotesk:wght@500;700&family=Outfit:wght@600;700;800&family=Sora:wght@600;700;800&family=Bricolage+Grotesque:wght@700;800&family=Archivo:wght@700;800&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
 <script src="https://code.iconify.design/iconify-icon/2.1.0/iconify-icon.min.js"></script>
 <style>
   /* Delicious-Heavy is the brand display font (local .woff on tsp.tools).
@@ -158,19 +158,7 @@
 <div class="appbar">
   <div class="container">
     <span class="brand wordmark">trips<span class="dot">.</span></span>
-    <div class="tabs">
-      <button class="tab active" data-screen="elements">UI-Elemente</button>
-      <button class="tab" data-screen="landing">Startseite</button>
-    </div>
     <span class="spacer"></span>
-    <select class="toggle" id="fontSel" title="Logo-Schrift (Text bleibt Nunito)">
-      <option value="Space Grotesk">Logo: Space Grotesk</option>
-      <option value="Bricolage Grotesque">Logo: Bricolage Grotesque</option>
-      <option value="Outfit">Logo: Outfit</option>
-      <option value="Sora">Logo: Sora</option>
-      <option value="Archivo">Logo: Archivo</option>
-      <option value="Syne">Logo: Syne</option>
-    </select>
     <button class="toggle" id="themeBtn">◐ Theme</button>
   </div>
 </div>
@@ -193,7 +181,7 @@
 
     <div class="section-title">Typografie</div>
     <div class="card">
-      <div class="wordmark" style="font-size:40px">Delicious-Heavy — Display / Logo</div>
+      <div class="wordmark" style="font-size:40px">Space Grotesk — Logo / Wordmark</div>
       <h2 style="margin:14px 0 4px">Nunito 800 — Überschrift</h2>
       <p style="margin:0">Nunito 400 — Fließtext. Der schnelle braune Fuchs springt über den faulen Hund. <a href="#">Ein Link</a>.</p>
       <p class="muted small" style="margin:6px 0 0">Nunito 400 muted — Sekundärtext &amp; Hinweise.</p>
@@ -243,63 +231,8 @@
   </div>
 </section>
 
-<!-- ============ LANDING ============ -->
-<section class="screen" id="landing">
-  <div class="container">
-    <div class="hero">
-      <div class="wordmark">trips<span class="dot">.</span></div>
-      <h1 style="margin:10px 0 6px; font-size:28px">Dein Fahrtenbuch — manipulationssicher.</h1>
-      <p class="muted" style="max-width:540px; margin:0 auto 22px">
-        Fahrten loggen, km-Geld berechnen, monatlich als geprüftes PDF abschließen.
-        Primär als MCP-Server für deinen AI-Client, mit UI zum Nachsehen.
-      </p>
-      <div class="row" style="justify-content:center">
-        <button class="btn btn-primary"><iconify-icon icon="tabler:mail"></iconify-icon>Mit E-Mail anmelden</button>
-        <button class="btn btn-secondary">Mehr erfahren</button>
-      </div>
-      <p class="small muted" style="margin-top:12px">Passwortloses Login via Logto (Magic Link)</p>
-    </div>
-
-    <div class="grid3" style="margin-top:32px">
-      <div class="card">
-        <div class="eyebrow">01</div>
-        <h3>Fahrten loggen</h3>
-        <p class="muted small">Per MCP-Tool oder UI. Alle gesetzlichen Pflichtfelder nach WKO-Muster.</p>
-      </div>
-      <div class="card">
-        <div class="eyebrow">02</div>
-        <h3>Tamper-Schutz</h3>
-        <p class="muted small">Monatsabschluss als immutables PDF mit Server-Zeitstempel. Änderungen werden sichtbar.</p>
-      </div>
-      <div class="card">
-        <div class="eyebrow">03</div>
-        <h3>MCP-nativ</h3>
-        <p class="muted small">Dein AI-Client schreibt und liest Fahrten direkt — die UI ist nur zum Review.</p>
-      </div>
-    </div>
-  </div>
-  <footer style="margin-top:48px">
-    <div class="container row">
-      <span class="wordmark">trips<span class="dot">.</span></span>
-      <span class="spacer"></span>
-      <span>TheSpielplatz © 2026 · keine Cookies, keine Tracker</span>
-    </div>
-  </footer>
-</section>
 
 <script>
-  const tabs = document.querySelectorAll('.tab');
-  const screens = document.querySelectorAll('.screen');
-  tabs.forEach(t => t.addEventListener('click', () => {
-    tabs.forEach(x => x.classList.remove('active'));
-    screens.forEach(s => s.classList.remove('active'));
-    t.classList.add('active');
-    document.getElementById(t.dataset.screen).classList.add('active');
-    window.scrollTo(0,0);
-  }));
-  document.getElementById('fontSel').addEventListener('change', (e) => {
-    document.documentElement.style.setProperty('--logo', '"' + e.target.value + '", sans-serif');
-  });
   document.getElementById('themeBtn').addEventListener('click', () => {
     const html = document.documentElement;
     html.dataset.theme = html.dataset.theme === 'dark' ? 'light' : 'dark';
