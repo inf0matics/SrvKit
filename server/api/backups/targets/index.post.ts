@@ -2,6 +2,7 @@ import { store } from '../../../utils/srvkit.ts'
 import {
   encryptPassword,
   isValidHost,
+  normalizeRoot,
   trimStr,
 } from '../../../utils/backups.ts'
 
@@ -12,11 +13,12 @@ export default defineEventHandler(async (event) => {
   const host = trimStr(body?.host)
   const username = trimStr(body?.username)
   const password = typeof body?.password === 'string' ? body.password : ''
+  const rootDir = normalizeRoot(body?.rootDir)
 
-  if (!name || !host || !username || !password) {
+  if (!name || !host || !username || !password || !rootDir) {
     throw createError({
       statusCode: 400,
-      statusMessage: 'name, host, username and password are required',
+      statusMessage: 'name, host, username, password and root directory are required',
     })
   }
   if (!isValidHost(host)) {
@@ -28,5 +30,6 @@ export default defineEventHandler(async (event) => {
     host,
     username,
     password: encryptPassword(password),
+    rootDir,
   })
 })

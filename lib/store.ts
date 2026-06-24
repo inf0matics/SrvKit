@@ -19,6 +19,8 @@ export interface TargetSummary {
   name: string
   host: string
   username: string
+  /** Base path on the share; all jobs upload beneath it. */
+  rootDir: string
   createdAt: string
 }
 
@@ -33,6 +35,7 @@ export interface TargetInput {
   username: string
   /** Already-encrypted password blob. */
   password: string
+  rootDir: string
 }
 
 export interface Store {
@@ -70,9 +73,17 @@ export function openStore(path: string): Store {
        host TEXT NOT NULL,
        username TEXT NOT NULL,
        password TEXT NOT NULL,
+       root_dir TEXT NOT NULL DEFAULT '',
        created_at TEXT NOT NULL
      )`,
   )
+  // Migrate DBs created before root_dir existed.
+  const targetCols = db.prepare('PRAGMA table_info(targets)').all() as {
+    name: string
+  }[]
+  if (!targetCols.some((c) => c.name === 'root_dir')) {
+    db.exec("ALTER TABLE targets ADD COLUMN root_dir TEXT NOT NULL DEFAULT ''")
+  }
 
   const getStmt = db.prepare('SELECT value FROM config WHERE key = ?')
   const setStmt = db.prepare(
@@ -96,16 +107,17 @@ export function openStore(path: string): Store {
 
   // --- Targets ---
   const listTargetsStmt = db.prepare(
-    `SELECT id, name, host, username, created_at AS createdAt
+    `SELECT id, name, host, username, root_dir AS rootDir, created_at AS createdAt
        FROM targets ORDER BY created_at`,
   )
   const getTargetStmt = db.prepare(
-    `SELECT id, name, host, username, password, created_at AS createdAt
+    `SELECT id, name, host, username, password, root_dir AS rootDir,
+            created_at AS createdAt
        FROM targets WHERE id = ?`,
   )
   const insertTargetStmt = db.prepare(
-    `INSERT INTO targets (id, name, host, username, password, created_at)
-     VALUES (?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO targets (id, name, host, username, password, root_dir, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
   )
   const deleteTargetStmt = db.prepare('DELETE FROM targets WHERE id = ?')
 
@@ -134,6 +146,7 @@ export function openStore(path: string): Store {
         input.host,
         input.username,
         input.password,
+        input.rootDir,
         createdAt,
       )
       return {
@@ -141,21 +154,29 @@ export function openStore(path: string): Store {
         name: input.name,
         host: input.host,
         username: input.username,
+        rootDir: input.rootDir,
         createdAt,
       }
     },
 
     updateTarget(id: string, fields: Partial<TargetInput>): boolean {
-      const cols: string[] = []
+      const columns: Record<keyof TargetInput, string> = {
+        name: 'name',
+        host: 'host',
+        username: 'username',
+        password: 'password',
+        rootDir: 'root_dir',
+      }
+      const sets: string[] = []
       const values: string[] = []
-      for (const col of ['name', 'host', 'username', 'password'] as const) {
-        if (fields[col] !== undefined) {
-          cols.push(`${col} = ?`)
-          values.push(fields[col]!)
+      for (const key of Object.keys(columns) as (keyof TargetInput)[]) {
+        if (fields[key] !== undefined) {
+          sets.push(`${columns[key]} = ?`)
+          values.push(fields[key]!)
         }
       }
-      if (cols.length === 0) return getTargetStmt.get(id) !== undefined
-      const stmt = db.prepare(`UPDATE targets SET ${cols.join(', ')} WHERE id = ?`)
+      if (sets.length === 0) return getTargetStmt.get(id) !== undefined
+      const stmt = db.prepare(`UPDATE targets SET ${sets.join(', ')} WHERE id = ?`)
       return stmt.run(...values, id).changes > 0
     },
 

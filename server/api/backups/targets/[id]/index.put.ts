@@ -3,6 +3,7 @@ import type { TargetInput } from '../../../../../lib/store.ts'
 import {
   encryptPassword,
   isValidHost,
+  normalizeRoot,
   trimStr,
 } from '../../../../utils/backups.ts'
 
@@ -28,6 +29,13 @@ export default defineEventHandler(async (event) => {
       fields[key] = v
     }
   }
+  if (body?.rootDir !== undefined) {
+    const root = normalizeRoot(body.rootDir)
+    if (!root) {
+      throw createError({ statusCode: 400, statusMessage: 'root directory must not be empty' })
+    }
+    fields.rootDir = root
+  }
   if (typeof body?.password === 'string' && body.password.length > 0) {
     fields.password = encryptPassword(body.password)
   }
@@ -39,6 +47,7 @@ export default defineEventHandler(async (event) => {
     name: t.name,
     host: t.host,
     username: t.username,
+    rootDir: t.rootDir,
     createdAt: t.createdAt,
   }
 })

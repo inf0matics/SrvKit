@@ -8,6 +8,11 @@ export function isValidHost(host: string): boolean {
   return /^https?:\/\/.+/.test(host)
 }
 
+/** Trim whitespace and strip leading/trailing slashes for clean path joins. */
+export function normalizeRoot(root: unknown): string {
+  return trimStr(root).replace(/^\/+|\/+$/g, '')
+}
+
 export function encryptPassword(plain: string): string {
   return encrypt(plain)
 }

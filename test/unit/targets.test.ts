@@ -7,6 +7,7 @@ const sample = {
   host: 'https://nc.example.com',
   username: 'alice',
   password: 'encrypted-blob',
+  rootDir: 'srvkit',
 }
 
 test('starts with no targets', () => {
@@ -20,8 +21,19 @@ test('createTarget returns a summary without the password', () => {
   const created = s.createTarget(sample)
   assert.ok(created.id)
   assert.equal(created.name, 'My Nextcloud')
+  assert.equal(created.rootDir, 'srvkit')
   assert.ok(created.createdAt)
   assert.ok(!('password' in created))
+  s.close()
+})
+
+test('rootDir round-trips through list and get', () => {
+  const s = openStore(':memory:')
+  const { id } = s.createTarget(sample)
+  assert.equal(s.listTargets()[0]!.rootDir, 'srvkit')
+  assert.equal(s.getTarget(id)?.rootDir, 'srvkit')
+  s.updateTarget(id, { rootDir: 'backups/prod' })
+  assert.equal(s.getTarget(id)?.rootDir, 'backups/prod')
   s.close()
 })
 

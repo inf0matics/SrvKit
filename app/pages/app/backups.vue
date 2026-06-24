@@ -6,6 +6,7 @@ interface Target {
   name: string
   host: string
   username: string
+  rootDir: string
   createdAt: string
 }
 
@@ -30,7 +31,13 @@ const modal = reactive<{ open: boolean; id: string | null }>({
   open: false,
   id: null,
 })
-const form = reactive({ name: '', host: '', username: '', password: '' })
+const form = reactive({
+  name: '',
+  host: '',
+  username: '',
+  password: '',
+  rootDir: '',
+})
 const formError = ref('')
 const saving = ref(false)
 
@@ -39,7 +46,13 @@ const modalTesting = ref(false)
 
 function openAdd() {
   modal.id = null
-  Object.assign(form, { name: '', host: '', username: '', password: '' })
+  Object.assign(form, {
+    name: '',
+    host: '',
+    username: '',
+    password: '',
+    rootDir: '',
+  })
   formError.value = ''
   modalTest.value = null
   modal.open = true
@@ -52,6 +65,7 @@ function openEdit(t: Target) {
     host: t.host,
     username: t.username,
     password: '',
+    rootDir: t.rootDir,
   })
   formError.value = ''
   modalTest.value = null
@@ -160,7 +174,9 @@ async function remove(t: Target) {
         </button>
         <div class="target-info">
           <div class="target-name">{{ t.name }}</div>
-          <div class="target-host tsp-muted">{{ t.host }}</div>
+          <div class="target-host tsp-muted">
+            {{ t.host }}<span v-if="t.rootDir"> · {{ t.rootDir }}/</span>
+          </div>
         </div>
         <div class="target-actions">
           <button class="tsp-btn" :disabled="testing[t.id]" @click="testConnection(t)">
@@ -199,6 +215,16 @@ async function remove(t: Target) {
             class="tsp-input"
             type="url"
             placeholder="https://nextcloud.example.com"
+            autocomplete="off"
+          >
+        </label>
+        <label class="field">
+          <span>Root directory</span>
+          <input
+            v-model="form.rootDir"
+            class="tsp-input"
+            type="text"
+            placeholder="srvkit/"
             autocomplete="off"
           >
         </label>
