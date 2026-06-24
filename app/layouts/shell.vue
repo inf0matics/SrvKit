@@ -55,7 +55,8 @@ onBeforeUnmount(() => {
         <div class="divider" />
 
         <button type="button" class="nav-item nav-btn" @click="logout">
-          Logout
+          <AppIcon name="logout" />
+          <span>Logout</span>
         </button>
 
         <button type="button" class="nav-item nav-btn" @click="toggleTheme">
@@ -79,7 +80,12 @@ onBeforeUnmount(() => {
           <span>GitHub</span>
         </a>
 
-        <p class="version" data-testid="sidebar-version">v{{ version }}</p>
+        <div class="version-row">
+          <span class="ver-badge">
+            <AppIcon name="tag" />
+            <span data-testid="sidebar-version">v{{ version }}</span>
+          </span>
+        </div>
       </div>
     </aside>
 
@@ -186,11 +192,26 @@ onBeforeUnmount(() => {
   margin: 12px 4px;
 }
 
-.version {
-  margin: 6px 0 0;
-  padding: 0 12px;
+.version-row {
+  display: flex;
+  justify-content: flex-end;
+  padding: 8px 12px 0;
+}
+
+.ver-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--tsp-border);
+  border-radius: 999px;
+  padding: 2px 10px;
   font-size: 12px;
   color: var(--tsp-text-muted);
+}
+
+.ver-badge .app-icon {
+  width: 14px;
+  height: 14px;
 }
 
 .main {
