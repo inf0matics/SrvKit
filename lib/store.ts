@@ -1,5 +1,5 @@
 import { DatabaseSync } from 'node:sqlite'
-import { randomBytes } from 'node:crypto'
+import { randomBytes, randomUUID } from 'node:crypto'
 import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 
@@ -13,11 +13,38 @@ import { dirname } from 'node:path'
  *
  * Only ever one password record. No user table, no roles (per spec).
  */
+/** A backup target without its secret — safe to send to the client. */
+export interface TargetSummary {
+  id: string
+  name: string
+  host: string
+  username: string
+  createdAt: string
+}
+
+/** A backup target including the encrypted password blob (server-only). */
+export interface TargetRecord extends TargetSummary {
+  password: string
+}
+
+export interface TargetInput {
+  name: string
+  host: string
+  username: string
+  /** Already-encrypted password blob. */
+  password: string
+}
+
 export interface Store {
   isInitialized(): boolean
   getPasswordHash(): string | null
   getSessionSecret(): string
   setPassword(hash: string): void
+  listTargets(): TargetSummary[]
+  getTarget(id: string): TargetRecord | null
+  createTarget(input: TargetInput): TargetSummary
+  updateTarget(id: string, fields: Partial<TargetInput>): boolean
+  deleteTarget(id: string): boolean
   close(): void
 }
 
@@ -35,6 +62,16 @@ export function openStore(path: string): Store {
   if (path !== ':memory:') db.exec('PRAGMA journal_mode = WAL')
   db.exec(
     'CREATE TABLE IF NOT EXISTS config (key TEXT PRIMARY KEY, value TEXT NOT NULL)',
+  )
+  db.exec(
+    `CREATE TABLE IF NOT EXISTS targets (
+       id TEXT PRIMARY KEY,
+       name TEXT NOT NULL,
+       host TEXT NOT NULL,
+       username TEXT NOT NULL,
+       password TEXT NOT NULL,
+       created_at TEXT NOT NULL
+     )`,
   )
 
   const getStmt = db.prepare('SELECT value FROM config WHERE key = ?')
@@ -57,6 +94,21 @@ export function openStore(path: string): Store {
     set('session_secret', randomBytes(32).toString('hex'))
   }
 
+  // --- Targets ---
+  const listTargetsStmt = db.prepare(
+    `SELECT id, name, host, username, created_at AS createdAt
+       FROM targets ORDER BY created_at`,
+  )
+  const getTargetStmt = db.prepare(
+    `SELECT id, name, host, username, password, created_at AS createdAt
+       FROM targets WHERE id = ?`,
+  )
+  const insertTargetStmt = db.prepare(
+    `INSERT INTO targets (id, name, host, username, password, created_at)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+  )
+  const deleteTargetStmt = db.prepare('DELETE FROM targets WHERE id = ?')
+
   return {
     isInitialized: () => get('password_hash') !== null,
     getPasswordHash: () => get('password_hash'),
@@ -67,6 +119,48 @@ export function openStore(path: string): Store {
       // unsealable and the user is effectively logged out everywhere.
       set('session_secret', randomBytes(32).toString('hex'))
     },
+
+    listTargets: () => listTargetsStmt.all() as unknown as TargetSummary[],
+
+    getTarget: (id: string) =>
+      (getTargetStmt.get(id) as unknown as TargetRecord | undefined) ?? null,
+
+    createTarget(input: TargetInput): TargetSummary {
+      const id = randomUUID()
+      const createdAt = new Date().toISOString()
+      insertTargetStmt.run(
+        id,
+        input.name,
+        input.host,
+        input.username,
+        input.password,
+        createdAt,
+      )
+      return {
+        id,
+        name: input.name,
+        host: input.host,
+        username: input.username,
+        createdAt,
+      }
+    },
+
+    updateTarget(id: string, fields: Partial<TargetInput>): boolean {
+      const cols: string[] = []
+      const values: string[] = []
+      for (const col of ['name', 'host', 'username', 'password'] as const) {
+        if (fields[col] !== undefined) {
+          cols.push(`${col} = ?`)
+          values.push(fields[col]!)
+        }
+      }
+      if (cols.length === 0) return getTargetStmt.get(id) !== undefined
+      const stmt = db.prepare(`UPDATE targets SET ${cols.join(', ')} WHERE id = ?`)
+      return stmt.run(...values, id).changes > 0
+    },
+
+    deleteTarget: (id: string) => deleteTargetStmt.run(id).changes > 0,
+
     close: () => db.close(),
   }
 }

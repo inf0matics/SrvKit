@@ -20,6 +20,7 @@ export default defineConfig({
       PORT: String(PORT),
       DATABASE_PATH: DB,
       COOKIE_SECURE: 'false', // plain http in e2e
+      ENCRYPTION_KEY: 'e2e-encryption-key',
     },
     reuseExistingServer: false,
     timeout: 120_000,
