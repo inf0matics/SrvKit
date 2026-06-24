@@ -47,7 +47,12 @@ onBeforeUnmount(() => {
 
       <nav class="nav">
         <NuxtLink to="/app/dashboard" class="nav-item" active-class="active">
-          Dashboard
+          <AppIcon name="dashboard" />
+          <span>Dashboard</span>
+        </NuxtLink>
+        <NuxtLink to="/app/backups" class="nav-item" active-class="active">
+          <AppIcon name="database-export" />
+          <span>Backups</span>
         </NuxtLink>
       </nav>
 

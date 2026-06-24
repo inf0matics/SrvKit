@@ -1,7 +1,17 @@
 <script setup lang="ts">
 // Lightweight inline Tabler-style icons (stroke = currentColor). Avoids pulling
 // in a full icon module for the handful of glyphs the chrome needs.
-defineProps<{ name: 'sun' | 'moon' | 'heart' | 'github' | 'logout' | 'tag' }>()
+defineProps<{
+  name:
+    | 'sun'
+    | 'moon'
+    | 'heart'
+    | 'github'
+    | 'logout'
+    | 'tag'
+    | 'dashboard'
+    | 'database-export'
+}>()
 </script>
 
 <template>
@@ -41,6 +51,19 @@ defineProps<{ name: 'sun' | 'moon' | 'heart' | 'github' | 'logout' | 'tag' }>()
     <template v-else-if="name === 'tag'">
       <path d="M7.5 7.5m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" />
       <path d="M3 6v5.172a2 2 0 0 0 .586 1.414l7.71 7.71a2.41 2.41 0 0 0 3.408 0l5.592 -5.592a2.41 2.41 0 0 0 0 -3.408l-7.71 -7.71a2 2 0 0 0 -1.414 -.586h-5.172a2 2 0 0 0 -2 2z" />
+    </template>
+    <template v-else-if="name === 'dashboard'">
+      <path d="M5 4h4a1 1 0 0 1 1 1v6a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1v-6a1 1 0 0 1 1 -1z" />
+      <path d="M5 16h4a1 1 0 0 1 1 1v2a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1v-2a1 1 0 0 1 1 -1z" />
+      <path d="M15 12h4a1 1 0 0 1 1 1v6a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1v-6a1 1 0 0 1 1 -1z" />
+      <path d="M15 4h4a1 1 0 0 1 1 1v2a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1v-2a1 1 0 0 1 1 -1z" />
+    </template>
+    <template v-else-if="name === 'database-export'">
+      <path d="M4 6c0 1.657 3.582 3 8 3s8 -1.343 8 -3s-3.582 -3 -8 -3s-8 1.343 -8 3" />
+      <path d="M4 6v6c0 1.657 3.582 3 8 3c.856 0 1.68 -.05 2.454 -.144m5.546 -2.856v-6" />
+      <path d="M4 12v6c0 1.657 3.582 3 8 3c.171 0 .341 -.002 .51 -.006m7.49 -6.994v-2" />
+      <path d="M16 19h6" />
+      <path d="M19 16l3 3l-3 3" />
     </template>
   </svg>
 </template>

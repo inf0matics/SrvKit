@@ -31,6 +31,7 @@ test('completing setup lands on the dashboard shell and survives a reload', asyn
   // /app redirects to /app/dashboard, rendered inside the shell.
   await expect(page).toHaveURL(/\/app\/dashboard$/)
   await expect(page.getByRole('link', { name: 'Dashboard' })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Backups' })).toBeVisible()
   await expect(page.getByTestId('dashboard')).toBeVisible()
 
   // Session persists across a full reload.
@@ -76,6 +77,12 @@ test('unauthenticated access to /app/dashboard also redirects', async ({ page })
   await expect(page.getByPlaceholder('Passphrase')).toBeVisible()
 })
 
+test('unauthenticated access to /app/backups also redirects', async ({ page }) => {
+  await page.goto('/app/backups')
+  await expect(page).toHaveURL(/\/$/)
+  await expect(page.getByPlaceholder('Passphrase')).toBeVisible()
+})
+
 test('wrong password shows an error, correct password reaches the dashboard', async ({ page }) => {
   await page.goto('/')
   await page.getByPlaceholder('Passphrase').fill('definitely wrong')
@@ -87,6 +94,17 @@ test('wrong password shows an error, correct password reaches the dashboard', as
   await page.getByRole('button', { name: 'Login', exact: true }).click()
   await expect(page).toHaveURL(/\/app\/dashboard$/)
   await expect(page.getByText('SrvKit')).toBeVisible() // sidebar wordmark
+})
+
+test('sidebar Backups link opens /app/backups', async ({ page }) => {
+  await page.goto('/')
+  await page.getByPlaceholder('Passphrase').fill(PASSWORD)
+  await page.getByRole('button', { name: 'Login', exact: true }).click()
+  await expect(page).toHaveURL(/\/app\/dashboard$/)
+
+  await page.getByRole('link', { name: 'Backups' }).click()
+  await expect(page).toHaveURL(/\/app\/backups$/)
+  await expect(page.getByTestId('backups')).toBeVisible()
 })
 
 test('sidebar Logout button ends the session', async ({ page }) => {
