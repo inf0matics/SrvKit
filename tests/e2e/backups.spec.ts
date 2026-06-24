@@ -34,6 +34,16 @@ test.describe.serial('backup targets', () => {
     await expect(page.getByText('No targets yet.')).toBeVisible()
   })
 
+  test('tests the connection from inside the Add modal', async () => {
+    await page.getByRole('button', { name: 'Add Target' }).click()
+    await page.getByLabel('Host', { exact: true }).fill('http://127.0.0.1:1')
+    await page.getByLabel('Username', { exact: true }).fill('alice')
+    await page.getByLabel('Password', { exact: true }).fill('s3cret')
+    await page.getByRole('button', { name: 'Test', exact: true }).click()
+    await expect(page.locator('.overlay .test-err')).toBeVisible()
+    await page.getByRole('button', { name: 'Cancel' }).click()
+  })
+
   test('adds a target', async () => {
     await page.getByRole('button', { name: 'Add Target' }).click()
     await page.getByLabel('Name', { exact: true }).fill('My Nextcloud')

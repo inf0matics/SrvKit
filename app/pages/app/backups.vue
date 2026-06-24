@@ -34,10 +34,14 @@ const form = reactive({ name: '', host: '', username: '', password: '' })
 const formError = ref('')
 const saving = ref(false)
 
+const modalTest = ref<TestResult | null>(null)
+const modalTesting = ref(false)
+
 function openAdd() {
   modal.id = null
   Object.assign(form, { name: '', host: '', username: '', password: '' })
   formError.value = ''
+  modalTest.value = null
   modal.open = true
 }
 
@@ -50,7 +54,40 @@ function openEdit(t: Target) {
     password: '',
   })
   formError.value = ''
+  modalTest.value = null
   modal.open = true
+}
+
+// Test from inside the modal. In edit mode with a blank password we fall back
+// to the stored credentials of the saved target; otherwise we test what's typed.
+async function testForm() {
+  modalTest.value = null
+  modalTesting.value = true
+  try {
+    if (modal.id && !form.password) {
+      modalTest.value = await $fetch<TestResult>(
+        `/api/backups/targets/${modal.id}/test`,
+        { method: 'POST' },
+      )
+    } else {
+      modalTest.value = await $fetch<TestResult>('/api/backups/targets/test', {
+        method: 'POST',
+        body: {
+          host: form.host,
+          username: form.username,
+          password: form.password,
+        },
+      })
+    }
+  } catch (e: unknown) {
+    modalTest.value = {
+      ok: false,
+      message:
+        (e as { statusMessage?: string }).statusMessage || 'Test request failed',
+    }
+  } finally {
+    modalTesting.value = false
+  }
 }
 
 async function save() {
@@ -181,12 +218,23 @@ async function remove(t: Target) {
         </label>
 
         <p v-if="formError" class="test-err">{{ formError }}</p>
+        <p
+          v-if="modalTest"
+          :class="modalTest.ok ? 'test-ok' : 'test-err'"
+        >
+          {{ modalTest.message }}
+        </p>
 
         <div class="modal-actions">
-          <button class="tsp-btn" @click="modal.open = false">Cancel</button>
-          <button class="tsp-btn tsp-btn-primary" :disabled="saving" @click="save">
-            Save
+          <button class="tsp-btn" :disabled="modalTesting" @click="testForm">
+            {{ modalTesting ? 'Testing…' : 'Test' }}
           </button>
+          <div class="modal-actions-right">
+            <button class="tsp-btn" @click="modal.open = false">Cancel</button>
+            <button class="tsp-btn tsp-btn-primary" :disabled="saving" @click="save">
+              Save
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -311,8 +359,14 @@ async function remove(t: Target) {
 
 .modal-actions {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: space-between;
   gap: 0.5rem;
   margin-top: 1.25rem;
+}
+
+.modal-actions-right {
+  display: flex;
+  gap: 0.5rem;
 }
 </style>
