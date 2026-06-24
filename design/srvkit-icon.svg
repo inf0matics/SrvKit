@@ -1,20 +1,19 @@
 <svg width="256" height="256" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
-  <!-- Background -->
-  <rect width="256" height="256" rx="12" fill="#212529"/>
+  <rect width="256" height="256" rx="16" fill="#212529"/>
 
-  <!-- Unit 1: heartbeat line + LED -->
-  <rect x="38" y="47" width="180" height="50" rx="6" fill="#2b3035" stroke="#404041" stroke-width="1.5"/>
-  <path d="M 63 72 L 98 72 L 105 64 L 110 83 L 115 61 L 122 72 L 172 72"
-        fill="none" stroke="#fbad18" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
-  <circle cx="200" cy="72" r="7" fill="#fbad18"/>
+  <!-- Unit 1: heartbeat + LED -->
+  <rect x="32" y="36" width="192" height="68" rx="10"
+    fill="#2b3035" stroke="#555b61" stroke-width="10"/>
+  <path d="M 58 70 L 88 70 L 96 58 L 102 85 L 109 54 L 117 70 L 152 70"
+    fill="none" stroke="#fbad18" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="192" cy="70" r="13" fill="#fbad18"/>
 
   <!-- Unit 2: stripe + LED -->
-  <rect x="38" y="103" width="180" height="50" rx="6" fill="#2b3035" stroke="#404041" stroke-width="1.5"/>
-  <rect x="52" y="117" width="80" height="8" rx="4" fill="#404041"/>
-  <circle cx="200" cy="128" r="7" fill="#fbad18"/>
+  <rect x="32" y="104" width="192" height="68" rx="10"
+    fill="#2b3035" stroke="#555b61" stroke-width="10"/>
+  <rect x="54" y="130" width="96" height="16" rx="8" fill="#555b61"/>
+  <circle cx="192" cy="138" r="13" fill="#fbad18"/>
 
-  <!-- Unit 3: stripe + LED -->
-  <rect x="38" y="159" width="180" height="50" rx="6" fill="#2b3035" stroke="#404041" stroke-width="1.5"/>
-  <rect x="52" y="173" width="80" height="8" rx="4" fill="#404041"/>
-  <circle cx="200" cy="184" r="7" fill="#fbad18"/>
+  <!-- Orange bar -->
+  <rect x="32" y="182" width="192" height="24" rx="12" fill="#fbad18"/>
 </svg>
