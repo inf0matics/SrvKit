@@ -7,13 +7,18 @@
   <!-- Base trace (always visible) -->
   <path d="M 58 70 L 88 70 L 96 58 L 102 85 L 109 54 L 117 70 L 152 70"
     fill="none" stroke="#fbad18" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
-  <!-- Slow highlight pulse sweeping along the trace (ECG monitor effect) -->
+  <!-- Highlight pulse: quick sweep across, then a pause before the next beat -->
   <path d="M 58 70 L 88 70 L 96 58 L 102 85 L 109 54 L 117 70 L 152 70"
     fill="none" stroke="#ffe6b0" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"
-    pathLength="100" stroke-dasharray="22 100" stroke-dashoffset="122">
-    <animate attributeName="stroke-dashoffset" values="122;0" dur="3.6s" repeatCount="indefinite"/>
+    pathLength="100" stroke-dasharray="22 100" stroke-dashoffset="22">
+    <animate attributeName="stroke-dashoffset" values="22;-100;-100"
+      keyTimes="0;0.5;1" dur="2.4s" repeatCount="indefinite"/>
   </path>
-  <circle cx="192" cy="70" r="13" fill="#fbad18"/>
+  <!-- Top LED blinks in sync as the pulse reaches it -->
+  <circle cx="192" cy="70" r="13" fill="#fbad18">
+    <animate attributeName="opacity" values="0.35;0.35;1;0.35;0.35"
+      keyTimes="0;0.4;0.5;0.62;1" dur="2.4s" repeatCount="indefinite"/>
+  </circle>
 
   <!-- Unit 2: stripe + LED -->
   <rect x="32" y="104" width="192" height="68" rx="10"
