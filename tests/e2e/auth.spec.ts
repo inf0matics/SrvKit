@@ -82,20 +82,44 @@ test('wrong password shows an error, correct password reaches the dashboard', as
   await expect(page.getByText('SrvKit')).toBeVisible() // sidebar wordmark
 })
 
-test('logout endpoint clears the session', async ({ page }) => {
-  // Sign in, then log out via the API (no logout UI in this shell spec).
+test('sidebar Logout button ends the session', async ({ page }) => {
   await page.goto('/')
   await page.getByPlaceholder('Passphrase').fill(PASSWORD)
   await page.getByRole('button', { name: 'Login', exact: true }).click()
   await expect(page).toHaveURL(/\/app\/dashboard$/)
 
-  const res = await page.request.post('/api/auth/logout')
-  expect(res.ok()).toBe(true)
-
-  // Session gone → protected route bounces back to login.
-  await page.goto('/app/dashboard')
+  await page.getByRole('button', { name: 'Logout' }).click()
   await expect(page).toHaveURL(/\/$/)
   await expect(page.getByPlaceholder('Passphrase')).toBeVisible()
+
+  // Session really gone — protected route bounces back to login.
+  await page.goto('/app/dashboard')
+  await expect(page).toHaveURL(/\/$/)
+})
+
+test('sidebar bottom nav: theme toggle persists, tip jar hidden, github + version', async ({ page }) => {
+  await page.goto('/')
+  await page.getByPlaceholder('Passphrase').fill(PASSWORD)
+  await page.getByRole('button', { name: 'Login', exact: true }).click()
+  await expect(page).toHaveURL(/\/app\/dashboard$/)
+
+  // Defaults to dark, toggles to light, and the choice survives a reload.
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
+  await page.getByRole('button', { name: 'Light mode' }).click()
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
+  await expect(page.getByRole('button', { name: 'Dark mode' })).toBeVisible()
+  await page.reload()
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
+
+  // Tip Jar hidden when TIP_JAR_URL is unset (the e2e default).
+  await expect(page.getByRole('link', { name: 'Tip Jar' })).toHaveCount(0)
+
+  // GitHub link + version badge present.
+  await expect(page.getByRole('link', { name: 'GitHub' })).toHaveAttribute(
+    'href',
+    /github\.com/,
+  )
+  await expect(page.getByTestId('sidebar-version')).toHaveText(/^v\d+\.\d+\.\d+$/)
 })
 
 test('"Can\'t login?" modal shows the CLI reset command', async ({ page }) => {

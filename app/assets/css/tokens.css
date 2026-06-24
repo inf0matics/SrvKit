@@ -26,6 +26,15 @@
   --tsp-shadow-main: inset 0 0 5rem rgba(0, 0, 0, 0.5);
 }
 
+/* Light theme — only bg/surface/border/text flip; brand colours stay. */
+[data-theme='light'] {
+  --tsp-bg: #f8f9fa;
+  --tsp-surface: #ffffff;
+  --tsp-border: #dee2e6;
+  --tsp-text: #212529;
+  --tsp-text-muted: #6d6e70;
+}
+
 * {
   box-sizing: border-box;
 }

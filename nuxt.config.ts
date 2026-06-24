@@ -13,6 +13,14 @@ export default defineNuxtConfig({
   runtimeConfig: {
     public: {
       version: pkg.version,
+      // Tip Jar link in the app sidebar — hidden when unset.
+      tipJarUrl: process.env.TIP_JAR_URL || '',
+    },
+  },
+  // Default theme is Dark; the app shell may switch to light via data-theme.
+  app: {
+    head: {
+      htmlAttrs: { lang: 'en', 'data-theme': 'dark' },
     },
   },
   // Shared lib/ and cli/ use explicit .ts import specifiers so Node can run
