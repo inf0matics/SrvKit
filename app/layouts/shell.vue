@@ -40,10 +40,10 @@ onBeforeUnmount(() => {
 <template>
   <div class="shell-root">
     <aside class="sidenav">
-      <div class="brand">
+      <NuxtLink to="/app" class="brand">
         <img src="/srvkit-icon.svg" width="32" height="32" alt="" class="brand-icon">
-        <span class="brand-name">SrvKit<span class="brand-dot">.</span></span>
-      </div>
+        <span class="brand-name">SrvKit<span class="brand-dot" aria-hidden="true">.</span></span>
+      </NuxtLink>
 
       <nav class="nav">
         <NuxtLink to="/app/dashboard" class="nav-item" active-class="active">
@@ -125,6 +125,8 @@ onBeforeUnmount(() => {
   padding: 0 16px 16px;
   margin: 0 8px 12px;
   border-bottom: 1px solid var(--tsp-border);
+  text-decoration: none;
+  color: inherit;
 }
 
 .brand-icon {
