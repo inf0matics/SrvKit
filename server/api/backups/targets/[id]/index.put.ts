@@ -30,11 +30,8 @@ export default defineEventHandler(async (event) => {
     }
   }
   if (body?.rootDir !== undefined) {
-    const root = normalizeRoot(body.rootDir)
-    if (!root) {
-      throw createError({ statusCode: 400, statusMessage: 'root directory must not be empty' })
-    }
-    fields.rootDir = root
+    // Empty is allowed — it means the share root ("/").
+    fields.rootDir = normalizeRoot(body.rootDir)
   }
   if (typeof body?.password === 'string' && body.password.length > 0) {
     fields.password = encryptPassword(body.password)

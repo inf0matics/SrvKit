@@ -31,13 +31,7 @@ const modal = reactive<{ open: boolean; id: string | null }>({
   open: false,
   id: null,
 })
-const form = reactive({
-  name: '',
-  host: '',
-  username: '',
-  password: '',
-  rootDir: '',
-})
+const form = reactive({ name: '', host: '', username: '', password: '' })
 const formError = ref('')
 const saving = ref(false)
 
@@ -46,13 +40,7 @@ const modalTesting = ref(false)
 
 function openAdd() {
   modal.id = null
-  Object.assign(form, {
-    name: '',
-    host: '',
-    username: '',
-    password: '',
-    rootDir: '',
-  })
+  Object.assign(form, { name: '', host: '', username: '', password: '' })
   formError.value = ''
   modalTest.value = null
   modal.open = true
@@ -65,7 +53,6 @@ function openEdit(t: Target) {
     host: t.host,
     username: t.username,
     password: '',
-    rootDir: t.rootDir,
   })
   formError.value = ''
   modalTest.value = null
@@ -150,6 +137,81 @@ async function remove(t: Target) {
   await $fetch(`/api/backups/targets/${t.id}`, { method: 'DELETE' })
   await refresh()
 }
+
+/* ---- directory browser (pick the target's root location) ---- */
+interface BrowseResult {
+  ok: boolean
+  path: string
+  dirs: string[]
+  message?: string
+}
+
+const browser = reactive<{ open: boolean; targetId: string | null; path: string }>(
+  { open: false, targetId: null, path: '' },
+)
+const browseDirs = ref<string[]>([])
+const browseError = ref('')
+const browseLoading = ref(false)
+const browseSaving = ref(false)
+
+function openBrowser(t: Target) {
+  browser.targetId = t.id
+  browser.path = t.rootDir
+  browseDirs.value = []
+  browseError.value = ''
+  browser.open = true
+  loadDirs()
+}
+
+async function loadDirs() {
+  if (!browser.targetId) return
+  browseLoading.value = true
+  browseError.value = ''
+  try {
+    const res = await $fetch<BrowseResult>(
+      `/api/backups/targets/${browser.targetId}/browse`,
+      { method: 'POST', body: { path: browser.path } },
+    )
+    if (res.ok) {
+      browseDirs.value = res.dirs
+    } else {
+      browseDirs.value = []
+      browseError.value = res.message || 'Could not list folders'
+    }
+  } catch {
+    browseDirs.value = []
+    browseError.value = 'Browse request failed'
+  } finally {
+    browseLoading.value = false
+  }
+}
+
+function enterDir(name: string) {
+  browser.path = browser.path ? `${browser.path}/${name}` : name
+  loadDirs()
+}
+
+function goUp() {
+  const parts = browser.path.split('/').filter(Boolean)
+  parts.pop()
+  browser.path = parts.join('/')
+  loadDirs()
+}
+
+async function selectHere() {
+  if (!browser.targetId) return
+  browseSaving.value = true
+  try {
+    await $fetch(`/api/backups/targets/${browser.targetId}`, {
+      method: 'PUT',
+      body: { rootDir: browser.path },
+    })
+    await refresh()
+    browser.open = false
+  } finally {
+    browseSaving.value = false
+  }
+}
 </script>
 
 <template>
@@ -174,9 +236,7 @@ async function remove(t: Target) {
         </button>
         <div class="target-info">
           <div class="target-name">{{ t.name }}</div>
-          <div class="target-host tsp-muted">
-            {{ t.host }}<span v-if="t.rootDir"> · {{ t.rootDir }}/</span>
-          </div>
+          <div class="target-host tsp-muted">{{ t.host }}</div>
         </div>
         <div class="target-actions">
           <button class="tsp-btn" :disabled="testing[t.id]" @click="testConnection(t)">
@@ -185,6 +245,15 @@ async function remove(t: Target) {
           <button class="tsp-btn" @click="openEdit(t)">Edit</button>
           <button class="tsp-btn" @click="remove(t)">Delete</button>
         </div>
+      </div>
+
+      <div class="target-location">
+        <span class="tsp-muted">Location:</span>
+        <span class="loc-path" data-testid="location">/{{ t.rootDir }}</span>
+        <button class="tsp-btn loc-btn" @click="openBrowser(t)">
+          <AppIcon name="folder" />
+          Choose Location
+        </button>
       </div>
 
       <p
@@ -219,16 +288,6 @@ async function remove(t: Target) {
           >
         </label>
         <label class="field">
-          <span>Root directory</span>
-          <input
-            v-model="form.rootDir"
-            class="tsp-input"
-            type="text"
-            placeholder="srvkit/"
-            autocomplete="off"
-          >
-        </label>
-        <label class="field">
           <span>Username</span>
           <input v-model="form.username" class="tsp-input" type="text" autocomplete="off">
         </label>
@@ -259,6 +318,56 @@ async function remove(t: Target) {
             <button class="tsp-btn" @click="modal.open = false">Cancel</button>
             <button class="tsp-btn tsp-btn-primary" :disabled="saving" @click="save">
               Save
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Directory browser -->
+    <div v-if="browser.open" class="overlay" @click.self="browser.open = false">
+      <div class="tsp-card browser">
+        <h2>Choose Location</h2>
+
+        <div class="path-bar">
+          <span class="slash">/</span>
+          <input
+            v-model="browser.path"
+            class="tsp-input"
+            placeholder="(share root)"
+            aria-label="Path"
+            @keyup.enter="loadDirs"
+          >
+          <button class="tsp-btn" :disabled="browseLoading" @click="loadDirs">Go</button>
+        </div>
+
+        <div class="browse-list">
+          <button class="dir up" :disabled="!browser.path || browseLoading" @click="goUp">
+            <AppIcon name="folder" /> ..
+          </button>
+          <p v-if="browseLoading" class="tsp-muted pad">Loading…</p>
+          <p v-else-if="browseError" class="test-err pad">{{ browseError }}</p>
+          <p v-else-if="!browseDirs.length" class="tsp-muted pad">No sub-folders here.</p>
+          <button
+            v-for="d in browseDirs"
+            :key="d"
+            class="dir"
+            @click="enterDir(d)"
+          >
+            <AppIcon name="folder" /> {{ d }}
+          </button>
+        </div>
+
+        <div class="modal-actions">
+          <span class="current tsp-muted">Selecting: /{{ browser.path }}</span>
+          <div class="modal-actions-right">
+            <button class="tsp-btn" @click="browser.open = false">Cancel</button>
+            <button
+              class="tsp-btn tsp-btn-primary"
+              :disabled="browseSaving"
+              @click="selectHere"
+            >
+              Select this folder
             </button>
           </div>
         </div>
@@ -336,10 +445,88 @@ async function remove(t: Target) {
   flex-shrink: 0;
 }
 
+.target-location {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  font-size: 0.9rem;
+}
+
+.loc-path {
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  color: var(--tsp-text);
+}
+
+.loc-btn {
+  margin-left: auto;
+}
+
 .target-body {
   margin-top: 12px;
   padding-top: 12px;
   border-top: 1px solid var(--tsp-border);
+}
+
+/* Directory browser */
+.browser {
+  width: 100%;
+  max-width: 30rem;
+}
+
+.path-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.path-bar .slash {
+  color: var(--tsp-text-muted);
+}
+
+.browse-list {
+  border: 1px solid var(--tsp-border);
+  border-radius: var(--tsp-radius-sm);
+  max-height: 16rem;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.dir {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  color: var(--tsp-text);
+  font: inherit;
+  font-size: 0.9rem;
+  padding: 7px 8px;
+  border-radius: var(--tsp-radius-sm);
+  cursor: pointer;
+}
+
+.dir:hover:not(:disabled) {
+  background: var(--tsp-bg);
+}
+
+.dir.up {
+  color: var(--tsp-text-muted);
+}
+
+.browse-list .pad {
+  padding: 8px;
+  margin: 0;
+}
+
+.current {
+  font-size: 0.85rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .test-ok {

@@ -11,6 +11,7 @@ defineProps<{
     | 'tag'
     | 'dashboard'
     | 'database-export'
+    | 'folder'
 }>()
 </script>
 
@@ -65,5 +66,9 @@ defineProps<{
       <path d="M16 19h6" />
       <path d="M19 16l3 3l-3 3" />
     </template>
+    <path
+      v-else-if="name === 'folder'"
+      d="M5 4h4l3 3h7a2 2 0 0 1 2 2v8a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-11a2 2 0 0 1 2 -2"
+    />
   </svg>
 </template>

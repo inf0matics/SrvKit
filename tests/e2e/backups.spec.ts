@@ -48,15 +48,23 @@ test.describe.serial('backup targets', () => {
     await page.getByRole('button', { name: 'Add Target' }).click()
     await page.getByLabel('Name', { exact: true }).fill('My Nextcloud')
     await page.getByLabel('Host', { exact: true }).fill('http://127.0.0.1:1')
-    await page.getByLabel('Root directory', { exact: true }).fill('srvkit/')
     await page.getByLabel('Username', { exact: true }).fill('alice')
     await page.getByLabel('Password', { exact: true }).fill('s3cret')
     await page.getByRole('button', { name: 'Save' }).click()
 
     await expect(page.getByText('My Nextcloud')).toBeVisible()
     await expect(page.getByText('http://127.0.0.1:1')).toBeVisible()
-    // Root directory is shown (normalized: trailing slash stripped, re-added).
-    await expect(page.getByText('srvkit/')).toBeVisible()
+    // Location defaults to the share root.
+    await expect(page.getByTestId('location')).toHaveText('/')
+  })
+
+  test('chooses a location via the directory browser', async () => {
+    await page.getByRole('button', { name: 'Choose Location' }).click()
+    // Listing an unreachable host errors, but a path can still be entered.
+    await expect(page.locator('.browse-list .test-err')).toBeVisible()
+    await page.getByLabel('Path').fill('srvkit/prod')
+    await page.getByRole('button', { name: 'Select this folder' }).click()
+    await expect(page.getByTestId('location')).toHaveText('/srvkit/prod')
   })
 
   test('test connection reports an error for an unreachable host', async () => {

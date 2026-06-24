@@ -26,6 +26,78 @@ export interface TestResult {
   message: string
 }
 
+export interface BrowseResult {
+  ok: boolean
+  path: string
+  dirs: string[]
+  message?: string
+}
+
+/**
+ * Parse a WebDAV PROPFIND (Depth 1) multistatus response into the names of the
+ * immediate child collections (directories) of `path`. Namespace-agnostic so it
+ * copes with `d:` / `D:` prefixes; the queried folder's own entry is skipped.
+ */
+export function parseDirs(xml: string, username: string, path: string): string[] {
+  const prefix = `/remote.php/dav/files/${username}/${path ? path + '/' : ''}`
+  const blocks = xml.split(/<(?:[a-z0-9]+:)?response[\s>]/i).slice(1)
+  const dirs: string[] = []
+  for (const block of blocks) {
+    if (!/<(?:[a-z0-9]+:)?collection\s*\/?>/i.test(block)) continue
+    const m = block.match(/<(?:[a-z0-9]+:)?href>([^<]*)<\/(?:[a-z0-9]+:)?href>/i)
+    if (!m) continue
+    let href = m[1]!
+    if (/^https?:\/\//i.test(href)) {
+      try {
+        href = new URL(href).pathname
+      } catch {
+        // keep raw href
+      }
+    }
+    href = decodeURIComponent(href)
+    if (!href.startsWith(prefix)) continue
+    const rel = href.slice(prefix.length).replace(/\/$/, '')
+    if (!rel || rel.includes('/')) continue // self or deeper than one level
+    dirs.push(rel)
+  }
+  return dirs.sort((a, b) => a.localeCompare(b))
+}
+
+const PROPFIND_BODY =
+  '<?xml version="1.0"?><d:propfind xmlns:d="DAV:"><d:prop><d:resourcetype/></d:prop></d:propfind>'
+
+/** List the sub-directories of `path` on a target's Nextcloud WebDAV share. */
+export async function browseWebdav(
+  host: string,
+  username: string,
+  password: string,
+  path: string,
+): Promise<BrowseResult> {
+  const base = host.replace(/\/+$/, '')
+  const rel = path
+    ? path.split('/').map(encodeURIComponent).join('/') + '/'
+    : ''
+  const url = `${base}/remote.php/dav/files/${encodeURIComponent(username)}/${rel}`
+  const authz = 'Basic ' + Buffer.from(`${username}:${password}`).toString('base64')
+  try {
+    const res = await fetch(url, {
+      method: 'PROPFIND',
+      headers: { Authorization: authz, Depth: '1', 'Content-Type': 'application/xml' },
+      body: PROPFIND_BODY,
+      signal: AbortSignal.timeout(10_000),
+    })
+    if (res.status === 404) {
+      return { ok: false, path, dirs: [], message: 'Folder not found' }
+    }
+    if (!(res.status === 207 || res.ok)) {
+      return { ok: false, path, dirs: [], message: `HTTP ${res.status}` }
+    }
+    return { ok: true, path, dirs: parseDirs(await res.text(), username, path) }
+  } catch (e) {
+    return { ok: false, path, dirs: [], message: (e as Error).message || 'Network error' }
+  }
+}
+
 /**
  * Verify a Nextcloud WebDAV target with a lightweight PROPFIND (Depth 0) against
  * the user's files endpoint. 207 Multi-Status (or any 2xx) means the host is

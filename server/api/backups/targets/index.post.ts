@@ -13,12 +13,13 @@ export default defineEventHandler(async (event) => {
   const host = trimStr(body?.host)
   const username = trimStr(body?.username)
   const password = typeof body?.password === 'string' ? body.password : ''
+  // Root defaults to the share root ("/"); chosen later via the directory browser.
   const rootDir = normalizeRoot(body?.rootDir)
 
-  if (!name || !host || !username || !password || !rootDir) {
+  if (!name || !host || !username || !password) {
     throw createError({
       statusCode: 400,
-      statusMessage: 'name, host, username, password and root directory are required',
+      statusMessage: 'name, host, username and password are required',
     })
   }
   if (!isValidHost(host)) {
