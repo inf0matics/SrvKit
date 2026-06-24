@@ -14,9 +14,9 @@
     <animate attributeName="stroke-dashoffset" values="22;-100;-100"
       keyTimes="0;0.5;1" dur="2.4s" repeatCount="indefinite"/>
   </path>
-  <!-- Top LED blinks in sync as the pulse reaches it -->
+  <!-- Top LED blinks in sync as the pulse reaches it (flashes to pulse colour) -->
   <circle cx="192" cy="70" r="13" fill="#fbad18">
-    <animate attributeName="opacity" values="0.35;0.35;1;0.35;0.35"
+    <animate attributeName="fill" values="#fbad18;#fbad18;#ffe6b0;#fbad18;#fbad18"
       keyTimes="0;0.4;0.5;0.62;1" dur="2.4s" repeatCount="indefinite"/>
   </circle>
 
