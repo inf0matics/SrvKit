@@ -1,0 +1,151 @@
+/*
+ * tsp.tools design tokens — mirrored from design/design-system.md.
+ * This is the ONE place raw hex lives; components reference var(--tsp-*) only.
+ * Default theme is Dark. The full Nuxt UI / Tailwind shell is introduced with
+ * the logged-in dashboard; the auth screens stay deliberately lightweight.
+ */
+@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&family=Space+Grotesk:wght@500;700&display=swap');
+
+:root {
+  /* Brand (theme-independent) */
+  --tsp-primary: #fbad18;
+  --tsp-primary-hover: #f7941e;
+  --tsp-primary-active: #f47920;
+  --tsp-on-primary: #212529;
+  --tsp-danger: #ff6347;
+
+  /* Dark theme (default) */
+  --tsp-bg: #212529;
+  --tsp-surface: #2b3035;
+  --tsp-border: #404041;
+  --tsp-text: #f0f0f0;
+  --tsp-text-muted: #adb5bd;
+
+  --tsp-radius: 0.75rem;
+  --tsp-radius-sm: 0.375rem;
+  --tsp-shadow-main: inset 0 0 5rem rgba(0, 0, 0, 0.5);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  background: var(--tsp-bg);
+  color: var(--tsp-text);
+  font-family: 'Nunito', system-ui, sans-serif;
+  font-weight: 400;
+}
+
+h1,
+h2,
+h3 {
+  font-weight: 800;
+}
+
+/* --- Shared UI primitives (token-only, reused across auth + app) --- */
+
+.tsp-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 1.5rem;
+}
+
+.tsp-card {
+  width: 100%;
+  max-width: 28rem;
+  background: var(--tsp-surface);
+  border: 1px solid var(--tsp-border);
+  border-radius: var(--tsp-radius);
+  box-shadow: var(--tsp-shadow-main);
+  padding: 2rem;
+}
+
+.tsp-input {
+  width: 100%;
+  padding: 0.625rem 0.75rem;
+  background: var(--tsp-bg);
+  border: 1px solid var(--tsp-border);
+  border-radius: var(--tsp-radius-sm);
+  color: var(--tsp-text);
+  font-family: inherit;
+  font-size: 1rem;
+}
+
+.tsp-input:focus {
+  outline: 2px solid var(--tsp-primary);
+  outline-offset: 1px;
+}
+
+.tsp-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.5rem 0.9rem;
+  border: 1px solid var(--tsp-border);
+  border-radius: var(--tsp-radius-sm);
+  background: transparent;
+  color: var(--tsp-text);
+  font-family: inherit;
+  font-weight: 600;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+.tsp-btn:hover {
+  border-color: var(--tsp-text-muted);
+}
+
+.tsp-btn-primary {
+  background: var(--tsp-primary);
+  border-color: var(--tsp-primary);
+  color: var(--tsp-on-primary);
+}
+
+.tsp-btn-primary:hover {
+  background: var(--tsp-primary-hover);
+  border-color: var(--tsp-primary-hover);
+}
+
+.tsp-btn-block {
+  width: 100%;
+}
+
+.tsp-muted {
+  color: var(--tsp-text-muted);
+}
+
+.tsp-link-muted {
+  background: none;
+  border: none;
+  color: var(--tsp-text-muted);
+  font-family: inherit;
+  font-size: 0.85rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.tsp-error {
+  color: var(--tsp-danger);
+  font-size: 0.9rem;
+}
+
+.tsp-code {
+  display: block;
+  background: var(--tsp-bg);
+  border: 1px solid var(--tsp-border);
+  border-radius: var(--tsp-radius-sm);
+  padding: 0.75rem;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 0.85rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+

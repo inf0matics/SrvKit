@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "node scripts/dev.mjs nuxt dev",
-    "build": "nuxt build",
+    "build": "nuxt build && node scripts/build-cli.mjs",
     "preview": "node .output/server/index.mjs",
     "postinstall": "nuxt prepare",
     "lint": "eslint .",
@@ -17,9 +17,17 @@
   "devDependencies": {
     "@nuxt/eslint": "^1.16.0",
     "@playwright/test": "^1.61.1",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/node": "^26.0.0",
+    "esbuild": "^0.28.1",
     "eslint": "^10.5.0",
     "nuxt": "^4.4.8",
     "typescript": "^6.0.3",
     "vue-tsc": "^3.3.5"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "bip39": "^3.1.0",
+    "h3": "^1.15.11"
   }
 }
