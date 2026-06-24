@@ -1,0 +1,25 @@
+{
+  "name": "srvkit",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/dev.mjs nuxt dev",
+    "build": "nuxt build",
+    "preview": "node .output/server/index.mjs",
+    "postinstall": "nuxt prepare",
+    "lint": "eslint .",
+    "typecheck": "nuxt typecheck",
+    "test:unit": "node --test \"test/unit/**/*.test.ts\"",
+    "test:e2e": "playwright test",
+    "bump-version": "npm run lint && npx changelogen@latest --release && git push --follow-tags"
+  },
+  "devDependencies": {
+    "@nuxt/eslint": "^1.16.0",
+    "@playwright/test": "^1.61.1",
+    "eslint": "^10.5.0",
+    "nuxt": "^4.4.8",
+    "typescript": "^6.0.3",
+    "vue-tsc": "^3.3.5"
+  }
+}

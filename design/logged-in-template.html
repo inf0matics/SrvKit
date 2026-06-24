@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="de" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>trips — Logged-in template</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+<script src="https://code.iconify.design/iconify-icon/2.1.0/iconify-icon.min.js"></script>
+<style>
+  /* Logged-in app shell — mirrors the piggybank admin layout (layouts/admin.vue):
+     surface sidebar with right border, Space Grotesk amber logo, filled-amber
+     active nav, and User → Logout → Theme toggle → GitHub + version at the bottom.
+     Tokens follow architecture/design-system.md (dark default + light). */
+  :root {
+    --bg:#212529; --surface:#2b3035; --border:#404041;
+    --text:#f0f0f0; --text-muted:#adb5bd; --text-dim:#8b9197;
+    --primary:#fbad18; --accent:#f7941e; --on-primary:#212529; --danger:#ff6347;
+    --r:0.75rem; --r-sm:0.5rem;
+  }
+  [data-theme="light"] {
+    --bg:#f8f9fa; --surface:#ffffff; --border:#dee2e6;
+    --text:#212529; --text-muted:#6d6e70; --text-dim:#9aa0a6;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:'Nunito',sans-serif; }
+  iconify-icon { display:inline-block; vertical-align:middle; line-height:1; }
+  h1,h2,h3 { font-family:'Nunito',sans-serif; font-weight:800; line-height:1.2; margin:0; }
+
+  .admin-root { display:flex; min-height:100vh; background:var(--bg); color:var(--text); }
+
+  /* ---- Sidebar ---- */
+  .sidenav { width:224px; flex-shrink:0; background:var(--surface);
+    border-right:1px solid var(--border); display:flex; flex-direction:column; padding:20px 0; }
+  .brand { padding:0 16px 16px; margin:0 8px 12px; border-bottom:1px solid var(--border);
+    font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:20px;
+    letter-spacing:-.02em; color:var(--primary); }
+  nav { display:flex; flex-direction:column; gap:2px; padding:0 8px; }
+  .nav-item { display:flex; align-items:center; gap:10px; padding:8px 12px; border-radius:var(--r-sm);
+    font-size:14px; font-weight:700; color:var(--text-muted); text-decoration:none; cursor:pointer; }
+  .nav-item iconify-icon { font-size:18px; }
+  .nav-item:hover { color:var(--text); background:var(--bg); }
+  .nav-item.active { background:var(--primary); color:var(--on-primary); }
+
+  .nav-bottom { margin-top:auto; padding:12px 12px 0; }
+  .nav-label { padding:0 4px; margin-bottom:4px; font-size:10px; text-transform:uppercase;
+    letter-spacing:.06em; color:var(--text-dim); }
+  .nav-row { display:flex; align-items:center; gap:8px; width:100%; padding:7px 6px;
+    border-radius:var(--r-sm); text-decoration:none; cursor:pointer; border:none;
+    background:transparent; font:inherit; color:var(--text-muted); }
+  .nav-row:hover { background:var(--bg); color:var(--text); }
+  .nav-row .uc { font-size:26px; color:var(--primary); flex-shrink:0; }
+  .nav-row .name { min-width:0; font-size:12px; color:var(--text);
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .nav-row.small { font-size:12px; }
+  .nav-row.small iconify-icon { font-size:16px; }
+  .nav-meta { display:flex; align-items:center; gap:6px; padding:6px 6px 0;
+    font-size:12px; color:var(--text-muted); }
+  .nav-divider-top { border-top:1px solid var(--border); margin-top:8px; padding-top:12px; }
+  .nav-meta a { color:var(--text-muted); text-decoration:none; display:inline-flex; align-items:center; gap:5px; }
+  .nav-meta a:hover { color:var(--text); }
+  .nav-meta iconify-icon { font-size:14px; }
+  .ver-badge { margin-left:auto; border:1px solid var(--border); border-radius:999px; padding:1px 9px; }
+
+  /* ---- Main ---- */
+  .main { flex:1; min-width:0; background:var(--bg); padding:40px 0 64px; }
+  .content-wrap { max-width:896px; margin:0 auto; padding:0 24px; }
+  @media (min-width:640px) { .content-wrap { padding:0 40px; } }
+
+  .row { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+  .spacer { flex:1; }
+  .muted { color:var(--text-muted); } .small { font-size:13px; }
+  .section-title { margin:32px 0 12px; font-size:14px; text-transform:uppercase;
+    letter-spacing:.06em; color:var(--text-muted); }
+
+  .btn { font:inherit; font-weight:700; border-radius:var(--r-sm); padding:9px 16px;
+    border:1px solid transparent; cursor:pointer; display:inline-flex; align-items:center; gap:6px; }
+  .btn iconify-icon { font-size:16px; }
+  .btn-primary { background:var(--primary); color:var(--on-primary); }
+  .btn-primary:hover { background:var(--accent); }
+  .btn-danger { background:var(--danger); color:#fff; }
+
+  .card { background:var(--surface); border:1px solid var(--border); border-radius:var(--r); padding:18px; }
+  .badge { display:inline-block; padding:2px 9px; border-radius:999px; font-size:12px; font-weight:700; }
+  .badge-ok { background:rgba(120,200,120,.18); color:#8fcf8f; }
+  .badge-warn { background:rgba(255,99,71,.18); color:var(--danger); }
+  .badge-muted { background:var(--border); color:var(--text-muted); }
+
+  table { width:100%; border-collapse:collapse; }
+  th,td { text-align:left; padding:11px 10px; border-bottom:1px solid var(--border); font-size:15px; }
+  th { font-size:12px; text-transform:uppercase; letter-spacing:.05em; color:var(--text-muted); }
+  tr:last-child td { border-bottom:none; }
+  td iconify-icon { font-size:17px; color:var(--text-muted); }
+
+  .alert { border-radius:var(--r-sm); padding:12px 15px; border:1px solid; font-weight:600; }
+  .alert iconify-icon { font-size:16px; vertical-align:-3px; margin-right:3px; }
+  .alert-warn { border-color:var(--danger); background:rgba(255,99,71,.10); color:var(--danger); }
+</style>
+</head>
+<body>
+
+<div class="admin-root">
+  <!-- ===== Sidebar ===== -->
+  <aside class="sidenav">
+    <div class="brand">trips<span>.</span></div>
+
+    <nav>
+      <a class="nav-item active"><iconify-icon icon="tabler:car"></iconify-icon>Fahrten</a>
+      <a class="nav-item"><iconify-icon icon="tabler:calendar-check"></iconify-icon>Monatsabschlüsse</a>
+      <a class="nav-item"><iconify-icon icon="tabler:archive"></iconify-icon>Snapshots</a>
+      <a class="nav-item"><iconify-icon icon="tabler:checklist"></iconify-icon>Todoliste</a>
+      <a class="nav-item"><iconify-icon icon="tabler:settings"></iconify-icon>Einstellungen</a>
+    </nav>
+
+    <div class="nav-bottom">
+      <p class="nav-label">User</p>
+      <a class="nav-row" href="https://logto.tsp.tools/account" target="_blank" title="Logto Account Center">
+        <iconify-icon class="uc" icon="tabler:user-circle"></iconify-icon>
+        <span class="name">philipp.horwath@gmail.com</span>
+      </a>
+      <a class="nav-row small"><iconify-icon icon="tabler:logout"></iconify-icon>Logout</a>
+
+      <button class="nav-row small nav-divider-top" id="themeToggle" type="button">
+        <iconify-icon id="themeIcon" icon="tabler:sun"></iconify-icon>
+        <span id="themeLabel">Light mode</span>
+      </button>
+
+      <div class="nav-meta">
+        <a href="#"><iconify-icon icon="tabler:brand-github"></iconify-icon>GitHub</a>
+        <a href="#" class="ver-badge">v0.1.0</a>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ===== Main ===== -->
+  <main class="main">
+    <div class="content-wrap">
+      <div class="row" style="margin-bottom:6px">
+        <h1>Juni 2026</h1>
+        <span class="badge badge-muted">laufend</span>
+        <span class="spacer"></span>
+        <button class="btn btn-primary"><iconify-icon icon="tabler:plus"></iconify-icon>Fahrt loggen</button>
+      </div>
+      <p class="muted small" style="margin:0 0 18px">142 km · <b style="color:var(--text)">71,00 €</b> km-Geld</p>
+
+      <div class="card" style="padding:0; overflow:hidden">
+        <table>
+          <thead><tr><th>Datum</th><th>Zeit</th><th>Strecke</th><th>Zweck</th><th>km</th><th></th></tr></thead>
+          <tbody>
+            <tr><td>03.06.</td><td>08:30–09:10</td><td>Vasoldsberg → Graz</td><td>Kundentermin RDG</td><td>18</td><td><iconify-icon icon="tabler:dots-vertical"></iconify-icon></td></tr>
+            <tr><td>05.06.</td><td>13:00–14:05</td><td>Graz → Leibnitz</td><td>Workshop</td><td>34</td><td><iconify-icon icon="tabler:dots-vertical"></iconify-icon></td></tr>
+            <tr><td>09.06.</td><td>09:15–10:30</td><td>Vasoldsberg → Bruck/Mur <span class="muted small">(via S35)</span></td><td>Vortrag</td><td>52</td><td><iconify-icon icon="tabler:dots-vertical"></iconify-icon></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="section-title">Monatsabschlüsse</div>
+
+      <div class="card" style="margin-bottom:12px">
+        <div class="row">
+          <div>
+            <b>Mai 2026</b> <span class="badge badge-muted">bereit zum Abschluss</span>
+            <p class="muted small" style="margin:4px 0 0">Monat vorbei — Abschluss erzeugt das PDF und friert die Fahrten ein.</p>
+          </div>
+          <span class="spacer"></span>
+          <button class="btn btn-primary">Monat abschließen</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="alert alert-warn" style="margin-bottom:12px"><iconify-icon icon="tabler:alert-triangle"></iconify-icon>Geändert seit Abschluss</div>
+        <div class="row">
+          <div>
+            <b>April 2026</b> <span class="badge badge-warn">weicht vom PDF ab</span>
+            <p class="muted small" style="margin:4px 0 0">Eine Fahrt wurde nach dem Abschluss bearbeitet. Neu abschließen erzeugt eine neue Version; das Original bleibt erhalten.</p>
+          </div>
+          <span class="spacer"></span>
+          <button class="btn btn-danger">Neu abschließen</button>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+  const html = document.documentElement;
+  const icon = document.getElementById('themeIcon');
+  const label = document.getElementById('themeLabel');
+  document.getElementById('themeToggle').addEventListener('click', () => {
+    const dark = html.dataset.theme === 'dark';
+    html.dataset.theme = dark ? 'light' : 'dark';
+    icon.setAttribute('icon', dark ? 'tabler:moon' : 'tabler:sun');
+    label.textContent = dark ? 'Dark mode' : 'Light mode';
+  });
+</script>
+</body>
+</html>

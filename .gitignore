@@ -1,0 +1,25 @@
+.claude/
+.initialized
+
+# Dependencies
+node_modules/
+
+# Nuxt / Nitro build output
+.nuxt/
+.output/
+.data/
+dist/
+
+# Playwright
+test-results/
+playwright-report/
+playwright/.cache/
+
+# Env
+.env
+.env.*
+!.env.example
+
+# Logs / OS
+*.log
+.DS_Store
