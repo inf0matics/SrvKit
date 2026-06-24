@@ -46,7 +46,14 @@ test('login screen shows the SrvKit hero, tagline and version', async ({ page })
   await expect(
     page.getByText('Host monitoring, Docker health, automated backups.'),
   ).toBeVisible()
-  await expect(page.getByTestId('version')).toHaveText(/^SrvKit · v\d+\.\d+\.\d+$/)
+  // Footer: GitHub link + version badge linking to the GitHub release page.
+  await expect(page.getByRole('link', { name: 'GitHub' })).toHaveAttribute(
+    'href',
+    /github\.com/,
+  )
+  const ver = page.getByTestId('version')
+  await expect(ver).toHaveText(/^v\d+\.\d+\.\d+$/)
+  await expect(ver).toHaveAttribute('href', /\/releases\/tag\/v\d/)
 })
 
 test('setup endpoint is gone once initialized (404)', async ({ request }) => {

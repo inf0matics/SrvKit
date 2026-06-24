@@ -16,6 +16,8 @@ const mode = computed<'setup' | 'login'>(() =>
 )
 
 const version = useRuntimeConfig().public.version
+const githubUrl = 'https://github.com/inf0matics/SrvKit'
+const releaseUrl = `${githubUrl}/releases/tag/v${version}`
 
 const submitting = ref(false)
 
@@ -86,14 +88,16 @@ const cliCommand = 'docker exec srvkit srvkit change-password "your new passphra
 <template>
   <div class="landing">
     <main class="hero">
-      <img
-        src="/srvkit-icon.svg"
-        width="96"
-        height="96"
-        alt="SrvKit"
-        class="logo"
-      >
-      <h1 class="wordmark">SrvKit</h1>
+      <div class="hero-brand">
+        <img
+          src="/srvkit-icon.svg"
+          width="96"
+          height="96"
+          alt="SrvKit"
+          class="logo"
+        >
+        <h1 class="wordmark">SrvKit<span class="dot" aria-hidden="true">.</span></h1>
+      </div>
       <p class="tagline">Host monitoring, Docker health, automated backups.</p>
 
       <!-- ===================== SETUP ===================== -->
@@ -152,7 +156,19 @@ const cliCommand = 'docker exec srvkit srvkit change-password "your new passphra
       </form>
     </main>
 
-    <footer class="footer" data-testid="version">SrvKit · v{{ version }}</footer>
+    <footer class="footer">
+      <a :href="githubUrl" target="_blank" rel="noopener" class="footer-link">
+        <AppIcon name="github" />
+        <span>GitHub</span>
+      </a>
+      <a
+        :href="releaseUrl"
+        target="_blank"
+        rel="noopener"
+        class="ver-badge"
+        data-testid="version"
+      >v{{ version }}</a>
+    </footer>
 
     <!-- ===================== HELP MODAL ===================== -->
     <div v-if="showHelp" class="overlay" @click.self="showHelp = false">
@@ -192,13 +208,20 @@ const cliCommand = 'docker exec srvkit srvkit change-password "your new passphra
   padding: 48px 24px 32px;
 }
 
+.hero-brand {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
 .logo {
   display: block;
   border-radius: 18px;
+  flex-shrink: 0;
 }
 
 .wordmark {
-  margin: 18px 0 0;
+  margin: 0;
   font-family: 'Space Grotesk', system-ui, sans-serif;
   font-weight: 700;
   font-size: clamp(2.5rem, 8vw, 4rem);
@@ -207,9 +230,13 @@ const cliCommand = 'docker exec srvkit srvkit change-password "your new passphra
   color: var(--tsp-text);
 }
 
+.wordmark .dot {
+  color: var(--tsp-primary);
+}
+
 .tagline {
   max-width: 480px;
-  margin: 16px 0 36px;
+  margin: 20px 0 36px;
   font-size: 1rem;
   font-weight: 600;
   color: var(--tsp-text-muted);
@@ -258,9 +285,43 @@ const cliCommand = 'docker exec srvkit srvkit change-password "your new passphra
 
 .footer {
   align-self: flex-end;
+  display: flex;
+  align-items: center;
+  gap: 14px;
   padding: 16px 20px 20px;
   font-size: 12px;
+}
+
+.footer-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   color: var(--tsp-text-muted);
+  text-decoration: none;
+}
+
+.footer-link:hover {
+  color: var(--tsp-text);
+}
+
+.footer-link :deep(.app-icon) {
+  width: 14px;
+  height: 14px;
+}
+
+.ver-badge {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--tsp-border);
+  border-radius: 999px;
+  padding: 2px 10px;
+  color: var(--tsp-text-muted);
+  text-decoration: none;
+}
+
+.ver-badge:hover {
+  color: var(--tsp-text);
+  border-color: var(--tsp-text-muted);
 }
 
 /* ---------------- Modal ---------------- */
