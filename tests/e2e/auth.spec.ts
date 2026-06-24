@@ -2,6 +2,8 @@ import { test, expect } from '@playwright/test'
 
 // One server / one DB shared across these tests (booted in setup mode), so the
 // order matters: setup happens once, then everything else assumes initialized.
+// The brute-force / rate-limit test lives in its own spec so these login flows
+// never trip the per-IP limit.
 test.describe.configure({ mode: 'serial' })
 
 const PASSWORD = 'correct horse battery staple e2e'
@@ -19,18 +21,20 @@ test('first start shows the setup screen with a regenerable suggestion', async (
   await expect(suggestion).not.toHaveText(first)
 })
 
-test('completing setup signs you in and the session survives a reload', async ({ page }) => {
+test('completing setup lands on the dashboard shell and survives a reload', async ({ page }) => {
   await page.goto('/')
   await page.getByPlaceholder('Your own password').fill(PASSWORD)
   await page.getByRole('button', { name: 'Save & continue' }).click()
 
-  await expect(page).toHaveURL(/\/app$/)
-  await expect(page.getByTestId('app-welcome')).toBeVisible()
+  // /app redirects to /app/dashboard, rendered inside the shell.
+  await expect(page).toHaveURL(/\/app\/dashboard$/)
+  await expect(page.getByRole('link', { name: 'Dashboard' })).toBeVisible()
+  await expect(page.getByTestId('dashboard')).toBeVisible()
 
   // Session persists across a full reload.
   await page.reload()
-  await expect(page).toHaveURL(/\/app$/)
-  await expect(page.getByTestId('app-welcome')).toBeVisible()
+  await expect(page).toHaveURL(/\/app\/dashboard$/)
+  await expect(page.getByRole('link', { name: 'Dashboard' })).toBeVisible()
 })
 
 test('setup endpoint is gone once initialized (404)', async ({ request }) => {
@@ -47,7 +51,13 @@ test('unauthenticated access to /app redirects to the login screen', async ({ pa
   await expect(page.getByPlaceholder('Password')).toBeVisible()
 })
 
-test('wrong password shows an error, correct password signs in', async ({ page }) => {
+test('unauthenticated access to /app/dashboard also redirects', async ({ page }) => {
+  await page.goto('/app/dashboard')
+  await expect(page).toHaveURL(/\/$/)
+  await expect(page.getByPlaceholder('Password')).toBeVisible()
+})
+
+test('wrong password shows an error, correct password reaches the dashboard', async ({ page }) => {
   await page.goto('/')
   await page.getByPlaceholder('Password').fill('definitely wrong')
   await page.getByRole('button', { name: 'Login', exact: true }).click()
@@ -56,10 +66,22 @@ test('wrong password shows an error, correct password signs in', async ({ page }
 
   await page.getByPlaceholder('Password').fill(PASSWORD)
   await page.getByRole('button', { name: 'Login', exact: true }).click()
-  await expect(page).toHaveURL(/\/app$/)
+  await expect(page).toHaveURL(/\/app\/dashboard$/)
+  await expect(page.getByText('SrvKit')).toBeVisible() // sidebar wordmark
+})
 
-  // Log out returns to the login screen.
-  await page.getByRole('button', { name: 'Log out' }).click()
+test('logout endpoint clears the session', async ({ page }) => {
+  // Sign in, then log out via the API (no logout UI in this shell spec).
+  await page.goto('/')
+  await page.getByPlaceholder('Password').fill(PASSWORD)
+  await page.getByRole('button', { name: 'Login', exact: true }).click()
+  await expect(page).toHaveURL(/\/app\/dashboard$/)
+
+  const res = await page.request.post('/api/auth/logout')
+  expect(res.ok()).toBe(true)
+
+  // Session gone → protected route bounces back to login.
+  await page.goto('/app/dashboard')
   await expect(page).toHaveURL(/\/$/)
   await expect(page.getByPlaceholder('Password')).toBeVisible()
 })
@@ -70,21 +92,4 @@ test('"Can\'t login?" modal shows the CLI reset command', async ({ page }) => {
   const dialog = page.getByRole('dialog', { name: "Can't login?" })
   await expect(dialog).toBeVisible()
   await expect(dialog).toContainText('srvkit change-password')
-})
-
-// Run LAST: this exhausts the per-IP login rate limit for the current window.
-test('login endpoint rate-limits brute force with 429', async ({ request }) => {
-  let saw429 = false
-  for (let i = 0; i < 15; i++) {
-    const res = await request.post('/api/auth/login', {
-      data: { password: 'wrong-' + i },
-    })
-    if (res.status() === 429) {
-      saw429 = true
-      expect(res.headers()['retry-after']).toBeTruthy()
-      break
-    }
-    expect(res.status()).toBe(401)
-  }
-  expect(saw429).toBe(true)
 })
