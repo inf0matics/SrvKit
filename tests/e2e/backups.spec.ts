@@ -112,14 +112,29 @@ test.describe.serial('backups', () => {
     await page.getByLabel('Nextcloud subdirectory').fill('root')
     await page.getByRole('button', { name: 'Save' }).click()
 
-    await expect(page.getByText('Root configs')).toBeVisible()
-    await expect(page.getByText('root → root/Root configs.tar.gz')).toBeVisible()
+    await expect(page.getByText('Root configs', { exact: true })).toBeVisible()
+    // Full destination path = /<target root>/<subdir>/<name>.tar.gz.
+    await expect(page.getByTestId('job-dest')).toHaveText('/srvkit/root/Root configs.tar.gz')
     await expect(page.getByText('Never run')).toBeVisible()
   })
 
-  test('detail: delete the job', async () => {
-    page.once('dialog', (d) => d.accept())
-    await page.locator('.job').getByRole('button', { name: 'Delete' }).click()
+  test('detail: edit a job via the wizard', async () => {
+    await page.getByRole('button', { name: 'Edit job' }).click()
+    await expect(page.getByRole('heading', { name: /Edit Backup/ })).toBeVisible()
+    await page.getByLabel('Name', { exact: true }).fill('Root configs v2')
+    await page.getByRole('button', { name: 'Next' }).click()
+    await page.getByRole('button', { name: 'Next' }).click()
+    await page.getByRole('button', { name: 'Save' }).click()
+    await expect(page.getByText('Root configs v2')).toBeVisible()
+    await expect(page.getByTestId('job-dest')).toHaveText(
+      '/srvkit/root/Root configs v2.tar.gz',
+    )
+  })
+
+  test('detail: delete the job (icon + inline confirm)', async () => {
+    await page.getByRole('button', { name: 'Delete job' }).click()
+    await expect(page.getByText('Delete this job?')).toBeVisible()
+    await page.locator('.job').getByRole('button', { name: 'Delete', exact: true }).click()
     await expect(page.getByText('No backup jobs yet.')).toBeVisible()
   })
 
@@ -139,9 +154,10 @@ test.describe.serial('backups', () => {
     await expect(content().getByText('Renamed NC')).toBeVisible()
   })
 
-  test('overview: delete the target', async () => {
-    page.once('dialog', (d) => d.accept())
-    await page.getByRole('button', { name: 'Delete' }).click()
+  test('overview: delete the target (icon + inline confirm)', async () => {
+    await page.getByRole('button', { name: 'Delete target' }).click()
+    await expect(page.getByText('Delete this target? All jobs will be lost.')).toBeVisible()
+    await page.getByRole('button', { name: 'Delete', exact: true }).click()
     await expect(content().getByText('Renamed NC')).toHaveCount(0)
     await expect(page.getByText('No targets yet.')).toBeVisible()
   })

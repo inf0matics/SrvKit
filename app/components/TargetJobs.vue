@@ -9,6 +9,7 @@ interface Job {
   sourcePath: string
   output: string
   subdirectory: string
+  excludes: string[]
 }
 
 const props = defineProps<{ target: TargetSummary; targets: TargetSummary[] }>()
@@ -18,49 +19,102 @@ const { data: jobs, refresh: refreshJobs } = await useFetch<Job[]>(
   { server: false, default: () => [] },
 )
 
+/* ---- wizard (create / edit) ---- */
 const wizardOpen = ref(false)
+const editingJob = ref<Job | null>(null)
 
-async function onSaved() {
+function openNew() {
+  editingJob.value = null
+  wizardOpen.value = true
+}
+function openEdit(job: Job) {
+  editingJob.value = job
+  wizardOpen.value = true
+}
+function closeWizard() {
   wizardOpen.value = false
+  editingJob.value = null
+}
+async function onSaved() {
+  closeWizard()
   await refreshJobs()
 }
 
-async function removeJob(job: Job) {
-  if (!confirm(`Delete backup "${job.name}"?`)) return
+/* ---- inline delete confirmation ---- */
+const confirmingDelete = ref<string | null>(null)
+
+async function confirmDelete(job: Job) {
   await $fetch(`/api/backups/jobs/${job.id}`, { method: 'DELETE' })
+  confirmingDelete.value = null
   await refreshJobs()
+}
+
+/** Full Nextcloud destination path for a job. */
+function destPath(job: Job): string {
+  const dir = [props.target.rootDir, job.subdirectory].filter(Boolean).join('/')
+  return '/' + (dir ? dir + '/' : '') + job.name + '.tar.gz'
 }
 </script>
 
 <template>
   <div class="jobs">
     <div v-for="job in jobs" :key="job.id" class="job">
-      <div class="job-info">
-        <div class="job-name">{{ job.name }}</div>
-        <div class="job-meta tsp-muted">
-          {{ job.sourcePath }} → {{ job.subdirectory }}/{{ job.name }}.tar.gz
+      <template v-if="confirmingDelete === job.id">
+        <div class="job-info">
+          <div class="job-name">{{ job.name }}</div>
+          <div class="confirm tsp-muted">Delete this job?</div>
         </div>
-      </div>
-      <span class="job-type tsp-muted">{{ job.type === 'files' ? 'Files' : job.type }}</span>
-      <span class="job-status tsp-muted">Never run</span>
-      <button class="tsp-btn" @click="removeJob(job)">Delete</button>
+        <button class="tsp-btn tsp-btn-sm" @click="confirmingDelete = null">Cancel</button>
+        <button class="tsp-btn tsp-btn-sm tsp-btn-danger" @click="confirmDelete(job)">
+          Delete
+        </button>
+      </template>
+      <template v-else>
+        <div class="job-info">
+          <div class="job-name">{{ job.name }}</div>
+          <div class="job-meta tsp-muted" data-testid="job-dest">{{ destPath(job) }}</div>
+        </div>
+        <span class="job-type tsp-muted">
+          {{ job.type === 'files' ? 'Files' : job.type }}
+        </span>
+        <span class="job-status tsp-muted">Never run</span>
+        <button
+          class="tsp-btn tsp-btn-sm tsp-btn-icon"
+          aria-label="Edit job"
+          @click="openEdit(job)"
+        >
+          <AppIcon name="edit" />
+        </button>
+        <button
+          class="tsp-btn tsp-btn-sm tsp-btn-icon"
+          aria-label="Delete job"
+          @click="confirmingDelete = job.id"
+        >
+          <AppIcon name="trash" />
+        </button>
+      </template>
     </div>
 
     <p v-if="!jobs.length" class="tsp-muted no-jobs">No backup jobs yet.</p>
 
-    <button class="tsp-btn add-job" @click="wizardOpen = true">+ Add Job</button>
+    <button class="tsp-btn tsp-btn-sm add-job" @click="openNew">+ Add Job</button>
 
     <NewBackupWizard
       v-if="wizardOpen"
       :targets="targets"
       :initial-target-id="target.id"
-      @close="wizardOpen = false"
+      :job="editingJob ?? undefined"
+      @close="closeWizard"
       @saved="onSaved"
     />
   </div>
 </template>
 
 <style scoped>
+.jobs {
+  margin-top: 4px;
+}
+
 .job {
   display: flex;
   align-items: center;
@@ -74,12 +128,6 @@ async function removeJob(job: Job) {
   min-width: 0;
 }
 
-.job-type,
-.job-status {
-  font-size: 0.85rem;
-  flex-shrink: 0;
-}
-
 .job-name {
   font-weight: 700;
   font-size: 0.95rem;
@@ -91,6 +139,16 @@ async function removeJob(job: Job) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.confirm {
+  font-size: 0.85rem;
+}
+
+.job-type,
+.job-status {
+  font-size: 0.85rem;
+  flex-shrink: 0;
 }
 
 .no-jobs {

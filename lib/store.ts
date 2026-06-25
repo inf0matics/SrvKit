@@ -71,6 +71,7 @@ export interface Store {
   listJobs(): JobRecord[]
   getJob(id: string): JobRecord | null
   createJob(input: JobInput): JobRecord
+  updateJob(id: string, input: JobInput): boolean
   deleteJob(id: string): boolean
   close(): void
 }
@@ -184,6 +185,10 @@ export function openStore(path: string): Store {
        (id, target_id, name, type, source_path, excludes, output, subdirectory, created_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
+  const updateJobStmt = db.prepare(
+    `UPDATE jobs SET target_id = ?, name = ?, type = ?, source_path = ?,
+       excludes = ?, output = ?, subdirectory = ? WHERE id = ?`,
+  )
   const deleteJobStmt = db.prepare('DELETE FROM jobs WHERE id = ?')
 
   return {
@@ -269,6 +274,21 @@ export function openStore(path: string): Store {
         createdAt,
       )
       return { ...input, id, createdAt }
+    },
+
+    updateJob(id: string, input: JobInput): boolean {
+      return (
+        updateJobStmt.run(
+          input.targetId,
+          input.name,
+          input.type,
+          input.sourcePath,
+          JSON.stringify(input.excludes),
+          input.output,
+          input.subdirectory,
+          id,
+        ).changes > 0
+      )
     },
 
     deleteJob: (id: string) => deleteJobStmt.run(id).changes > 0,

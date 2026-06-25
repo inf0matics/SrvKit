@@ -1,6 +1,9 @@
 import { join } from 'node:path'
+import { createError } from 'h3'
 import { encrypt, decrypt } from '../../lib/crypto.ts'
 import { listSources, buildTree, type TreeNode } from '../../lib/sources.ts'
+import type { JobInput } from '../../lib/store.ts'
+import { store } from './srvkit.ts'
 
 /** Base directory holding the mounted backup sources. */
 export function sourcesDir(): string {
@@ -16,6 +19,37 @@ export function getSources(): string[] {
 export function getSourceTree(name: string): TreeNode[] | null {
   if (!getSources().includes(name)) return null
   return buildTree(join(sourcesDir(), name))
+}
+
+/** Validate + normalize a job request body (shared by create and update). */
+export function parseJobInput(body: Record<string, unknown> | null): JobInput {
+  const name = trimStr(body?.name)
+  const targetId = trimStr(body?.targetId)
+  const type = trimStr(body?.type) || 'files'
+  const sourcePath = trimStr(body?.sourcePath)
+  const output = trimStr(body?.output) || 'single'
+  const subdirectory = normalizeRoot(body?.subdirectory)
+  const excludes = Array.isArray(body?.excludes)
+    ? (body.excludes as unknown[]).filter((e): e is string => typeof e === 'string')
+    : []
+
+  if (!name || !targetId || !sourcePath) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'name, targetId and sourcePath are required',
+    })
+  }
+  if (type !== 'files') {
+    throw createError({ statusCode: 400, statusMessage: 'unsupported job type' })
+  }
+  if (!store().getTarget(targetId)) {
+    throw createError({ statusCode: 400, statusMessage: 'unknown target' })
+  }
+  if (!getSources().includes(sourcePath)) {
+    throw createError({ statusCode: 400, statusMessage: 'unknown source path' })
+  }
+
+  return { targetId, name, type, sourcePath, excludes, output, subdirectory }
 }
 
 export function trimStr(v: unknown): string {

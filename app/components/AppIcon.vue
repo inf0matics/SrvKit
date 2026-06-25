@@ -13,6 +13,8 @@ defineProps<{
     | 'database-export'
     | 'folder'
     | 'cloud'
+    | 'trash'
+    | 'edit'
 }>()
 </script>
 
@@ -75,5 +77,17 @@ defineProps<{
       v-else-if="name === 'cloud'"
       d="M6.657 18c-2.572 0 -4.657 -2.007 -4.657 -4.483c0 -2.475 2.085 -4.482 4.657 -4.482c.393 -1.762 1.794 -3.2 3.675 -3.773c1.88 -.572 3.956 -.193 5.444 1c1.488 1.19 2.162 3.007 1.77 4.769h.99c1.642 0 2.974 1.36 2.974 3.038c0 1.679 -1.332 3.038 -2.973 3.038h-12.55"
     />
+    <template v-else-if="name === 'trash'">
+      <path d="M4 7l16 0" />
+      <path d="M10 11l0 6" />
+      <path d="M14 11l0 6" />
+      <path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12" />
+      <path d="M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3" />
+    </template>
+    <template v-else-if="name === 'edit'">
+      <path d="M7 7h-1a2 2 0 0 0 -2 2v9a2 2 0 0 0 2 2h9a2 2 0 0 0 2 -2v-1" />
+      <path d="M20.385 6.585a2.1 2.1 0 0 0 -2.97 -2.97l-8.415 8.385v3h3l8.385 -8.415z" />
+      <path d="M16 5l3 3" />
+    </template>
   </svg>
 </template>

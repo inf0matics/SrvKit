@@ -98,9 +98,12 @@ async function save() {
   }
 }
 
-async function remove(t: Target) {
-  if (!confirm(`Delete target "${t.name}"? This cannot be undone.`)) return
+/* ---- inline delete confirmation ---- */
+const confirmingDelete = ref<string | null>(null)
+
+async function confirmDelete(t: Target) {
   await $fetch(`/api/backups/targets/${t.id}`, { method: 'DELETE' })
+  confirmingDelete.value = null
   await refresh()
 }
 </script>
@@ -117,14 +120,38 @@ async function remove(t: Target) {
     </p>
 
     <div v-for="t in targets" :key="t.id" class="target-row">
-      <NuxtLink :to="`/app/backups/${t.id}`" class="target-link">
-        <span class="t-name">{{ t.name }}</span>
-        <span class="t-host tsp-muted">{{ t.host }}</span>
-      </NuxtLink>
-      <div class="t-actions">
-        <button class="tsp-btn" @click="openEdit(t)">Edit</button>
-        <button class="tsp-btn" @click="remove(t)">Delete</button>
-      </div>
+      <template v-if="confirmingDelete === t.id">
+        <div class="target-link">
+          <span class="t-name">{{ t.name }}</span>
+          <span class="t-confirm tsp-muted">
+            Delete this target? All jobs will be lost.
+          </span>
+        </div>
+        <div class="t-actions">
+          <button class="tsp-btn tsp-btn-sm" @click="confirmingDelete = null">
+            Cancel
+          </button>
+          <button class="tsp-btn tsp-btn-sm tsp-btn-danger" @click="confirmDelete(t)">
+            Delete
+          </button>
+        </div>
+      </template>
+      <template v-else>
+        <NuxtLink :to="`/app/backups/${t.id}`" class="target-link">
+          <span class="t-name">{{ t.name }}</span>
+          <span class="t-host tsp-muted">{{ t.host }}</span>
+        </NuxtLink>
+        <div class="t-actions">
+          <button class="tsp-btn tsp-btn-sm" @click="openEdit(t)">Edit</button>
+          <button
+            class="tsp-btn tsp-btn-sm tsp-btn-icon"
+            aria-label="Delete target"
+            @click="confirmingDelete = t.id"
+          >
+            <AppIcon name="trash" />
+          </button>
+        </div>
+      </template>
     </div>
 
     <!-- Add / Edit modal -->
@@ -167,12 +194,16 @@ async function remove(t: Target) {
         </p>
 
         <div class="modal-actions">
-          <button class="tsp-btn" :disabled="modalTesting" @click="testForm">
+          <button class="tsp-btn tsp-btn-sm" :disabled="modalTesting" @click="testForm">
             {{ modalTesting ? 'Testing…' : 'Test' }}
           </button>
           <div class="modal-actions-right">
-            <button class="tsp-btn" @click="modal.open = false">Cancel</button>
-            <button class="tsp-btn tsp-btn-primary" :disabled="saving" @click="save">
+            <button class="tsp-btn tsp-btn-sm" @click="modal.open = false">Cancel</button>
+            <button
+              class="tsp-btn tsp-btn-sm tsp-btn-primary"
+              :disabled="saving"
+              @click="save"
+            >
               Save
             </button>
           </div>
@@ -239,6 +270,10 @@ async function remove(t: Target) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.t-confirm {
+  font-size: 0.85rem;
 }
 
 .t-actions {

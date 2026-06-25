@@ -100,11 +100,11 @@ async function selectHere() {
   <div class="location">
     <div class="loc-row">
       <span class="loc-path" data-testid="location">/{{ target.rootDir }}</span>
-      <button class="tsp-btn" @click="openBrowser">
+      <button class="tsp-btn tsp-btn-sm" @click="openBrowser">
         <AppIcon name="folder" />
         Choose location
       </button>
-      <button class="tsp-btn" :disabled="testing" @click="testConnection">
+      <button class="tsp-btn tsp-btn-sm" :disabled="testing" @click="testConnection">
         {{ testing ? 'Testing…' : 'Test' }}
       </button>
     </div>
@@ -154,9 +154,9 @@ async function selectHere() {
         <div class="modal-actions">
           <span class="current tsp-muted">/{{ browser.path }}</span>
           <div class="modal-actions-right">
-            <button class="tsp-btn" @click="browser.open = false">Cancel</button>
+            <button class="tsp-btn tsp-btn-sm" @click="browser.open = false">Cancel</button>
             <button
-              class="tsp-btn tsp-btn-primary"
+              class="tsp-btn tsp-btn-sm tsp-btn-primary"
               :disabled="browseSaving"
               @click="selectHere"
             >

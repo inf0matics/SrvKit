@@ -43,6 +43,25 @@ test('empty excludes are stored and read as []', () => {
   s.close()
 })
 
+test('updateJob replaces the job fields', () => {
+  const s = openStore(':memory:')
+  const { id } = s.createJob(sample)
+  assert.equal(
+    s.updateJob(id, { ...sample, name: 'Renamed', excludes: ['root/x'] }),
+    true,
+  )
+  const got = s.getJob(id)
+  assert.equal(got?.name, 'Renamed')
+  assert.deepEqual(got?.excludes, ['root/x'])
+  s.close()
+})
+
+test('updateJob returns false for an unknown id', () => {
+  const s = openStore(':memory:')
+  assert.equal(s.updateJob('nope', sample), false)
+  s.close()
+})
+
 test('deleteJob removes the row', () => {
   const s = openStore(':memory:')
   const { id } = s.createJob(sample)

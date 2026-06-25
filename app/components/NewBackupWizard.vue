@@ -17,17 +17,33 @@ interface Target {
   name: string
 }
 
-const props = defineProps<{ targets: Target[]; initialTargetId: string }>()
+interface JobEdit {
+  id: string
+  name: string
+  type: string
+  sourcePath: string
+  targetId: string
+  output: string
+  subdirectory: string
+  excludes: string[]
+}
+
+const props = defineProps<{
+  targets: Target[]
+  initialTargetId: string
+  job?: JobEdit
+}>()
 const emit = defineEmits<{ close: []; saved: [] }>()
 
+const isEdit = computed(() => !!props.job)
 const step = ref(1)
 const form = reactive({
-  name: '',
-  type: 'files',
-  sourcePath: '',
-  targetId: props.initialTargetId,
-  output: 'single',
-  subdirectory: '',
+  name: props.job?.name ?? '',
+  type: props.job?.type ?? 'files',
+  sourcePath: props.job?.sourcePath ?? '',
+  targetId: props.job?.targetId ?? props.initialTargetId,
+  output: props.job?.output ?? 'single',
+  subdirectory: props.job?.subdirectory ?? '',
 })
 
 /* ---- sources + tree ---- */
@@ -40,7 +56,22 @@ const treeError = ref('')
 onMounted(async () => {
   const { sources: s } = await $fetch<{ sources: string[] }>('/api/backups/sources')
   sources.value = s
+  // Editing: load the tree and restore the saved selection (uncheck excludes).
+  if (props.job?.sourcePath) {
+    await loadTree()
+    applyExcludes(props.job.excludes)
+  }
 })
+
+function applyExcludes(excludes: string[]) {
+  const next = new Set(checked.value)
+  for (const ex of excludes) {
+    for (const f of flat.value) {
+      if (f.path === ex || f.path.startsWith(ex + '/')) next.delete(f.path)
+    }
+  }
+  checked.value = next
+}
 
 function flatten(nodes: TreeNode[], depth: number, parent: string, out: FlatNode[]) {
   for (const n of nodes) {
@@ -116,8 +147,8 @@ async function save() {
   saving.value = true
   saveError.value = ''
   try {
-    await $fetch('/api/backups/jobs', {
-      method: 'POST',
+    await $fetch(props.job ? `/api/backups/jobs/${props.job.id}` : '/api/backups/jobs', {
+      method: props.job ? 'PUT' : 'POST',
       body: {
         targetId: form.targetId,
         name: form.name,
@@ -142,7 +173,7 @@ async function save() {
   <div class="overlay" @click.self="emit('close')">
     <div class="tsp-card wizard">
       <div class="wiz-head">
-        <h2>New Backup — step {{ step }} of 3</h2>
+        <h2>{{ isEdit ? 'Edit Backup' : 'New Backup' }} — step {{ step }} of 3</h2>
         <button class="tsp-btn close" aria-label="Close" @click="emit('close')">✕</button>
       </div>
 
@@ -224,12 +255,12 @@ async function save() {
       </div>
 
       <div class="wiz-actions">
-        <button v-if="step > 1" class="tsp-btn" @click="back">Back</button>
+        <button v-if="step > 1" class="tsp-btn tsp-btn-sm" @click="back">Back</button>
         <span class="spacer" />
-        <button class="tsp-btn" @click="emit('close')">Cancel</button>
+        <button class="tsp-btn tsp-btn-sm" @click="emit('close')">Cancel</button>
         <button
           v-if="step < 3"
-          class="tsp-btn tsp-btn-primary"
+          class="tsp-btn tsp-btn-sm tsp-btn-primary"
           :disabled="!canNext"
           @click="next"
         >
@@ -237,7 +268,7 @@ async function save() {
         </button>
         <button
           v-else
-          class="tsp-btn tsp-btn-primary"
+          class="tsp-btn tsp-btn-sm tsp-btn-primary"
           :disabled="saving"
           @click="save"
         >

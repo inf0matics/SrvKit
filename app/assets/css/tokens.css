@@ -123,8 +123,35 @@ h3 {
   border-color: var(--tsp-primary-hover);
 }
 
+.tsp-btn-danger {
+  background: var(--tsp-danger);
+  border-color: var(--tsp-danger);
+  color: #fff;
+}
+
+.tsp-btn-danger:hover {
+  filter: brightness(1.08);
+}
+
 .tsp-btn-block {
   width: 100%;
+}
+
+/* Small variant — used for all action buttons inside content areas. Only
+   primary page-level buttons (e.g. + Add Target) stay full size. */
+.tsp-btn-sm {
+  padding: 0.3rem 0.6rem;
+  font-size: 0.82rem;
+}
+
+/* Icon-only button (square-ish padding). */
+.tsp-btn-icon {
+  padding: 0.3rem 0.4rem;
+}
+
+.tsp-btn-icon .app-icon {
+  width: 16px;
+  height: 16px;
 }
 
 .tsp-muted {
