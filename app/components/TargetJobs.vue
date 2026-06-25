@@ -71,12 +71,14 @@ function destPath(job: Job): string {
       </template>
       <template v-else>
         <div class="job-info">
-          <div class="job-name">{{ job.name }}</div>
+          <div class="job-head">
+            <span class="job-name">{{ job.name }}</span>
+            <span class="job-type-badge" data-testid="job-type">
+              {{ job.type === 'files' ? 'Files' : job.type }}
+            </span>
+          </div>
           <div class="job-meta tsp-muted" data-testid="job-dest">{{ destPath(job) }}</div>
         </div>
-        <span class="job-type tsp-muted">
-          {{ job.type === 'files' ? 'Files' : job.type }}
-        </span>
         <span class="job-status tsp-muted">Never run</span>
         <button
           class="tsp-btn tsp-btn-sm tsp-btn-icon"
@@ -128,9 +130,26 @@ function destPath(job: Job): string {
   min-width: 0;
 }
 
+.job-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .job-name {
   font-weight: 700;
   font-size: 0.95rem;
+}
+
+/* Muted pill badge — TSP chip style. */
+.job-type-badge {
+  display: inline-block;
+  padding: 1px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  background: var(--tsp-border);
+  color: var(--tsp-text-muted);
 }
 
 .job-meta {
@@ -145,7 +164,6 @@ function destPath(job: Job): string {
   font-size: 0.85rem;
 }
 
-.job-type,
 .job-status {
   font-size: 0.85rem;
   flex-shrink: 0;

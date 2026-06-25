@@ -113,6 +113,7 @@ test.describe.serial('backups', () => {
     await page.getByRole('button', { name: 'Save' }).click()
 
     await expect(page.getByText('Root configs', { exact: true })).toBeVisible()
+    await expect(page.getByTestId('job-type')).toHaveText('Files')
     // Full destination path = /<target root>/<subdir>/<name>.tar.gz.
     await expect(page.getByTestId('job-dest')).toHaveText('/srvkit/root/Root configs.tar.gz')
     await expect(page.getByText('Never run')).toBeVisible()
