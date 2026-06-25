@@ -54,9 +54,11 @@ watch(
   { immediate: true },
 )
 
+// Full destination: {host}/{root}/{subdirectory}/{filename}.tar.gz
 const archive = computed(() => {
-  const dir = [target.value?.rootDir, form.subdirectory].filter(Boolean).join('/')
-  return '/' + (dir ? dir + '/' : '') + (form.name || 'job') + '.tar.gz'
+  const host = (target.value?.host ?? '').replace(/^https?:\/\//, '').replace(/\/+$/, '')
+  const segs = [host, target.value?.rootDir, form.subdirectory].filter(Boolean)
+  return [...segs, (form.name || 'job') + '.tar.gz'].join('/')
 })
 
 const saving = ref(false)
@@ -132,7 +134,7 @@ async function save() {
         >
       </label>
 
-      <p class="archive tsp-muted">Archive: {{ archive }}</p>
+      <p class="archive tsp-muted" data-testid="archive">Archive: {{ archive }}</p>
       <p v-if="saveError" class="err">{{ saveError }}</p>
 
       <div class="actions">

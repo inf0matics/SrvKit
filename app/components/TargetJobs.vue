@@ -35,10 +35,11 @@ async function confirmDelete(job: Job) {
   await refreshJobs()
 }
 
-/** Full Nextcloud destination path for a job. */
+/** Full Nextcloud destination path: {host} / {root} / {subdir} / {file}.tar.gz */
 function destPath(job: Job): string {
-  const dir = [props.target.rootDir, job.subdirectory].filter(Boolean).join('/')
-  return '/' + (dir ? dir + '/' : '') + job.name + '.tar.gz'
+  const host = props.target.host.replace(/^https?:\/\//, '').replace(/\/+$/, '')
+  const segs = [host, props.target.rootDir, job.subdirectory].filter(Boolean)
+  return [...segs, job.name + '.tar.gz'].join(' / ')
 }
 </script>
 
