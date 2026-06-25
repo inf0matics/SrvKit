@@ -14,6 +14,8 @@ interface Job {
   lastStatus: 'success' | 'failed' | null
   lastError: string | null
   running: boolean
+  state: 'never' | 'debouncing' | 'running' | 'success' | 'failed'
+  remainingMs: number
 }
 
 const props = defineProps<{ target: TargetSummary }>()
@@ -32,7 +34,10 @@ function editJob(job: Job) {
 
 /* ---- run now ---- */
 const localRunning = ref<Record<string, boolean>>({})
-const isRunning = (job: Job) => job.running || !!localRunning.value[job.id]
+// A run is "active" (spinner) when the server reports running or we just clicked.
+const runActive = (job: Job) => job.state === 'running' || !!localRunning.value[job.id]
+// Run Now is disabled while debouncing or running.
+const isBusy = (job: Job) => runActive(job) || job.state === 'debouncing'
 
 async function runNow(job: Job) {
   localRunning.value[job.id] = true
@@ -46,13 +51,38 @@ async function runNow(job: Job) {
 
 const fmt = (iso: string | null) => (iso ? new Date(iso).toLocaleString() : '')
 
-/* ---- live status polling (every 2s while mounted) ---- */
+/* ---- debounce countdown (client-side, seeded from server remainingMs) ---- */
+const nowMs = ref(Date.now())
+const deadlines = ref<Record<string, number>>({})
+
+watch(
+  jobs,
+  (list) => {
+    const next: Record<string, number> = {}
+    for (const j of list ?? []) {
+      if (j.state === 'debouncing') next[j.id] = Date.now() + j.remainingMs
+    }
+    deadlines.value = next
+  },
+  { immediate: true },
+)
+
+function countdownSeconds(job: Job): number {
+  const dl = deadlines.value[job.id]
+  const ms = dl ? dl - nowMs.value : job.remainingMs
+  return Math.max(0, Math.ceil(ms / 1000))
+}
+
+/* ---- timers: poll status every 2s, tick the countdown every 1s ---- */
 let pollTimer: ReturnType<typeof setInterval> | undefined
+let tickTimer: ReturnType<typeof setInterval> | undefined
 onMounted(() => {
   pollTimer = setInterval(() => void refreshJobs(), 2000)
+  tickTimer = setInterval(() => (nowMs.value = Date.now()), 1000)
 })
 onBeforeUnmount(() => {
   if (pollTimer) clearInterval(pollTimer)
+  if (tickTimer) clearInterval(tickTimer)
 })
 
 /* ---- inline delete confirmation ---- */
@@ -96,21 +126,24 @@ function destPath(job: Job): string {
           <div class="job-meta tsp-muted" data-testid="job-dest">{{ destPath(job) }}</div>
         </div>
         <span class="job-status" data-testid="job-status">
-          <template v-if="isRunning(job)">
+          <template v-if="runActive(job)">
             <span class="spinner" /> Running…
           </template>
-          <span v-else-if="!job.lastStatus" class="tsp-muted">No backup yet</span>
-          <span v-else-if="job.lastStatus === 'success'" class="tsp-muted">
+          <span v-else-if="job.state === 'debouncing'" class="st-debounce">
+            ⏳ {{ countdownSeconds(job) }}s
+          </span>
+          <span v-else-if="job.state === 'success'" class="tsp-muted">
             ✓ Last backup: {{ fmt(job.lastRunAt) }}
           </span>
-          <span v-else class="st-fail">
+          <span v-else-if="job.state === 'failed'" class="st-fail">
             ✗ Last backup: {{ fmt(job.lastRunAt) }}<template v-if="job.lastError"> — {{ job.lastError }}</template>
           </span>
+          <span v-else class="tsp-muted">No backup yet</span>
         </span>
         <button
           class="tsp-btn tsp-btn-sm tsp-btn-icon"
           aria-label="Run job now"
-          :disabled="isRunning(job)"
+          :disabled="isBusy(job)"
           @click="runNow(job)"
         >
           <AppIcon name="play" />
@@ -208,6 +241,11 @@ function destPath(job: Job): string {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.st-debounce {
+  color: var(--tsp-primary);
+  font-variant-numeric: tabular-nums;
 }
 
 .spinner {

@@ -1,5 +1,5 @@
 import { store } from '../../../../utils/srvkit.ts'
-import { isRunning } from '../../../../utils/runner.ts'
+import { jobState } from '../../../../utils/watcher.ts'
 
 export default defineEventHandler((event) => {
   const id = getRouterParam(event, 'id')!
@@ -7,5 +7,5 @@ export default defineEventHandler((event) => {
   if (!job) {
     throw createError({ statusCode: 404, statusMessage: 'Job not found' })
   }
-  return { ...job, running: isRunning(id) }
+  return { ...job, ...jobState(job) }
 })

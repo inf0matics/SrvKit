@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test'
+import { writeFileSync, rmSync } from 'node:fs'
 
 // Runs after auth.spec.ts (alphabetical). One shared page + a single login so it
 // doesn't eat into the per-IP login rate limit.
@@ -147,6 +148,19 @@ test.describe.serial('backups', () => {
     await expect(page.getByTestId('job-dest')).toHaveText(
       '127.0.0.1:1/srvkit/root/Root configs v2.tar.gz',
     )
+  })
+
+  test('detail: a file change shows the debounce countdown', async () => {
+    // The job watches tests/fixtures/sources/root; a new file there starts the
+    // 10s debounce, which the row shows as a countdown.
+    const trigger = 'tests/fixtures/sources/root/e2e-trigger.txt'
+    writeFileSync(trigger, String(Date.now()))
+    try {
+      await expect(page.locator('.st-debounce')).toBeVisible({ timeout: 9000 })
+      await expect(page.locator('.st-debounce')).toContainText(/\d+\s*s/)
+    } finally {
+      rmSync(trigger, { force: true })
+    }
   })
 
   test('detail: delete the job (icon + inline confirm)', async () => {
