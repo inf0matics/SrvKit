@@ -77,7 +77,8 @@ onBeforeUnmount(() => {
               class="subitem"
               active-class="active"
             >
-              {{ t.name }}
+              <AppIcon name="cloud" />
+              <span>{{ t.name }}</span>
             </NuxtLink>
           </div>
         </div>
@@ -233,14 +234,26 @@ onBeforeUnmount(() => {
 }
 
 .subitem {
-  padding: 6px 12px 6px 44px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px 6px 40px;
   font-size: 13px;
   color: var(--tsp-text-muted);
   text-decoration: none;
   border-radius: var(--tsp-radius-sm);
+}
+
+.subitem span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.subitem .app-icon {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
 }
 
 .subitem:hover {
