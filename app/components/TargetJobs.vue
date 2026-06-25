@@ -12,32 +12,18 @@ interface Job {
   excludes: string[]
 }
 
-const props = defineProps<{ target: TargetSummary; targets: TargetSummary[] }>()
+const props = defineProps<{ target: TargetSummary }>()
 
 const { data: jobs, refresh: refreshJobs } = await useFetch<Job[]>(
   () => `/api/backups/jobs?targetId=${props.target.id}`,
   { server: false, default: () => [] },
 )
 
-/* ---- wizard (create / edit) ---- */
-const wizardOpen = ref(false)
-const editingJob = ref<Job | null>(null)
+/* ---- create modal + edit navigation ---- */
+const addOpen = ref(false)
 
-function openNew() {
-  editingJob.value = null
-  wizardOpen.value = true
-}
-function openEdit(job: Job) {
-  editingJob.value = job
-  wizardOpen.value = true
-}
-function closeWizard() {
-  wizardOpen.value = false
-  editingJob.value = null
-}
-async function onSaved() {
-  closeWizard()
-  await refreshJobs()
+function editJob(job: Job) {
+  return navigateTo(`/app/backups/${props.target.id}/jobs/${job.id}/edit`)
 }
 
 /* ---- inline delete confirmation ---- */
@@ -83,7 +69,7 @@ function destPath(job: Job): string {
         <button
           class="tsp-btn tsp-btn-sm tsp-btn-icon"
           aria-label="Edit job"
-          @click="openEdit(job)"
+          @click="editJob(job)"
         >
           <AppIcon name="edit" />
         </button>
@@ -99,16 +85,9 @@ function destPath(job: Job): string {
 
     <p v-if="!jobs.length" class="tsp-muted no-jobs">No backup jobs yet.</p>
 
-    <button class="tsp-btn tsp-btn-sm add-job" @click="openNew">+ Add Job</button>
+    <button class="tsp-btn tsp-btn-sm add-job" @click="addOpen = true">+ Add Job</button>
 
-    <NewBackupWizard
-      v-if="wizardOpen"
-      :targets="targets"
-      :initial-target-id="target.id"
-      :job="editingJob ?? undefined"
-      @close="closeWizard"
-      @saved="onSaved"
-    />
+    <AddJobModal v-if="addOpen" :target="target" @close="addOpen = false" />
   </div>
 </template>
 

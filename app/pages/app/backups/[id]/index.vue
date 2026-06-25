@@ -21,7 +21,7 @@ const target = computed(() =>
 
       <hr class="divider">
 
-      <TargetJobs :target="target" :targets="targets" />
+      <TargetJobs :target="target" />
     </template>
 
     <p v-else class="notfound tsp-muted">

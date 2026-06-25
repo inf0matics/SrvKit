@@ -99,34 +99,37 @@ test.describe.serial('backups', () => {
     await expect(page.locator('.test-err')).toBeVisible()
   })
 
-  test('detail: create a Files job via the wizard', async () => {
+  test('detail: create a job (lightweight modal → edit page)', async () => {
     await page.getByRole('button', { name: 'Add Job' }).click()
-
+    // Lightweight modal: name, type, mounted path.
     await page.getByLabel('Name', { exact: true }).fill('Root configs')
-    await page.getByRole('button', { name: 'Next' }).click()
+    await page.getByLabel('Mounted path').selectOption('root')
+    await page.getByRole('button', { name: 'Create' }).click()
 
-    await page.getByLabel('Source path').selectOption('root')
+    // Redirected to the full edit page; file tree loads.
+    await expect(page).toHaveURL(/\/jobs\/[0-9a-f-]+\/edit$/)
+    await expect(page.getByTestId('job-edit')).toBeVisible()
     await expect(page.getByText('.bashrc')).toBeVisible()
-    await page.getByRole('button', { name: 'Next' }).click()
 
     await page.getByLabel('Nextcloud subdirectory').fill('root')
     await page.getByRole('button', { name: 'Save' }).click()
 
+    // Back on the target detail page.
+    await expect(page).toHaveURL(/\/app\/backups\/[0-9a-f-]+$/)
     await expect(page.getByText('Root configs', { exact: true })).toBeVisible()
     await expect(page.getByTestId('job-type')).toHaveText('Files')
-    // Full destination path = /<target root>/<subdir>/<name>.tar.gz.
     await expect(page.getByTestId('job-dest')).toHaveText('/srvkit/root/Root configs.tar.gz')
     await expect(page.getByText('Never run')).toBeVisible()
   })
 
-  test('detail: edit a job via the wizard', async () => {
+  test('detail: edit a job opens the edit page', async () => {
     await page.getByRole('button', { name: 'Edit job' }).click()
-    await expect(page.getByRole('heading', { name: /Edit Backup/ })).toBeVisible()
+    await expect(page).toHaveURL(/\/jobs\/[0-9a-f-]+\/edit$/)
     await page.getByLabel('Name', { exact: true }).fill('Root configs v2')
-    await page.getByRole('button', { name: 'Next' }).click()
-    await page.getByRole('button', { name: 'Next' }).click()
     await page.getByRole('button', { name: 'Save' }).click()
-    await expect(page.getByText('Root configs v2')).toBeVisible()
+
+    await expect(page).toHaveURL(/\/app\/backups\/[0-9a-f-]+$/)
+    await expect(page.getByText('Root configs v2', { exact: true })).toBeVisible()
     await expect(page.getByTestId('job-dest')).toHaveText(
       '/srvkit/root/Root configs v2.tar.gz',
     )
