@@ -1,10 +1,11 @@
 import { store } from '../../../utils/srvkit.ts'
+import { isRunning } from '../../../utils/runner.ts'
 
-// List jobs, optionally filtered by target via ?targetId=.
+// List jobs (optionally by ?targetId=), each tagged with its live running state.
 export default defineEventHandler((event) => {
   const targetId = getQuery(event).targetId
-  const jobs = store().listJobs()
-  return typeof targetId === 'string'
-    ? jobs.filter((j) => j.targetId === targetId)
-    : jobs
+  return store()
+    .listJobs()
+    .filter((j) => typeof targetId !== 'string' || j.targetId === targetId)
+    .map((j) => ({ ...j, running: isRunning(j.id) }))
 })

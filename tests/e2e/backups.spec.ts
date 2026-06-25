@@ -125,13 +125,15 @@ test.describe.serial('backups', () => {
     await expect(page.getByTestId('job-dest')).toHaveText(
       '127.0.0.1:1/srvkit/root/Root configs.tar.gz',
     )
-    await expect(page.getByText('Never run')).toBeVisible()
+    await expect(page.getByTestId('job-status')).toHaveText('No backup yet')
   })
 
   test('detail: Run Now records a failed run (upload unreachable)', async () => {
-    await expect(page.getByTestId('job-status')).toHaveText('Never run')
+    await expect(page.getByTestId('job-status')).toHaveText('No backup yet')
     await page.getByRole('button', { name: 'Run job now' }).click()
-    await expect(page.getByTestId('job-status')).toContainText('Failed')
+    // Failed run shows "Last backup: …" with the error inline.
+    await expect(page.getByTestId('job-status')).toContainText('Upload failed')
+    await expect(page.getByTestId('job-status')).toContainText('Last backup')
   })
 
   test('detail: edit a job opens the edit page', async () => {

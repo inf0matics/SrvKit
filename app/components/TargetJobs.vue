@@ -13,6 +13,7 @@ interface Job {
   lastRunAt: string | null
   lastStatus: 'success' | 'failed' | null
   lastError: string | null
+  running: boolean
 }
 
 const props = defineProps<{ target: TargetSummary }>()
@@ -30,23 +31,29 @@ function editJob(job: Job) {
 }
 
 /* ---- run now ---- */
-const running = ref<Record<string, boolean>>({})
+const localRunning = ref<Record<string, boolean>>({})
+const isRunning = (job: Job) => job.running || !!localRunning.value[job.id]
 
 async function runNow(job: Job) {
-  running.value[job.id] = true
+  localRunning.value[job.id] = true
   try {
     await $fetch(`/api/backups/jobs/${job.id}/run`, { method: 'POST' })
     await refreshJobs()
   } finally {
-    running.value[job.id] = false
+    localRunning.value[job.id] = false
   }
 }
 
-function statusLabel(job: Job): string {
-  if (!job.lastStatus) return 'Never run'
-  const when = job.lastRunAt ? new Date(job.lastRunAt).toLocaleString() : ''
-  return job.lastStatus === 'success' ? `✓ ${when}` : '✗ Failed'
-}
+const fmt = (iso: string | null) => (iso ? new Date(iso).toLocaleString() : '')
+
+/* ---- live status polling (every 2s while mounted) ---- */
+let pollTimer: ReturnType<typeof setInterval> | undefined
+onMounted(() => {
+  pollTimer = setInterval(() => void refreshJobs(), 2000)
+})
+onBeforeUnmount(() => {
+  if (pollTimer) clearInterval(pollTimer)
+})
 
 /* ---- inline delete confirmation ---- */
 const confirmingDelete = ref<string | null>(null)
@@ -88,18 +95,22 @@ function destPath(job: Job): string {
           </div>
           <div class="job-meta tsp-muted" data-testid="job-dest">{{ destPath(job) }}</div>
         </div>
-        <span
-          class="job-status"
-          :class="job.lastStatus === 'failed' ? 'st-fail' : 'tsp-muted'"
-          :title="job.lastError ?? ''"
-          data-testid="job-status"
-        >
-          {{ statusLabel(job) }}
+        <span class="job-status" data-testid="job-status">
+          <template v-if="isRunning(job)">
+            <span class="spinner" /> Running…
+          </template>
+          <span v-else-if="!job.lastStatus" class="tsp-muted">No backup yet</span>
+          <span v-else-if="job.lastStatus === 'success'" class="tsp-muted">
+            ✓ Last backup: {{ fmt(job.lastRunAt) }}
+          </span>
+          <span v-else class="st-fail">
+            ✗ Last backup: {{ fmt(job.lastRunAt) }}<template v-if="job.lastError"> — {{ job.lastError }}</template>
+          </span>
         </span>
         <button
           class="tsp-btn tsp-btn-sm tsp-btn-icon"
           aria-label="Run job now"
-          :disabled="running[job.id]"
+          :disabled="isRunning(job)"
           @click="runNow(job)"
         >
           <AppIcon name="play" />
@@ -183,11 +194,36 @@ function destPath(job: Job): string {
 
 .job-status {
   font-size: 0.85rem;
-  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 22rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .st-fail {
   color: var(--tsp-danger);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--tsp-border);
+  border-top-color: var(--tsp-primary);
+  border-radius: 50%;
+  display: inline-block;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .no-jobs {
