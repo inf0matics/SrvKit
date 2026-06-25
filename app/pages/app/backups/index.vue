@@ -15,11 +15,6 @@ interface TestResult {
 const { targets, refresh } = useTargets()
 onMounted(refresh)
 
-/* ---- collapse / expand (expanded by default) ---- */
-const collapsed = ref<Record<string, boolean>>({})
-const isExpanded = (id: string) => !collapsed.value[id]
-const toggle = (id: string) => (collapsed.value[id] = !collapsed.value[id])
-
 /* ---- add / edit modal ---- */
 const modal = reactive<{ open: boolean; id: string | null }>({
   open: false,
@@ -67,11 +62,7 @@ async function testForm() {
     } else {
       modalTest.value = await $fetch<TestResult>('/api/backups/targets/test', {
         method: 'POST',
-        body: {
-          host: form.host,
-          username: form.username,
-          password: form.password,
-        },
+        body: { host: form.host, username: form.username, password: form.password },
       })
     }
   } catch (e: unknown) {
@@ -107,105 +98,10 @@ async function save() {
   }
 }
 
-/* ---- test connection ---- */
-const testResults = ref<Record<string, TestResult>>({})
-const testing = ref<Record<string, boolean>>({})
-
-async function testConnection(t: Target) {
-  testing.value[t.id] = true
-  try {
-    testResults.value[t.id] = await $fetch<TestResult>(
-      `/api/backups/targets/${t.id}/test`,
-      { method: 'POST' },
-    )
-  } catch {
-    testResults.value[t.id] = { ok: false, message: 'Test request failed' }
-  } finally {
-    testing.value[t.id] = false
-  }
-}
-
-/* ---- delete ---- */
 async function remove(t: Target) {
   if (!confirm(`Delete target "${t.name}"? This cannot be undone.`)) return
   await $fetch(`/api/backups/targets/${t.id}`, { method: 'DELETE' })
   await refresh()
-}
-
-/* ---- directory browser (pick the target's root location) ---- */
-interface BrowseResult {
-  ok: boolean
-  path: string
-  dirs: string[]
-  message?: string
-}
-
-const browser = reactive<{ open: boolean; targetId: string | null; path: string }>(
-  { open: false, targetId: null, path: '' },
-)
-const browseDirs = ref<string[]>([])
-const browseError = ref('')
-const browseLoading = ref(false)
-const browseSaving = ref(false)
-
-function openBrowser(t: Target) {
-  browser.targetId = t.id
-  browser.path = t.rootDir
-  browseDirs.value = []
-  browseError.value = ''
-  browser.open = true
-  loadDirs()
-}
-
-async function loadDirs() {
-  if (!browser.targetId) return
-  browseLoading.value = true
-  browseError.value = ''
-  try {
-    const res = await $fetch<BrowseResult>(
-      `/api/backups/targets/${browser.targetId}/browse`,
-      { method: 'POST', body: { path: browser.path } },
-    )
-    if (res.ok) {
-      browseDirs.value = res.dirs
-    } else {
-      browseDirs.value = []
-      browseError.value = res.message || 'Could not list folders'
-    }
-  } catch {
-    browseDirs.value = []
-    browseError.value = 'Browse request failed'
-  } finally {
-    browseLoading.value = false
-  }
-}
-
-const segments = computed(() => browser.path.split('/').filter(Boolean))
-
-function enterDir(name: string) {
-  browser.path = browser.path ? `${browser.path}/${name}` : name
-  loadDirs()
-}
-
-// Jump to a breadcrumb segment (empty string = share root).
-function goTo(path: string) {
-  browser.path = path
-  loadDirs()
-}
-
-async function selectHere() {
-  if (!browser.targetId) return
-  browseSaving.value = true
-  try {
-    await $fetch(`/api/backups/targets/${browser.targetId}`, {
-      method: 'PUT',
-      body: { rootDir: browser.path },
-    })
-    await refresh()
-    browser.open = false
-  } finally {
-    browseSaving.value = false
-  }
 }
 </script>
 
@@ -220,44 +116,16 @@ async function selectHere() {
       No targets yet. Add one to start backing up.
     </p>
 
-    <section v-for="t in targets" :key="t.id" class="target">
-      <div class="target-head">
-        <button
-          class="chevron"
-          :aria-label="isExpanded(t.id) ? 'Collapse' : 'Expand'"
-          @click="toggle(t.id)"
-        >
-          {{ isExpanded(t.id) ? '▾' : '▸' }}
-        </button>
-        <div class="target-name">{{ t.name }}</div>
-        <div class="target-actions">
-          <button class="tsp-btn" :disabled="testing[t.id]" @click="testConnection(t)">
-            {{ testing[t.id] ? 'Testing…' : 'Test' }}
-          </button>
-          <button class="tsp-btn" @click="openEdit(t)">Edit</button>
-          <button class="tsp-btn" @click="remove(t)">Delete</button>
-        </div>
+    <div v-for="t in targets" :key="t.id" class="target-row">
+      <NuxtLink :to="`/app/backups/${t.id}`" class="target-link">
+        <span class="t-name">{{ t.name }}</span>
+        <span class="t-host tsp-muted">{{ t.host }}</span>
+      </NuxtLink>
+      <div class="t-actions">
+        <button class="tsp-btn" @click="openEdit(t)">Edit</button>
+        <button class="tsp-btn" @click="remove(t)">Delete</button>
       </div>
-
-      <p
-        v-if="testResults[t.id]"
-        :class="testResults[t.id]!.ok ? 'test-ok' : 'test-err'"
-      >
-        {{ testResults[t.id]!.message }}
-      </p>
-
-      <div v-if="isExpanded(t.id)" class="target-body">
-        <div class="conn tsp-muted">{{ t.host }}</div>
-        <div class="target-location">
-          <span class="loc-path" data-testid="location">/{{ t.rootDir }}</span>
-          <button class="tsp-btn loc-btn" @click="openBrowser(t)">
-            <AppIcon name="folder" />
-            Choose location
-          </button>
-        </div>
-        <TargetJobs :target="t" :targets="targets" />
-      </div>
-    </section>
+    </div>
 
     <!-- Add / Edit modal -->
     <div v-if="modal.open" class="overlay" @click.self="modal.open = false">
@@ -294,10 +162,7 @@ async function selectHere() {
         </label>
 
         <p v-if="formError" class="test-err">{{ formError }}</p>
-        <p
-          v-if="modalTest"
-          :class="modalTest.ok ? 'test-ok' : 'test-err'"
-        >
+        <p v-if="modalTest" :class="modalTest.ok ? 'test-ok' : 'test-err'">
           {{ modalTest.message }}
         </p>
 
@@ -309,61 +174,6 @@ async function selectHere() {
             <button class="tsp-btn" @click="modal.open = false">Cancel</button>
             <button class="tsp-btn tsp-btn-primary" :disabled="saving" @click="save">
               Save
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Directory browser (full-page overlay) -->
-    <div v-if="browser.open" class="overlay" @click.self="browser.open = false">
-      <div class="tsp-card browser">
-        <div class="browser-head">
-          <h2>Choose location</h2>
-          <button class="tsp-btn close" aria-label="Close" @click="browser.open = false">
-            ✕
-          </button>
-        </div>
-
-        <nav class="breadcrumb" aria-label="Path">
-          <button class="crumb" :class="{ sel: segments.length === 0 }" @click="goTo('')">
-            /
-          </button>
-          <template v-for="(seg, i) in segments" :key="i">
-            <span v-if="i > 0" class="sep">/</span>
-            <button
-              class="crumb"
-              :class="{ sel: i === segments.length - 1 }"
-              @click="goTo(segments.slice(0, i + 1).join('/'))"
-            >
-              {{ seg }}
-            </button>
-          </template>
-        </nav>
-
-        <div class="browse-list">
-          <p v-if="browseLoading" class="tsp-muted pad" data-testid="browse-loading">
-            Loading…
-          </p>
-          <p v-else-if="browseError" class="test-err pad" data-testid="browse-error">
-            {{ browseError }}
-          </p>
-          <p v-else-if="!browseDirs.length" class="tsp-muted pad">No sub-folders here.</p>
-          <button v-for="d in browseDirs" :key="d" class="dir" @click="enterDir(d)">
-            <AppIcon name="folder" /> {{ d }}
-          </button>
-        </div>
-
-        <div class="modal-actions">
-          <span class="current tsp-muted">/{{ browser.path }}</span>
-          <div class="modal-actions-right">
-            <button class="tsp-btn" @click="browser.open = false">Cancel</button>
-            <button
-              class="tsp-btn tsp-btn-primary"
-              :disabled="browseSaving"
-              @click="selectHere"
-            >
-              Select
             </button>
           </div>
         </div>
@@ -395,168 +205,46 @@ async function selectHere() {
   margin-top: 24px;
 }
 
-.target {
+.target-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   border: 1px solid var(--tsp-border);
   border-radius: var(--tsp-radius);
   background: var(--tsp-surface);
   padding: 14px 16px;
-  margin-top: 16px;
-}
-
-.target-head {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.chevron {
-  background: none;
-  border: none;
-  color: var(--tsp-text-muted);
-  font-size: 14px;
-  cursor: pointer;
-  padding: 4px;
-  line-height: 1;
-}
-
-.target-name {
-  min-width: 0;
-  flex: 1;
-  font-weight: 700;
-}
-
-.target-actions {
-  display: flex;
-  gap: 6px;
-  flex-shrink: 0;
-}
-
-.target-body {
   margin-top: 12px;
 }
 
-.conn {
-  font-size: 0.85rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.target-location {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 8px;
-  font-size: 0.9rem;
-}
-
-.loc-path {
-  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
-  color: var(--tsp-text);
-}
-
-.loc-btn {
-  margin-left: auto;
-}
-
-/* Directory browser — full-page overlay */
-.browser {
-  width: 100%;
-  max-width: 42rem;
-  height: 80vh;
+.target-link {
+  flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
-}
-
-.browser-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 14px;
-}
-
-.browser-head h2 {
-  margin: 0;
-  font-size: 1.2rem;
-}
-
-.close {
-  padding: 0.25rem 0.5rem;
-}
-
-.breadcrumb {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
   gap: 2px;
-  margin-bottom: 10px;
-  font-size: 0.95rem;
+  text-decoration: none;
+  color: inherit;
 }
 
-.crumb {
-  background: none;
-  border: none;
-  color: var(--tsp-text-muted);
-  font: inherit;
-  cursor: pointer;
-  padding: 2px 5px;
-  border-radius: var(--tsp-radius-sm);
-}
-
-.crumb:hover {
-  color: var(--tsp-text);
-  background: var(--tsp-bg);
-}
-
-.crumb.sel {
+.target-link:hover .t-name {
   color: var(--tsp-primary);
+}
+
+.t-name {
   font-weight: 700;
 }
 
-.breadcrumb .sep {
-  color: var(--tsp-text-muted);
-}
-
-.browse-list {
-  flex: 1;
-  border: 1px solid var(--tsp-border);
-  border-radius: var(--tsp-radius-sm);
-  overflow-y: auto;
-  padding: 4px;
-}
-
-.dir {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  text-align: left;
-  background: none;
-  border: none;
-  color: var(--tsp-text);
-  font: inherit;
-  font-size: 0.9rem;
-  padding: 7px 8px;
-  border-radius: var(--tsp-radius-sm);
-  cursor: pointer;
-}
-
-.dir:hover:not(:disabled) {
-  background: var(--tsp-bg);
-}
-
-.browse-list .pad {
-  padding: 8px;
-  margin: 0;
-}
-
-.current {
-  font-family: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace;
+.t-host {
   font-size: 0.85rem;
-  color: var(--tsp-text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.t-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
 }
 
 .test-ok {

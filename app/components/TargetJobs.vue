@@ -41,12 +41,14 @@ async function removeJob(job: Job) {
           {{ job.sourcePath }} → {{ job.subdirectory }}/{{ job.name }}.tar.gz
         </div>
       </div>
+      <span class="job-type tsp-muted">{{ job.type === 'files' ? 'Files' : job.type }}</span>
+      <span class="job-status tsp-muted">Never run</span>
       <button class="tsp-btn" @click="removeJob(job)">Delete</button>
     </div>
 
     <p v-if="!jobs.length" class="tsp-muted no-jobs">No backup jobs yet.</p>
 
-    <button class="tsp-btn new-backup" @click="wizardOpen = true">+ New Backup</button>
+    <button class="tsp-btn add-job" @click="wizardOpen = true">+ Add Job</button>
 
     <NewBackupWizard
       v-if="wizardOpen"
@@ -59,23 +61,23 @@ async function removeJob(job: Job) {
 </template>
 
 <style scoped>
-.jobs {
-  margin-top: 14px;
-  padding-top: 12px;
-  border-top: 1px solid var(--tsp-border);
-}
-
 .job {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 8px 0;
+  padding: 10px 0;
   border-bottom: 1px solid var(--tsp-border);
 }
 
 .job-info {
   flex: 1;
   min-width: 0;
+}
+
+.job-type,
+.job-status {
+  font-size: 0.85rem;
+  flex-shrink: 0;
 }
 
 .job-name {
@@ -96,7 +98,7 @@ async function removeJob(job: Job) {
   font-size: 0.9rem;
 }
 
-.new-backup {
-  margin-top: 10px;
+.add-job {
+  margin-top: 12px;
 }
 </style>

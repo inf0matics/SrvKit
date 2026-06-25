@@ -16,7 +16,11 @@ const target = computed(() =>
 
     <template v-if="target">
       <h1>{{ target.name }}</h1>
-      <p class="meta tsp-muted">{{ target.host }} · /{{ target.rootDir }}</p>
+      <p class="host tsp-muted">{{ target.host }}</p>
+      <TargetLocation :target="target" @changed="refresh" />
+
+      <hr class="divider">
+
       <TargetJobs :target="target" :targets="targets" />
     </template>
 
@@ -43,10 +47,16 @@ const target = computed(() =>
   font-size: 1.6rem;
 }
 
-.meta {
-  margin: 0;
+.host {
+  margin: 0 0 12px;
   font-family: ui-monospace, Menlo, Consolas, monospace;
   font-size: 0.85rem;
+}
+
+.divider {
+  border: none;
+  border-top: 1px solid var(--tsp-border);
+  margin: 20px 0;
 }
 
 .notfound {
