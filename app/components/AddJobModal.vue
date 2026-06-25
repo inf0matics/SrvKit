@@ -10,15 +10,28 @@ const emit = defineEmits<{ close: [] }>()
 
 const form = reactive({ name: '', type: 'files', sourcePath: '' })
 const sources = ref<string[]>([])
+const dbFiles = ref<string[]>([])
 const saving = ref(false)
 const error = ref('')
 
 onMounted(async () => {
-  const { sources: s } = await $fetch<{ sources: string[] }>('/api/backups/sources')
-  sources.value = s
+  const res = await $fetch<{ sources: string[]; dbFiles: string[] }>(
+    '/api/backups/sources',
+  )
+  sources.value = res.sources
+  dbFiles.value = res.dbFiles
 })
 
-const canCreate = computed(() => form.name.trim().length > 0 && form.sourcePath)
+// Mounted paths depend on the type: directories for Files, .db files for SQLite.
+const mountedPaths = computed(() =>
+  form.type === 'sqlite' ? dbFiles.value : sources.value,
+)
+watch(
+  () => form.type,
+  () => (form.sourcePath = ''),
+)
+
+const canCreate = computed(() => form.name.trim().length > 0 && !!form.sourcePath)
 
 async function create() {
   saving.value = true
@@ -64,13 +77,14 @@ async function create() {
         <span>Type</span>
         <select v-model="form.type" class="tsp-input">
           <option value="files">Files</option>
+          <option value="sqlite">SQLite</option>
         </select>
       </label>
       <label class="field">
         <span>Mounted path</span>
         <select v-model="form.sourcePath" class="tsp-input">
           <option value="" disabled>Select a mounted path…</option>
-          <option v-for="s in sources" :key="s" :value="s">/backups/{{ s }}</option>
+          <option v-for="s in mountedPaths" :key="s" :value="s">/backups/{{ s }}</option>
         </select>
       </label>
 

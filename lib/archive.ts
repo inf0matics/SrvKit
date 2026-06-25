@@ -1,5 +1,14 @@
 import { create } from 'tar'
 
+/** Pack a single file (in `fileDir`) into a gzipped tar at `outFile`. */
+export async function createFileArchive(
+  fileDir: string,
+  fileName: string,
+  outFile: string,
+): Promise<void> {
+  await create({ gzip: true, file: outFile, cwd: fileDir }, [fileName])
+}
+
 /**
  * Pack the selected files of a source directory into a gzipped tar at `outFile`,
  * preserving relative paths. `excludes` are paths (relative to `sourceDir`) to

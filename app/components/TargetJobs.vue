@@ -10,6 +10,7 @@ interface Job {
   output: string
   subdirectory: string
   excludes: string[]
+  dateSuffix: boolean
   lastRunAt: string | null
   lastStatus: 'success' | 'failed' | null
   lastError: string | null
@@ -94,11 +95,15 @@ async function confirmDelete(job: Job) {
   await refreshJobs()
 }
 
-/** Full Nextcloud destination path: {host}/{root}/{subdir}/{file}.tar.gz */
+const typeLabel = (job: Job) => (job.type === 'sqlite' ? 'SQLite' : 'Files')
+
+/** Full Nextcloud destination path: {host}/{root}/{subdir}/{name}[_date].tar.gz */
 function destPath(job: Job): string {
   const host = props.target.host.replace(/^https?:\/\//, '').replace(/\/+$/, '')
+  const date = new Date().toISOString().slice(0, 10)
+  const file = job.name + (job.dateSuffix ? `_${date}` : '') + '.tar.gz'
   const segs = [host, props.target.rootDir, job.subdirectory].filter(Boolean)
-  return [...segs, job.name + '.tar.gz'].join('/')
+  return [...segs, file].join('/')
 }
 </script>
 
@@ -120,7 +125,7 @@ function destPath(job: Job): string {
           <div class="job-head">
             <span class="job-name">{{ job.name }}</span>
             <span class="job-type-badge" data-testid="job-type">
-              {{ job.type === 'files' ? 'Files' : job.type }}
+              {{ typeLabel(job) }}
             </span>
           </div>
           <div class="job-meta tsp-muted" data-testid="job-dest">{{ destPath(job) }}</div>

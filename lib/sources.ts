@@ -15,11 +15,23 @@ export interface TreeNode {
   children?: TreeNode[]
 }
 
-/** Immediate sub-directories of `baseDir` (the available source paths). */
+/** Immediate sub-directories of `baseDir` (sources for Files jobs). */
 export function listSources(baseDir: string): string[] {
   try {
     return readdirSync(baseDir, { withFileTypes: true })
       .filter((d) => d.isDirectory())
+      .map((d) => d.name)
+      .sort((a, b) => a.localeCompare(b))
+  } catch {
+    return []
+  }
+}
+
+/** Immediate `.db` files of `baseDir` (sources for SQLite jobs). */
+export function listDbFiles(baseDir: string): string[] {
+  try {
+    return readdirSync(baseDir, { withFileTypes: true })
+      .filter((d) => d.isFile() && d.name.endsWith('.db'))
       .map((d) => d.name)
       .sort((a, b) => a.localeCompare(b))
   } catch {

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { DatabaseSync } from 'node:sqlite'
 
 // Configure the environment before importing modules that read it.
 const base = mkdtempSync(join(tmpdir(), 'srvkit-runner-'))
@@ -21,6 +22,9 @@ const realFetch = globalThis.fetch
 before(() => {
   mkdirSync(join(base, 'sources', 'root'), { recursive: true })
   writeFileSync(join(base, 'sources', 'root', 'file.txt'), 'hello')
+  const sdb = new DatabaseSync(join(base, 'sources', 'data.db'))
+  sdb.exec('CREATE TABLE t(a)')
+  sdb.close()
 
   targetId = store().createTarget({
     name: 'T',
@@ -37,6 +41,7 @@ before(() => {
     excludes: [],
     output: 'single',
     subdirectory: 'sub',
+    dateSuffix: false,
   }).id
 })
 
@@ -73,4 +78,30 @@ test('records failure when the upload fails', async () => {
   const job = store().getJob(jobId)
   assert.equal(job?.lastStatus, 'failed')
   assert.match(job!.lastError!, /Upload failed/)
+})
+
+test('sqlite job backs up the db and uploads with a dated filename', async () => {
+  const sqliteJobId = store().createJob({
+    targetId,
+    name: 'App',
+    type: 'sqlite',
+    sourcePath: 'data.db',
+    excludes: [],
+    output: 'single',
+    subdirectory: 'db',
+    dateSuffix: true,
+  }).id
+
+  const calls: { method: string; url: string }[] = []
+  globalThis.fetch = (async (url: string, init: { method: string }) => {
+    calls.push({ method: init.method, url: String(url) })
+    return { ok: true, status: 201 } as Response
+  }) as typeof fetch
+
+  await runBackup(sqliteJobId)
+
+  assert.equal(store().getJob(sqliteJobId)?.lastStatus, 'success')
+  const put = calls.find((c) => c.method === 'PUT')
+  // .../srvkit/db/App_YYYY-MM-DD.tar.gz
+  assert.match(put!.url, /\/srvkit\/db\/App_\d{4}-\d{2}-\d{2}\.tar\.gz$/)
 })

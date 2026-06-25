@@ -10,6 +10,7 @@ const sample = {
   excludes: ['root/.cache', 'root/tmp/x.log'],
   output: 'single',
   subdirectory: 'root',
+  dateSuffix: false,
 }
 
 test('starts with no jobs', () => {
@@ -26,6 +27,16 @@ test('createJob returns a full record with id and createdAt', () => {
   assert.equal(job.name, 'Root configs')
   assert.deepEqual(job.excludes, ['root/.cache', 'root/tmp/x.log'])
   assert.equal(job.lastStatus, null) // never run yet
+  s.close()
+})
+
+test('dateSuffix round-trips as a boolean', () => {
+  const s = openStore(':memory:')
+  const a = s.createJob({ ...sample, dateSuffix: true })
+  assert.equal(a.dateSuffix, true)
+  assert.equal(s.getJob(a.id)?.dateSuffix, true)
+  s.updateJob(a.id, { ...sample, dateSuffix: false })
+  assert.equal(s.getJob(a.id)?.dateSuffix, false)
   s.close()
 })
 

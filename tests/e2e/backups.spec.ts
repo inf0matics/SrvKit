@@ -170,6 +170,31 @@ test.describe.serial('backups', () => {
     await expect(page.getByText('No backup jobs yet.')).toBeVisible()
   })
 
+  test('detail: create a SQLite job (type + date suffix)', async () => {
+    await page.getByRole('button', { name: 'Add Job' }).click()
+    await page.getByLabel('Name', { exact: true }).fill('App DB')
+    await page.getByLabel('Type').selectOption('sqlite')
+    await page.getByLabel('Mounted path').selectOption('app.db')
+    await page.getByRole('button', { name: 'Create' }).click()
+
+    // Edit page: SQLite branch — read-only source file + date toggle, no tree.
+    await expect(page).toHaveURL(/\/jobs\/[0-9a-f-]+\/edit$/)
+    await expect(page.getByTestId('job-edit')).toBeVisible()
+    await page.getByLabel('Append date to filename').check()
+    await page.getByLabel('Nextcloud subdirectory').fill('db')
+    await expect(page.getByTestId('archive')).toContainText(
+      /App DB_\d{4}-\d{2}-\d{2}\.tar\.gz/,
+    )
+    await page.getByRole('button', { name: 'Save' }).click()
+
+    // Detail: SQLite badge + dated destination.
+    await expect(page).toHaveURL(/\/app\/backups\/[0-9a-f-]+$/)
+    await expect(page.getByTestId('job-type')).toHaveText('SQLite')
+    await expect(page.getByTestId('job-dest')).toContainText(
+      /\/srvkit\/db\/App DB_\d{4}-\d{2}-\d{2}\.tar\.gz/,
+    )
+  })
+
   test('sidebar lists the target and links to its page', async () => {
     const link = page.locator('.subnav').getByRole('link', { name: 'My Nextcloud' })
     await expect(link).toBeVisible()

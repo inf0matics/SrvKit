@@ -10,6 +10,7 @@ interface Job {
   output: string
   subdirectory: string
   excludes: string[]
+  dateSuffix: boolean
 }
 
 const route = useRoute()
@@ -37,6 +38,7 @@ const form = reactive({
   sourcePath: '',
   output: 'single',
   subdirectory: '',
+  dateSuffix: false,
 })
 const excludes = ref<string[]>([])
 
@@ -49,16 +51,19 @@ watch(
     form.sourcePath = j.sourcePath
     form.output = j.output
     form.subdirectory = j.subdirectory
+    form.dateSuffix = j.dateSuffix
     excludes.value = j.excludes
   },
   { immediate: true },
 )
 
-// Full destination: {host}/{root}/{subdirectory}/{filename}.tar.gz
+// Full destination: {host}/{root}/{subdirectory}/{name}[_date].tar.gz
 const archive = computed(() => {
   const host = (target.value?.host ?? '').replace(/^https?:\/\//, '').replace(/\/+$/, '')
+  const date = new Date().toISOString().slice(0, 10)
+  const file = (form.name || 'job') + (form.dateSuffix ? `_${date}` : '') + '.tar.gz'
   const segs = [host, target.value?.rootDir, form.subdirectory].filter(Boolean)
-  return [...segs, (form.name || 'job') + '.tar.gz'].join('/')
+  return [...segs, file].join('/')
 })
 
 const saving = ref(false)
@@ -78,6 +83,7 @@ async function save() {
         excludes: excludes.value,
         output: form.output,
         subdirectory: form.subdirectory,
+        dateSuffix: form.dateSuffix,
       },
     })
     await navigateTo(`/app/backups/${targetId}`)
@@ -104,24 +110,40 @@ async function save() {
         <input v-model="form.name" class="tsp-input" type="text" autocomplete="off">
       </label>
 
-      <label class="field">
-        <span>Source path</span>
-        <select v-model="form.sourcePath" class="tsp-input">
-          <option v-for="s in sources" :key="s" :value="s">{{ s }}</option>
-        </select>
-      </label>
+      <!-- Files: source directory + file-tree selection -->
+      <template v-if="form.type === 'files'">
+        <label class="field">
+          <span>Source path</span>
+          <select v-model="form.sourcePath" class="tsp-input">
+            <option v-for="s in sources" :key="s" :value="s">{{ s }}</option>
+          </select>
+        </label>
 
-      <div class="field">
-        <span class="label">Files</span>
-        <FileTreeSelect v-model="excludes" :source-path="form.sourcePath" />
-      </div>
+        <div class="field">
+          <span class="label">Files</span>
+          <FileTreeSelect v-model="excludes" :source-path="form.sourcePath" />
+        </div>
 
-      <label class="field">
-        <span>Output</span>
-        <select v-model="form.output" class="tsp-input">
-          <option value="single">Single File</option>
-        </select>
-      </label>
+        <label class="field">
+          <span>Output</span>
+          <select v-model="form.output" class="tsp-input">
+            <option value="single">Single File</option>
+          </select>
+        </label>
+      </template>
+
+      <!-- SQLite: read-only source file + date-suffix toggle -->
+      <template v-else>
+        <div class="field">
+          <span class="label">Source file</span>
+          <input class="tsp-input" :value="`/backups/${form.sourcePath}`" readonly>
+        </div>
+
+        <label class="field toggle">
+          <input v-model="form.dateSuffix" type="checkbox">
+          <span>Append date to filename</span>
+        </label>
+      </template>
 
       <label class="field">
         <span>Nextcloud subdirectory</span>
@@ -184,6 +206,17 @@ async function save() {
   font-size: 0.85rem;
   font-weight: 600;
   color: var(--tsp-text-muted);
+}
+
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.toggle span {
+  margin: 0;
+  color: var(--tsp-text);
 }
 
 .archive {

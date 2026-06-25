@@ -1,4 +1,8 @@
-import { getSources } from '../../../utils/backups.ts'
+import { getSources, getDbSources } from '../../../utils/backups.ts'
 
-// Mounted source directories available for Files backup jobs.
-export default defineEventHandler(() => ({ sources: getSources() }))
+// Mounted sources available for backup jobs: directories (Files) and .db files
+// (SQLite).
+export default defineEventHandler(() => ({
+  sources: getSources(),
+  dbFiles: getDbSources(),
+}))

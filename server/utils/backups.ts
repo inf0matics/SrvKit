@@ -1,7 +1,12 @@
 import { join } from 'node:path'
 import { createError } from 'h3'
 import { encrypt, decrypt } from '../../lib/crypto.ts'
-import { listSources, buildTree, type TreeNode } from '../../lib/sources.ts'
+import {
+  listSources,
+  listDbFiles,
+  buildTree,
+  type TreeNode,
+} from '../../lib/sources.ts'
 import type { JobInput } from '../../lib/store.ts'
 import { store } from './srvkit.ts'
 
@@ -10,9 +15,24 @@ export function sourcesDir(): string {
   return process.env.BACKUP_SOURCES_DIR || '/backups'
 }
 
-/** Available source names (immediate sub-directories of the base). */
+/** Source directories (Files jobs). */
 export function getSources(): string[] {
   return listSources(sourcesDir())
+}
+
+/** Source .db files (SQLite jobs). */
+export function getDbSources(): string[] {
+  return listDbFiles(sourcesDir())
+}
+
+/** Archive filename for a job, with optional YYYY-MM-DD suffix. */
+export function archiveFilename(
+  name: string,
+  dateSuffix: boolean,
+  date = new Date(),
+): string {
+  const suffix = dateSuffix ? `_${date.toISOString().slice(0, 10)}` : ''
+  return `${name}${suffix}.tar.gz`
 }
 
 /** File tree for a source, or null if the name isn't a known source. */
@@ -29,6 +49,7 @@ export function parseJobInput(body: Record<string, unknown> | null): JobInput {
   const sourcePath = trimStr(body?.sourcePath)
   const output = trimStr(body?.output) || 'single'
   const subdirectory = normalizeRoot(body?.subdirectory)
+  const dateSuffix = body?.dateSuffix === true
   const excludes = Array.isArray(body?.excludes)
     ? (body.excludes as unknown[]).filter((e): e is string => typeof e === 'string')
     : []
@@ -39,17 +60,18 @@ export function parseJobInput(body: Record<string, unknown> | null): JobInput {
       statusMessage: 'name, targetId and sourcePath are required',
     })
   }
-  if (type !== 'files') {
+  if (type !== 'files' && type !== 'sqlite') {
     throw createError({ statusCode: 400, statusMessage: 'unsupported job type' })
   }
   if (!store().getTarget(targetId)) {
     throw createError({ statusCode: 400, statusMessage: 'unknown target' })
   }
-  if (!getSources().includes(sourcePath)) {
+  const validSources = type === 'sqlite' ? getDbSources() : getSources()
+  if (!validSources.includes(sourcePath)) {
     throw createError({ statusCode: 400, statusMessage: 'unknown source path' })
   }
 
-  return { targetId, name, type, sourcePath, excludes, output, subdirectory }
+  return { targetId, name, type, sourcePath, excludes, output, subdirectory, dateSuffix }
 }
 
 export function trimStr(v: unknown): string {
