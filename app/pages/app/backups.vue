@@ -338,7 +338,7 @@ async function selectHere() {
             /
           </button>
           <template v-for="(seg, i) in segments" :key="i">
-            <span class="sep">/</span>
+            <span v-if="i > 0" class="sep">/</span>
             <button
               class="crumb"
               :class="{ sel: i === segments.length - 1 }"
@@ -565,7 +565,9 @@ async function selectHere() {
 }
 
 .current {
+  font-family: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace;
   font-size: 0.85rem;
+  color: var(--tsp-text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
