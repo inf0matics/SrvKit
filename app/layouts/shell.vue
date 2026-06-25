@@ -6,6 +6,11 @@ const version = config.version
 const tipJarUrl = config.tipJarUrl
 const githubUrl = 'https://github.com/inf0matics/SrvKit'
 
+// Targets shown as collapsible sub-items under the Backups nav entry.
+const { targets, refresh: refreshTargets } = useTargets()
+onMounted(refreshTargets)
+const backupsOpen = ref(true)
+
 /* ---- Logout ---- */
 async function logout() {
   await $fetch('/api/auth/logout', { method: 'POST' })
@@ -47,13 +52,35 @@ onBeforeUnmount(() => {
 
       <nav class="nav">
         <NuxtLink to="/app/dashboard" class="nav-item" active-class="active">
+          <span class="gutter" />
           <AppIcon name="dashboard" />
           <span>Dashboard</span>
         </NuxtLink>
-        <NuxtLink to="/app/backups" class="nav-item" active-class="active">
-          <AppIcon name="database-export" />
-          <span>Backups</span>
-        </NuxtLink>
+
+        <div class="nav-group">
+          <NuxtLink to="/app/backups" class="nav-item" exact-active-class="active">
+            <button
+              class="gutter chev"
+              :aria-label="backupsOpen ? 'Collapse Backups' : 'Expand Backups'"
+              @click.prevent.stop="backupsOpen = !backupsOpen"
+            >
+              {{ backupsOpen ? '▾' : '▸' }}
+            </button>
+            <AppIcon name="database-export" />
+            <span>Backups</span>
+          </NuxtLink>
+          <div v-if="backupsOpen" class="subnav">
+            <NuxtLink
+              v-for="t in targets"
+              :key="t.id"
+              :to="`/app/backups/${t.id}`"
+              class="subitem"
+              active-class="active"
+            >
+              {{ t.name }}
+            </NuxtLink>
+          </div>
+        </div>
       </nav>
 
       <div class="nav-bottom">
@@ -174,6 +201,56 @@ onBeforeUnmount(() => {
 .nav-item.active {
   background: var(--tsp-primary);
   color: var(--tsp-on-primary);
+}
+
+/* Leading gutter so Dashboard/Backups icons align and the chevron has room. */
+.gutter {
+  width: 14px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.chev {
+  background: none;
+  border: none;
+  color: var(--tsp-text-muted);
+  font-size: 11px;
+  line-height: 1;
+  padding: 2px;
+  cursor: pointer;
+}
+
+.chev:hover {
+  color: var(--tsp-text);
+}
+
+.subnav {
+  display: flex;
+  flex-direction: column;
+  margin-top: 2px;
+}
+
+.subitem {
+  padding: 6px 12px 6px 44px;
+  font-size: 13px;
+  color: var(--tsp-text-muted);
+  text-decoration: none;
+  border-radius: var(--tsp-radius-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.subitem:hover {
+  color: var(--tsp-text);
+  background: var(--tsp-bg);
+}
+
+.subitem.active {
+  color: var(--tsp-primary);
+  font-weight: 700;
 }
 
 /* Buttons styled as nav items */

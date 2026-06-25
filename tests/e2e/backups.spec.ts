@@ -52,10 +52,24 @@ test.describe.serial('backup targets', () => {
     await page.getByLabel('Password', { exact: true }).fill('s3cret')
     await page.getByRole('button', { name: 'Save' }).click()
 
-    await expect(page.getByText('My Nextcloud')).toBeVisible()
-    await expect(page.getByText('http://127.0.0.1:1')).toBeVisible()
+    const content = page.getByTestId('backups')
+    await expect(content.getByText('My Nextcloud')).toBeVisible()
+    await expect(content.getByText('http://127.0.0.1:1')).toBeVisible()
     // Location defaults to the share root.
     await expect(page.getByTestId('location')).toHaveText('/')
+  })
+
+  test('Backups sidebar lists the target and opens its page', async () => {
+    const link = page.locator('.subnav').getByRole('link', { name: 'My Nextcloud' })
+    await expect(link).toBeVisible()
+    await link.click()
+    await expect(page).toHaveURL(/\/app\/backups\/[0-9a-f-]+$/)
+    await expect(page.getByTestId('target-page')).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'My Nextcloud' })).toBeVisible()
+
+    // Back to the overview for the remaining tests.
+    await page.goto('/app/backups')
+    await expect(page.getByTestId('backups').getByText('My Nextcloud')).toBeVisible()
   })
 
   test('directory browser shows an error when the share is unreachable', async () => {
@@ -97,7 +111,7 @@ test.describe.serial('backup targets', () => {
     await page.getByRole('button', { name: 'Edit' }).click()
     await page.getByLabel('Name', { exact: true }).fill('Renamed NC')
     await page.getByRole('button', { name: 'Save' }).click()
-    await expect(page.getByText('Renamed NC')).toBeVisible()
+    await expect(page.getByTestId('backups').getByText('Renamed NC')).toBeVisible()
   })
 
   test('creates a Files backup job via the wizard', async () => {

@@ -83,6 +83,11 @@ test('unauthenticated access to /app/backups also redirects', async ({ page }) =
   await expect(page.getByPlaceholder('Passphrase')).toBeVisible()
 })
 
+test('unauthenticated access to a target page redirects', async ({ page }) => {
+  await page.goto('/app/backups/some-target-id')
+  await expect(page).toHaveURL(/\/$/)
+})
+
 test('wrong password shows an error, correct password reaches the dashboard', async ({ page }) => {
   await page.goto('/')
   await page.getByPlaceholder('Passphrase').fill('definitely wrong')
