@@ -123,7 +123,7 @@ test.describe.serial('backups', () => {
     await expect(page.getByText('Root configs', { exact: true })).toBeVisible()
     await expect(page.getByTestId('job-type')).toHaveText('Files')
     await expect(page.getByTestId('job-dest')).toHaveText(
-      '127.0.0.1:1 / srvkit / root / Root configs.tar.gz',
+      '127.0.0.1:1/srvkit/root/Root configs.tar.gz',
     )
     await expect(page.getByText('Never run')).toBeVisible()
   })
@@ -137,7 +137,7 @@ test.describe.serial('backups', () => {
     await expect(page).toHaveURL(/\/app\/backups\/[0-9a-f-]+$/)
     await expect(page.getByText('Root configs v2', { exact: true })).toBeVisible()
     await expect(page.getByTestId('job-dest')).toHaveText(
-      '127.0.0.1:1 / srvkit / root / Root configs v2.tar.gz',
+      '127.0.0.1:1/srvkit/root/Root configs v2.tar.gz',
     )
   })
 
