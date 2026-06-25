@@ -1,4 +1,22 @@
+import { join } from 'node:path'
 import { encrypt, decrypt } from '../../lib/crypto.ts'
+import { listSources, buildTree, type TreeNode } from '../../lib/sources.ts'
+
+/** Base directory holding the mounted backup sources. */
+export function sourcesDir(): string {
+  return process.env.BACKUP_SOURCES_DIR || '/backups'
+}
+
+/** Available source names (immediate sub-directories of the base). */
+export function getSources(): string[] {
+  return listSources(sourcesDir())
+}
+
+/** File tree for a source, or null if the name isn't a known source. */
+export function getSourceTree(name: string): TreeNode[] | null {
+  if (!getSources().includes(name)) return null
+  return buildTree(join(sourcesDir(), name))
+}
 
 export function trimStr(v: unknown): string {
   return typeof v === 'string' ? v.trim() : ''

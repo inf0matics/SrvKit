@@ -21,6 +21,7 @@ export default defineConfig({
       DATABASE_PATH: DB,
       COOKIE_SECURE: 'false', // plain http in e2e
       ENCRYPTION_KEY: 'e2e-encryption-key',
+      BACKUP_SOURCES_DIR: './tests/fixtures/sources',
     },
     reuseExistingServer: false,
     timeout: 120_000,

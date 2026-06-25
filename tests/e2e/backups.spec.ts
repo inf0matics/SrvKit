@@ -100,6 +100,33 @@ test.describe.serial('backup targets', () => {
     await expect(page.getByText('Renamed NC')).toBeVisible()
   })
 
+  test('creates a Files backup job via the wizard', async () => {
+    await page.getByRole('button', { name: '+ New Backup' }).click()
+
+    // Step 1 — name & type (Files is the default).
+    await page.getByLabel('Name', { exact: true }).fill('Root configs')
+    await page.getByRole('button', { name: 'Next' }).click()
+
+    // Step 2 — pick a source; its file tree renders with everything checked.
+    await page.getByLabel('Source path').selectOption('root')
+    await expect(page.getByText('.bashrc')).toBeVisible()
+    await expect(page.getByText('configs', { exact: true })).toBeVisible()
+    await page.getByRole('button', { name: 'Next' }).click()
+
+    // Step 3 — destination.
+    await page.getByLabel('Nextcloud subdirectory').fill('root')
+    await page.getByRole('button', { name: 'Save' }).click()
+
+    // Job shows under its target.
+    await expect(page.getByText('Root configs')).toBeVisible()
+    await expect(page.getByText('root → root/Root configs.tar.gz')).toBeVisible()
+
+    // Clean up the job so the target Delete button stays unambiguous.
+    page.once('dialog', (d) => d.accept())
+    await page.locator('.job').getByRole('button', { name: 'Delete' }).click()
+    await expect(page.getByText('No backup jobs yet.')).toBeVisible()
+  })
+
   test('deletes the target', async () => {
     page.once('dialog', (d) => d.accept())
     await page.getByRole('button', { name: 'Delete' }).click()

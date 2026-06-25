@@ -38,6 +38,26 @@ export interface TargetInput {
   rootDir: string
 }
 
+export interface JobInput {
+  targetId: string
+  name: string
+  /** 'files' is the only type in v1. */
+  type: string
+  /** Source path name under the mounted base (e.g. 'root'). */
+  sourcePath: string
+  /** Relative paths excluded from the backup. */
+  excludes: string[]
+  /** 'single' (one tar.gz) in v1. */
+  output: string
+  /** Sub-directory on the target where the archive is written. */
+  subdirectory: string
+}
+
+export interface JobRecord extends JobInput {
+  id: string
+  createdAt: string
+}
+
 export interface Store {
   isInitialized(): boolean
   getPasswordHash(): string | null
@@ -48,7 +68,27 @@ export interface Store {
   createTarget(input: TargetInput): TargetSummary
   updateTarget(id: string, fields: Partial<TargetInput>): boolean
   deleteTarget(id: string): boolean
+  listJobs(): JobRecord[]
+  getJob(id: string): JobRecord | null
+  createJob(input: JobInput): JobRecord
+  deleteJob(id: string): boolean
   close(): void
+}
+
+interface JobRow {
+  id: string
+  targetId: string
+  name: string
+  type: string
+  sourcePath: string
+  excludes: string
+  output: string
+  subdirectory: string
+  createdAt: string
+}
+
+function rowToJob(row: JobRow): JobRecord {
+  return { ...row, excludes: JSON.parse(row.excludes) as string[] }
 }
 
 interface ConfigRow {
@@ -84,6 +124,19 @@ export function openStore(path: string): Store {
   if (!targetCols.some((c) => c.name === 'root_dir')) {
     db.exec("ALTER TABLE targets ADD COLUMN root_dir TEXT NOT NULL DEFAULT ''")
   }
+  db.exec(
+    `CREATE TABLE IF NOT EXISTS jobs (
+       id TEXT PRIMARY KEY,
+       target_id TEXT NOT NULL,
+       name TEXT NOT NULL,
+       type TEXT NOT NULL,
+       source_path TEXT NOT NULL,
+       excludes TEXT NOT NULL DEFAULT '[]',
+       output TEXT NOT NULL,
+       subdirectory TEXT NOT NULL DEFAULT '',
+       created_at TEXT NOT NULL
+     )`,
+  )
 
   const getStmt = db.prepare('SELECT value FROM config WHERE key = ?')
   const setStmt = db.prepare(
@@ -120,6 +173,18 @@ export function openStore(path: string): Store {
      VALUES (?, ?, ?, ?, ?, ?, ?)`,
   )
   const deleteTargetStmt = db.prepare('DELETE FROM targets WHERE id = ?')
+
+  // --- Jobs ---
+  const jobCols = `id, target_id AS targetId, name, type, source_path AS sourcePath,
+                   excludes, output, subdirectory, created_at AS createdAt`
+  const listJobsStmt = db.prepare(`SELECT ${jobCols} FROM jobs ORDER BY created_at`)
+  const getJobStmt = db.prepare(`SELECT ${jobCols} FROM jobs WHERE id = ?`)
+  const insertJobStmt = db.prepare(
+    `INSERT INTO jobs
+       (id, target_id, name, type, source_path, excludes, output, subdirectory, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  )
+  const deleteJobStmt = db.prepare('DELETE FROM jobs WHERE id = ?')
 
   return {
     isInitialized: () => get('password_hash') !== null,
@@ -181,6 +246,32 @@ export function openStore(path: string): Store {
     },
 
     deleteTarget: (id: string) => deleteTargetStmt.run(id).changes > 0,
+
+    listJobs: () => (listJobsStmt.all() as unknown as JobRow[]).map(rowToJob),
+
+    getJob(id: string) {
+      const row = getJobStmt.get(id) as unknown as JobRow | undefined
+      return row ? rowToJob(row) : null
+    },
+
+    createJob(input: JobInput): JobRecord {
+      const id = randomUUID()
+      const createdAt = new Date().toISOString()
+      insertJobStmt.run(
+        id,
+        input.targetId,
+        input.name,
+        input.type,
+        input.sourcePath,
+        JSON.stringify(input.excludes),
+        input.output,
+        input.subdirectory,
+        createdAt,
+      )
+      return { ...input, id, createdAt }
+    },
+
+    deleteJob: (id: string) => deleteJobStmt.run(id).changes > 0,
 
     close: () => db.close(),
   }
