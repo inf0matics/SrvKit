@@ -25,6 +25,22 @@ test('createJob returns a full record with id and createdAt', () => {
   assert.ok(job.createdAt)
   assert.equal(job.name, 'Root configs')
   assert.deepEqual(job.excludes, ['root/.cache', 'root/tmp/x.log'])
+  assert.equal(job.lastStatus, null) // never run yet
+  s.close()
+})
+
+test('recordRun stores the last run result', () => {
+  const s = openStore(':memory:')
+  const { id } = s.createJob(sample)
+  s.recordRun(id, { at: '2026-06-25T03:12:00Z', status: 'failed', error: 'Upload failed' })
+  const got = s.getJob(id)
+  assert.equal(got?.lastStatus, 'failed')
+  assert.equal(got?.lastRunAt, '2026-06-25T03:12:00Z')
+  assert.equal(got?.lastError, 'Upload failed')
+
+  s.recordRun(id, { at: '2026-06-25T04:00:00Z', status: 'success', error: null })
+  assert.equal(s.getJob(id)?.lastStatus, 'success')
+  assert.equal(s.getJob(id)?.lastError, null)
   s.close()
 })
 

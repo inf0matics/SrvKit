@@ -1,0 +1,76 @@
+import { test, before, after, beforeEach } from 'node:test'
+import assert from 'node:assert/strict'
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+
+// Configure the environment before importing modules that read it.
+const base = mkdtempSync(join(tmpdir(), 'srvkit-runner-'))
+process.env.DATABASE_PATH = join(base, 'db.sqlite')
+process.env.ENCRYPTION_KEY = 'runner-test-key'
+process.env.BACKUP_SOURCES_DIR = join(base, 'sources')
+
+const { store } = await import('../../server/utils/srvkit.ts')
+const { encryptPassword } = await import('../../server/utils/backups.ts')
+const { runBackup } = await import('../../server/utils/runner.ts')
+
+let targetId = ''
+let jobId = ''
+const realFetch = globalThis.fetch
+
+before(() => {
+  mkdirSync(join(base, 'sources', 'root'), { recursive: true })
+  writeFileSync(join(base, 'sources', 'root', 'file.txt'), 'hello')
+
+  targetId = store().createTarget({
+    name: 'T',
+    host: 'https://nc.example.com',
+    username: 'alice',
+    password: encryptPassword('secret'),
+    rootDir: 'srvkit',
+  }).id
+  jobId = store().createJob({
+    targetId,
+    name: 'Job',
+    type: 'files',
+    sourcePath: 'root',
+    excludes: [],
+    output: 'single',
+    subdirectory: 'sub',
+  }).id
+})
+
+beforeEach(() => {
+  globalThis.fetch = realFetch
+})
+
+after(() => {
+  globalThis.fetch = realFetch
+  store().close()
+  rmSync(base, { recursive: true, force: true })
+})
+
+test('records success when the upload succeeds', async () => {
+  const calls: { method: string; url: string }[] = []
+  globalThis.fetch = (async (url: string, init: { method: string }) => {
+    calls.push({ method: init.method, url: String(url) })
+    return { ok: true, status: 201 } as Response
+  }) as typeof fetch
+
+  await runBackup(jobId)
+
+  const job = store().getJob(jobId)
+  assert.equal(job?.lastStatus, 'success')
+  assert.equal(job?.lastError, null)
+  // PUT lands at the full destination path.
+  const put = calls.find((c) => c.method === 'PUT')
+  assert.match(put!.url, /\/remote\.php\/dav\/files\/alice\/srvkit\/sub\/Job\.tar\.gz$/)
+})
+
+test('records failure when the upload fails', async () => {
+  globalThis.fetch = (async () => ({ ok: false, status: 507 }) as Response) as typeof fetch
+  await runBackup(jobId)
+  const job = store().getJob(jobId)
+  assert.equal(job?.lastStatus, 'failed')
+  assert.match(job!.lastError!, /Upload failed/)
+})

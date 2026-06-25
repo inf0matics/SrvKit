@@ -118,6 +118,49 @@ export function parseDirs(xml: string, username: string, path: string): string[]
 const PROPFIND_BODY =
   '<?xml version="1.0"?><d:propfind xmlns:d="DAV:"><d:prop><d:resourcetype/></d:prop></d:propfind>'
 
+/**
+ * Upload a file to the target's WebDAV share at `destPath` (relative to the
+ * user's files root), creating any missing parent directories via MKCOL.
+ * Throws on failure.
+ */
+export async function uploadToWebdav(
+  host: string,
+  username: string,
+  password: string,
+  destPath: string,
+  body: Uint8Array,
+): Promise<void> {
+  const base = host.replace(/\/+$/, '')
+  const filesRoot = `${base}/remote.php/dav/files/${encodeURIComponent(username)}`
+  const authz = 'Basic ' + Buffer.from(`${username}:${password}`).toString('base64')
+
+  const segments = destPath.split('/').filter(Boolean)
+  let cur = filesRoot
+  for (const dir of segments.slice(0, -1)) {
+    cur += '/' + encodeURIComponent(dir)
+    const res = await fetch(cur, {
+      method: 'MKCOL',
+      headers: { Authorization: authz },
+      signal: AbortSignal.timeout(10_000),
+    })
+    // 201 created or 405 already-exists are both fine.
+    if (!res.ok && res.status !== 405) {
+      throw new Error(`MKCOL ${res.status}`)
+    }
+  }
+
+  const url = filesRoot + '/' + segments.map(encodeURIComponent).join('/')
+  const res = await fetch(url, {
+    method: 'PUT',
+    headers: { Authorization: authz },
+    body: new Uint8Array(body),
+    signal: AbortSignal.timeout(30_000),
+  })
+  if (!res.ok) {
+    throw new Error(`HTTP ${res.status}`)
+  }
+}
+
 /** List the sub-directories of `path` on a target's Nextcloud WebDAV share. */
 export async function browseWebdav(
   host: string,

@@ -128,6 +128,12 @@ test.describe.serial('backups', () => {
     await expect(page.getByText('Never run')).toBeVisible()
   })
 
+  test('detail: Run Now records a failed run (upload unreachable)', async () => {
+    await expect(page.getByTestId('job-status')).toHaveText('Never run')
+    await page.getByRole('button', { name: 'Run job now' }).click()
+    await expect(page.getByTestId('job-status')).toContainText('Failed')
+  })
+
   test('detail: edit a job opens the edit page', async () => {
     await page.getByRole('button', { name: 'Edit job' }).click()
     await expect(page).toHaveURL(/\/jobs\/[0-9a-f-]+\/edit$/)

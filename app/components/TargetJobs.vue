@@ -10,6 +10,9 @@ interface Job {
   output: string
   subdirectory: string
   excludes: string[]
+  lastRunAt: string | null
+  lastStatus: 'success' | 'failed' | null
+  lastError: string | null
 }
 
 const props = defineProps<{ target: TargetSummary }>()
@@ -24,6 +27,25 @@ const addOpen = ref(false)
 
 function editJob(job: Job) {
   return navigateTo(`/app/backups/${props.target.id}/jobs/${job.id}/edit`)
+}
+
+/* ---- run now ---- */
+const running = ref<Record<string, boolean>>({})
+
+async function runNow(job: Job) {
+  running.value[job.id] = true
+  try {
+    await $fetch(`/api/backups/jobs/${job.id}/run`, { method: 'POST' })
+    await refreshJobs()
+  } finally {
+    running.value[job.id] = false
+  }
+}
+
+function statusLabel(job: Job): string {
+  if (!job.lastStatus) return 'Never run'
+  const when = job.lastRunAt ? new Date(job.lastRunAt).toLocaleString() : ''
+  return job.lastStatus === 'success' ? `✓ ${when}` : '✗ Failed'
 }
 
 /* ---- inline delete confirmation ---- */
@@ -66,7 +88,22 @@ function destPath(job: Job): string {
           </div>
           <div class="job-meta tsp-muted" data-testid="job-dest">{{ destPath(job) }}</div>
         </div>
-        <span class="job-status tsp-muted">Never run</span>
+        <span
+          class="job-status"
+          :class="job.lastStatus === 'failed' ? 'st-fail' : 'tsp-muted'"
+          :title="job.lastError ?? ''"
+          data-testid="job-status"
+        >
+          {{ statusLabel(job) }}
+        </span>
+        <button
+          class="tsp-btn tsp-btn-sm tsp-btn-icon"
+          aria-label="Run job now"
+          :disabled="running[job.id]"
+          @click="runNow(job)"
+        >
+          <AppIcon name="play" />
+        </button>
         <button
           class="tsp-btn tsp-btn-sm tsp-btn-icon"
           aria-label="Edit job"
@@ -147,6 +184,10 @@ function destPath(job: Job): string {
 .job-status {
   font-size: 0.85rem;
   flex-shrink: 0;
+}
+
+.st-fail {
+  color: var(--tsp-danger);
 }
 
 .no-jobs {
