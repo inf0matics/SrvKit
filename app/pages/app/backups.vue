@@ -186,15 +186,16 @@ async function loadDirs() {
   }
 }
 
+const segments = computed(() => browser.path.split('/').filter(Boolean))
+
 function enterDir(name: string) {
   browser.path = browser.path ? `${browser.path}/${name}` : name
   loadDirs()
 }
 
-function goUp() {
-  const parts = browser.path.split('/').filter(Boolean)
-  parts.pop()
-  browser.path = parts.join('/')
+// Jump to a breadcrumb segment (empty string = share root).
+function goTo(path: string) {
+  browser.path = path
   loadDirs()
 }
 
@@ -234,10 +235,7 @@ async function selectHere() {
         >
           {{ isExpanded(t.id) ? '▾' : '▸' }}
         </button>
-        <div class="target-info">
-          <div class="target-name">{{ t.name }}</div>
-          <div class="target-host tsp-muted">{{ t.host }}</div>
-        </div>
+        <div class="target-name">{{ t.name }}</div>
         <div class="target-actions">
           <button class="tsp-btn" :disabled="testing[t.id]" @click="testConnection(t)">
             {{ testing[t.id] ? 'Testing…' : 'Test' }}
@@ -245,15 +243,6 @@ async function selectHere() {
           <button class="tsp-btn" @click="openEdit(t)">Edit</button>
           <button class="tsp-btn" @click="remove(t)">Delete</button>
         </div>
-      </div>
-
-      <div class="target-location">
-        <span class="tsp-muted">Location:</span>
-        <span class="loc-path" data-testid="location">/{{ t.rootDir }}</span>
-        <button class="tsp-btn loc-btn" @click="openBrowser(t)">
-          <AppIcon name="folder" />
-          Choose Location
-        </button>
       </div>
 
       <p
@@ -264,7 +253,17 @@ async function selectHere() {
       </p>
 
       <div v-if="isExpanded(t.id)" class="target-body">
-        <p class="tsp-muted">Backup jobs will appear here.</p>
+        <div class="conn tsp-muted">{{ t.host }}</div>
+        <div class="target-location">
+          <span class="loc-path" data-testid="location">/{{ t.rootDir }}</span>
+          <button class="tsp-btn loc-btn" @click="openBrowser(t)">
+            <AppIcon name="folder" />
+            Choose location
+          </button>
+        </div>
+        <div class="jobs">
+          <p class="tsp-muted">Backup jobs will appear here.</p>
+        </div>
       </div>
     </section>
 
@@ -324,42 +323,47 @@ async function selectHere() {
       </div>
     </div>
 
-    <!-- Directory browser -->
+    <!-- Directory browser (full-page overlay) -->
     <div v-if="browser.open" class="overlay" @click.self="browser.open = false">
       <div class="tsp-card browser">
-        <h2>Choose Location</h2>
-
-        <div class="path-bar">
-          <span class="slash">/</span>
-          <input
-            v-model="browser.path"
-            class="tsp-input"
-            placeholder="(share root)"
-            aria-label="Path"
-            @keyup.enter="loadDirs"
-          >
-          <button class="tsp-btn" :disabled="browseLoading" @click="loadDirs">Go</button>
+        <div class="browser-head">
+          <h2>Choose location</h2>
+          <button class="tsp-btn close" aria-label="Close" @click="browser.open = false">
+            ✕
+          </button>
         </div>
 
-        <div class="browse-list">
-          <button class="dir up" :disabled="!browser.path || browseLoading" @click="goUp">
-            <AppIcon name="folder" /> ..
+        <nav class="breadcrumb" aria-label="Path">
+          <button class="crumb" :class="{ sel: segments.length === 0 }" @click="goTo('')">
+            /
           </button>
-          <p v-if="browseLoading" class="tsp-muted pad">Loading…</p>
-          <p v-else-if="browseError" class="test-err pad">{{ browseError }}</p>
+          <template v-for="(seg, i) in segments" :key="i">
+            <span class="sep">/</span>
+            <button
+              class="crumb"
+              :class="{ sel: i === segments.length - 1 }"
+              @click="goTo(segments.slice(0, i + 1).join('/'))"
+            >
+              {{ seg }}
+            </button>
+          </template>
+        </nav>
+
+        <div class="browse-list">
+          <p v-if="browseLoading" class="tsp-muted pad" data-testid="browse-loading">
+            Loading…
+          </p>
+          <p v-else-if="browseError" class="test-err pad" data-testid="browse-error">
+            {{ browseError }}
+          </p>
           <p v-else-if="!browseDirs.length" class="tsp-muted pad">No sub-folders here.</p>
-          <button
-            v-for="d in browseDirs"
-            :key="d"
-            class="dir"
-            @click="enterDir(d)"
-          >
+          <button v-for="d in browseDirs" :key="d" class="dir" @click="enterDir(d)">
             <AppIcon name="folder" /> {{ d }}
           </button>
         </div>
 
         <div class="modal-actions">
-          <span class="current tsp-muted">Selecting: /{{ browser.path }}</span>
+          <span class="current tsp-muted">/{{ browser.path }}</span>
           <div class="modal-actions-right">
             <button class="tsp-btn" @click="browser.open = false">Cancel</button>
             <button
@@ -367,7 +371,7 @@ async function selectHere() {
               :disabled="browseSaving"
               @click="selectHere"
             >
-              Select this folder
+              Select
             </button>
           </div>
         </div>
@@ -423,20 +427,10 @@ async function selectHere() {
   line-height: 1;
 }
 
-.target-info {
+.target-name {
   min-width: 0;
   flex: 1;
-}
-
-.target-name {
   font-weight: 700;
-}
-
-.target-host {
-  font-size: 0.85rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .target-actions {
@@ -445,11 +439,22 @@ async function selectHere() {
   flex-shrink: 0;
 }
 
+.target-body {
+  margin-top: 12px;
+}
+
+.conn {
+  font-size: 0.85rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .target-location {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-top: 10px;
+  margin-top: 8px;
   font-size: 0.9rem;
 }
 
@@ -462,33 +467,74 @@ async function selectHere() {
   margin-left: auto;
 }
 
-.target-body {
-  margin-top: 12px;
+.jobs {
+  margin-top: 14px;
   padding-top: 12px;
   border-top: 1px solid var(--tsp-border);
 }
 
-/* Directory browser */
+/* Directory browser — full-page overlay */
 .browser {
   width: 100%;
-  max-width: 30rem;
+  max-width: 42rem;
+  height: 80vh;
+  display: flex;
+  flex-direction: column;
 }
 
-.path-bar {
+.browser-head {
   display: flex;
   align-items: center;
-  gap: 6px;
-  margin-bottom: 12px;
+  justify-content: space-between;
+  margin-bottom: 14px;
 }
 
-.path-bar .slash {
+.browser-head h2 {
+  margin: 0;
+  font-size: 1.2rem;
+}
+
+.close {
+  padding: 0.25rem 0.5rem;
+}
+
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px;
+  margin-bottom: 10px;
+  font-size: 0.95rem;
+}
+
+.crumb {
+  background: none;
+  border: none;
+  color: var(--tsp-text-muted);
+  font: inherit;
+  cursor: pointer;
+  padding: 2px 5px;
+  border-radius: var(--tsp-radius-sm);
+}
+
+.crumb:hover {
+  color: var(--tsp-text);
+  background: var(--tsp-bg);
+}
+
+.crumb.sel {
+  color: var(--tsp-primary);
+  font-weight: 700;
+}
+
+.breadcrumb .sep {
   color: var(--tsp-text-muted);
 }
 
 .browse-list {
+  flex: 1;
   border: 1px solid var(--tsp-border);
   border-radius: var(--tsp-radius-sm);
-  max-height: 16rem;
   overflow-y: auto;
   padding: 4px;
 }
@@ -511,10 +557,6 @@ async function selectHere() {
 
 .dir:hover:not(:disabled) {
   background: var(--tsp-bg);
-}
-
-.dir.up {
-  color: var(--tsp-text-muted);
 }
 
 .browse-list .pad {

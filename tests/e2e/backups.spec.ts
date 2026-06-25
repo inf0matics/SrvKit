@@ -58,13 +58,34 @@ test.describe.serial('backup targets', () => {
     await expect(page.getByTestId('location')).toHaveText('/')
   })
 
-  test('chooses a location via the directory browser', async () => {
-    await page.getByRole('button', { name: 'Choose Location' }).click()
-    // Listing an unreachable host errors, but a path can still be entered.
-    await expect(page.locator('.browse-list .test-err')).toBeVisible()
-    await page.getByLabel('Path').fill('srvkit/prod')
-    await page.getByRole('button', { name: 'Select this folder' }).click()
-    await expect(page.getByTestId('location')).toHaveText('/srvkit/prod')
+  test('directory browser shows an error when the share is unreachable', async () => {
+    await page.getByRole('button', { name: 'Choose location' }).click()
+    await expect(page.getByTestId('browse-error')).toBeVisible()
+    await page.getByRole('button', { name: 'Cancel' }).click()
+  })
+
+  test('chooses a location by navigating the directory browser', async () => {
+    // Mock the WebDAV listing so navigation works without a live Nextcloud.
+    await page.route('**/api/backups/targets/*/browse', async (route) => {
+      const path = route.request().postDataJSON()?.path || ''
+      const dirs =
+        path === ''
+          ? ['backups', 'documents', 'srvkit']
+          : path === 'srvkit'
+            ? ['home', 'root']
+            : []
+      await route.fulfill({ json: { ok: true, path, dirs } })
+    })
+
+    await page.getByRole('button', { name: 'Choose location' }).click()
+    // Root listing, then navigate into srvkit.
+    await page.getByRole('button', { name: 'srvkit', exact: true }).click()
+    await expect(page.getByRole('button', { name: 'home', exact: true })).toBeVisible()
+    // Select the current folder → persisted as the target root.
+    await page.getByRole('button', { name: 'Select', exact: true }).click()
+    await expect(page.getByTestId('location')).toHaveText('/srvkit')
+
+    await page.unroute('**/api/backups/targets/*/browse')
   })
 
   test('test connection reports an error for an unreachable host', async () => {
