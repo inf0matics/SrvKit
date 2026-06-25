@@ -195,6 +195,7 @@ async function confirmDelete(t: Target) {
 
         <div class="modal-actions">
           <button class="tsp-btn tsp-btn-sm" :disabled="modalTesting" @click="testForm">
+            <AppIcon name="plug-connected" />
             {{ modalTesting ? 'Testing…' : 'Test' }}
           </button>
           <div class="modal-actions-right">

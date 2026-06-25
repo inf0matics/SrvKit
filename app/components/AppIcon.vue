@@ -15,6 +15,7 @@ defineProps<{
     | 'cloud'
     | 'trash'
     | 'edit'
+    | 'plug-connected'
 }>()
 </script>
 
@@ -88,6 +89,14 @@ defineProps<{
       <path d="M7 7h-1a2 2 0 0 0 -2 2v9a2 2 0 0 0 2 2h9a2 2 0 0 0 2 -2v-1" />
       <path d="M20.385 6.585a2.1 2.1 0 0 0 -2.97 -2.97l-8.415 8.385v3h3l8.385 -8.415z" />
       <path d="M16 5l3 3" />
+    </template>
+    <template v-else-if="name === 'plug-connected'">
+      <path d="M7 12l5 5l-1.5 1.5a3.536 3.536 0 1 1 -5 -5l1.5 -1.5z" />
+      <path d="M17 12l-5 -5l1.5 -1.5a3.536 3.536 0 1 1 5 5l-1.5 1.5z" />
+      <path d="M3 21l2.5 -2.5" />
+      <path d="M18.5 5.5l2.5 -2.5" />
+      <path d="M10 11l-2 2" />
+      <path d="M13 14l-2 2" />
     </template>
   </svg>
 </template>

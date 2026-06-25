@@ -105,6 +105,7 @@ async function selectHere() {
         Choose location
       </button>
       <button class="tsp-btn tsp-btn-sm" :disabled="testing" @click="testConnection">
+        <AppIcon name="plug-connected" />
         {{ testing ? 'Testing…' : 'Test' }}
       </button>
     </div>
