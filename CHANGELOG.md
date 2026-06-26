@@ -1,6 +1,24 @@
 # Changelog
 
 
+## v0.0.3
+
+[compare changes](https://github.com/inf0matics/SrvKit/compare/v0.0.2...v0.0.3)
+
+### 🚀 Enhancements
+
+- SQLite backup job type (spec 08) ([7993ae4](https://github.com/inf0matics/SrvKit/commit/7993ae4))
+- Lazy file tree + SQLite file picker & validation (05.04, 08.01) ([b4268f2](https://github.com/inf0matics/SrvKit/commit/b4268f2))
+- Unified job flow — minimal modal, activation lifecycle, includes model (05.05) ([db93add](https://github.com/inf0matics/SrvKit/commit/db93add))
+- Time-suffix toggle, static shell logo, favicon ([1b93b66](https://github.com/inf0matics/SrvKit/commit/1b93b66))
+- Alerting v1 — Telegram channel, state machine, per-job muting (spec 09) ([b67ce2f](https://github.com/inf0matics/SrvKit/commit/b67ce2f))
+- Dedicated Alerts page, channel on/off switch, server-name message prefix ([6c2adf7](https://github.com/inf0matics/SrvKit/commit/6c2adf7))
+- Dashboard incident list (spec 10) ([212653f](https://github.com/inf0matics/SrvKit/commit/212653f))
+
+### ❤️ Contributors
+
+- Inf0matics <fil@thespielplatz.com>
+
 ## v0.0.2
 
 
