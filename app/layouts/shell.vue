@@ -91,6 +91,12 @@ onBeforeUnmount(() => {
             </NuxtLink>
           </div>
         </div>
+
+        <NuxtLink to="/app/alerts" class="nav-item" active-class="active">
+          <span class="gutter" />
+          <AppIcon name="bell" />
+          <span>Alerts</span>
+        </NuxtLink>
       </nav>
 
       <div class="nav-bottom">
@@ -140,7 +146,7 @@ onBeforeUnmount(() => {
       <div class="topbar">
         <NuxtLink
           v-if="mutedCount > 0"
-          to="/app/settings"
+          to="/app/alerts"
           class="mute-indicator"
           data-testid="mute-indicator"
           :title="`${mutedCount} ${mutedCount === 1 ? 'job' : 'jobs'} muted`"

@@ -34,6 +34,17 @@ function recoveryEnabled(): boolean {
   return store().getConfig(K_RECOVERY) !== '0' // default on
 }
 
+/** Optional server name, used to prefix alert messages. */
+export function getServerName(): string {
+  return (store().getConfig('server_name') ?? process.env.SERVER_NAME ?? '').trim()
+}
+
+/** Message prefix: `[name|SrvKit]` when a server name is set, else `[SrvKit]`. */
+export function messagePrefix(): string {
+  const name = getServerName()
+  return name ? `[${name}|SrvKit]` : '[SrvKit]'
+}
+
 export interface AlertSettings {
   chatId: string
   enabled: boolean
@@ -100,12 +111,12 @@ export async function sendTestAlert(token: string, chatId: string): Promise<void
   await sendTelegram(token, chatId, '✅ SrvKit test alert — Telegram is configured correctly.')
 }
 
-export function buildFailedMessage(name: string, run: RunResult): string {
-  return `❌ SrvKit: Backup "${name}" failed.\n${run.error ?? 'Unknown error'}\n${run.at}`
+export function buildFailedMessage(prefix: string, name: string, run: RunResult): string {
+  return `❌ ${prefix}: Backup "${name}" failed.\n${run.error ?? 'Unknown error'}\n${run.at}`
 }
 
-export function buildRecoveredMessage(name: string): string {
-  return `✅ SrvKit: Backup "${name}" is back to OK.`
+export function buildRecoveredMessage(prefix: string, name: string): string {
+  return `✅ ${prefix}: Backup "${name}" is back to OK.`
 }
 
 async function dispatch(text: string): Promise<void> {
@@ -129,14 +140,15 @@ export async function handleRunResult(jobId: string, run: RunResult): Promise<vo
   try {
     const job = store().getJob(jobId)
     if (!job) return
+    const prefix = messagePrefix()
 
     if (run.status === 'failed' && job.alertState !== 'failed') {
       store().setJobAlertState(jobId, 'failed')
-      if (!job.muted) await dispatch(buildFailedMessage(job.name, run))
+      if (!job.muted) await dispatch(buildFailedMessage(prefix, job.name, run))
     } else if (run.status === 'success' && job.alertState === 'failed') {
       store().setJobAlertState(jobId, 'ok')
       if (!job.muted && recoveryEnabled()) {
-        await dispatch(buildRecoveredMessage(job.name))
+        await dispatch(buildRecoveredMessage(prefix, job.name))
       }
     }
   } catch (e) {

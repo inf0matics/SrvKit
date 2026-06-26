@@ -218,15 +218,15 @@ test.describe.serial('backups', () => {
     )
   })
 
-  test('alerts: muting a job surfaces the topbar badge and settings list', async () => {
+  test('alerts: muting a job surfaces the topbar badge and the Alerts page', async () => {
     // Only the App DB job exists here, so the Mute control is unambiguous.
     await page.getByRole('button', { name: 'Mute job' }).click()
     await expect(page.getByTestId('mute-indicator')).toBeVisible()
     await expect(page.getByTestId('mute-count')).toHaveText('1')
 
-    // The indicator links to Settings → Alerts, which lists the muted job.
+    // The indicator links to the Alerts page, which lists the muted job.
     await page.getByTestId('mute-indicator').click()
-    await expect(page).toHaveURL(/\/app\/settings$/)
+    await expect(page).toHaveURL(/\/app\/alerts$/)
     await expect(page.getByTestId('muted-row')).toContainText('App DB')
     await expect(page.getByTestId('muted-row')).toContainText('My Nextcloud')
 
@@ -237,13 +237,13 @@ test.describe.serial('backups', () => {
   })
 
   test('alerts: Telegram settings persist and Test validates credentials', async () => {
-    // Continuing on /app/settings. Test with no credentials → inline error, no
+    // Continuing on /app/alerts. Test with no credentials → inline error, no
     // external call.
     await expect(page.getByTestId('alerts-section')).toBeVisible()
     await page.getByTestId('test-telegram').click()
     await expect(page.getByTestId('test-result')).toContainText('required')
 
-    // Save chat id + enable; a reload shows it persisted.
+    // The channel on/off switch and chat id persist across a reload.
     await page.getByLabel('Chat ID').fill('99887766')
     await page.getByLabel('Enable Telegram alerts').check()
     await page.getByRole('button', { name: 'Save' }).click()
@@ -252,6 +252,17 @@ test.describe.serial('backups', () => {
     await page.reload()
     await expect(page.getByLabel('Chat ID')).toHaveValue('99887766')
     await expect(page.getByLabel('Enable Telegram alerts')).toBeChecked()
+  })
+
+  test('settings: server name persists', async () => {
+    await page.locator('.nav-bottom').getByRole('link', { name: 'Settings' }).click()
+    await expect(page).toHaveURL(/\/app\/settings$/)
+    await page.getByLabel('Server name').fill('prod-1')
+    await page.getByRole('button', { name: 'Save' }).click()
+    await expect(page.getByText('✓ Saved.')).toBeVisible()
+
+    await page.reload()
+    await expect(page.getByLabel('Server name')).toHaveValue('prod-1')
 
     // Back to the target detail page for the following tests.
     await page.locator('.subnav').getByRole('link', { name: 'My Nextcloud' }).click()

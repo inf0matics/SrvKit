@@ -20,6 +20,7 @@ const {
   handleRunResult,
   buildFailedMessage,
   buildRecoveredMessage,
+  messagePrefix,
 } = await import('../../server/utils/alerts.ts')
 
 let jobId = ''
@@ -132,11 +133,19 @@ test('channel disabled: state changes but nothing is sent', async () => {
 
 test('message builders match the spec format', () => {
   assert.equal(
-    buildFailedMessage('App DB', run('failed', 'Upload failed: connection timeout')),
-    '❌ SrvKit: Backup "App DB" failed.\nUpload failed: connection timeout\n2026-06-25T03:12:44Z',
+    buildFailedMessage('[SrvKit]', 'App DB', run('failed', 'Upload failed: connection timeout')),
+    '❌ [SrvKit]: Backup "App DB" failed.\nUpload failed: connection timeout\n2026-06-25T03:12:44Z',
   )
   assert.equal(
-    buildRecoveredMessage('App DB'),
-    '✅ SrvKit: Backup "App DB" is back to OK.',
+    buildRecoveredMessage('[SrvKit]', 'App DB'),
+    '✅ [SrvKit]: Backup "App DB" is back to OK.',
   )
+})
+
+test('message prefix uses the server name when set', () => {
+  store().setConfig('server_name', '')
+  assert.equal(messagePrefix(), '[SrvKit]')
+  store().setConfig('server_name', 'prod-1')
+  assert.equal(messagePrefix(), '[prod-1|SrvKit]')
+  store().setConfig('server_name', '') // reset for other tests
 })
