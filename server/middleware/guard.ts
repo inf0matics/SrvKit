@@ -9,7 +9,10 @@ export default defineEventHandler(async (event) => {
 
   const isAppPage = path === '/app' || path.startsWith('/app/')
   const isProtectedApi =
-    path.startsWith('/api/backups') || path.startsWith('/api/fs')
+    path.startsWith('/api/backups') ||
+    path.startsWith('/api/fs') ||
+    path.startsWith('/api/settings') ||
+    path.startsWith('/api/alerts')
   if (!isAppPage && !isProtectedApi) return
 
   const session = await getAuthSession(event)

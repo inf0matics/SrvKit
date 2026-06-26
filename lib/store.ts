@@ -66,6 +66,18 @@ export interface JobRecord extends JobInput {
   lastRunAt: string | null
   lastStatus: 'success' | 'failed' | null
   lastError: string | null
+  /** Alerting state machine: 'ok' until a run fails, back to 'ok' on recovery. */
+  alertState: 'ok' | 'failed'
+  /** When muted, the job runs normally but emits no alerts. */
+  muted: boolean
+}
+
+/** A muted job with its target name, for the topbar badge + settings list. */
+export interface MutedJob {
+  id: string
+  name: string
+  type: string
+  targetName: string
 }
 
 export interface RunResult {
@@ -89,8 +101,13 @@ export interface Store {
   createJob(input: JobInput): JobRecord
   updateJob(id: string, input: JobInput): boolean
   setJobActive(id: string, active: boolean): void
+  setJobMuted(id: string, muted: boolean): boolean
+  setJobAlertState(id: string, state: 'ok' | 'failed'): void
+  listMutedJobs(): MutedJob[]
   deleteJob(id: string): boolean
   recordRun(id: string, run: RunResult): void
+  getConfig(key: string): string | null
+  setConfig(key: string, value: string): void
   close(): void
 }
 
@@ -106,6 +123,8 @@ interface JobRow {
   dateSuffix: number
   timeSuffix: number
   active: number
+  alertState: 'ok' | 'failed'
+  muted: number
   createdAt: string
   lastRunAt: string | null
   lastStatus: 'success' | 'failed' | null
@@ -119,6 +138,7 @@ function rowToJob(row: JobRow): JobRecord {
     dateSuffix: !!row.dateSuffix,
     timeSuffix: !!row.timeSuffix,
     active: !!row.active,
+    muted: !!row.muted,
   }
 }
 
@@ -168,6 +188,8 @@ export function openStore(path: string): Store {
        date_suffix INTEGER NOT NULL DEFAULT 0,
        time_suffix INTEGER NOT NULL DEFAULT 0,
        active INTEGER NOT NULL DEFAULT 0,
+       alert_state TEXT NOT NULL DEFAULT 'ok',
+       muted INTEGER NOT NULL DEFAULT 0,
        created_at TEXT NOT NULL,
        last_run_at TEXT,
        last_status TEXT,
@@ -194,6 +216,12 @@ export function openStore(path: string): Store {
   }
   if (!jobColNames.includes('active')) {
     db.exec('ALTER TABLE jobs ADD COLUMN active INTEGER NOT NULL DEFAULT 0')
+  }
+  if (!jobColNames.includes('alert_state')) {
+    db.exec("ALTER TABLE jobs ADD COLUMN alert_state TEXT NOT NULL DEFAULT 'ok'")
+  }
+  if (!jobColNames.includes('muted')) {
+    db.exec('ALTER TABLE jobs ADD COLUMN muted INTEGER NOT NULL DEFAULT 0')
   }
 
   const getStmt = db.prepare('SELECT value FROM config WHERE key = ?')
@@ -235,8 +263,8 @@ export function openStore(path: string): Store {
   // --- Jobs ---
   const jobCols = `id, target_id AS targetId, name, type, source_path AS sourcePath,
                    includes, output, subdirectory, date_suffix AS dateSuffix,
-                   time_suffix AS timeSuffix, active, created_at AS createdAt,
-                   last_run_at AS lastRunAt,
+                   time_suffix AS timeSuffix, active, alert_state AS alertState,
+                   muted, created_at AS createdAt, last_run_at AS lastRunAt,
                    last_status AS lastStatus, last_error AS lastError`
   const listJobsStmt = db.prepare(`SELECT ${jobCols} FROM jobs ORDER BY created_at`)
   const getJobStmt = db.prepare(`SELECT ${jobCols} FROM jobs WHERE id = ?`)
@@ -252,6 +280,13 @@ export function openStore(path: string): Store {
        time_suffix = ? WHERE id = ?`,
   )
   const setActiveStmt = db.prepare('UPDATE jobs SET active = ? WHERE id = ?')
+  const setMutedStmt = db.prepare('UPDATE jobs SET muted = ? WHERE id = ?')
+  const setAlertStateStmt = db.prepare('UPDATE jobs SET alert_state = ? WHERE id = ?')
+  const listMutedStmt = db.prepare(
+    `SELECT j.id, j.name, j.type, t.name AS targetName
+       FROM jobs j JOIN targets t ON t.id = j.target_id
+      WHERE j.muted = 1 ORDER BY j.created_at`,
+  )
   const deleteJobStmt = db.prepare('DELETE FROM jobs WHERE id = ?')
   const recordRunStmt = db.prepare(
     'UPDATE jobs SET last_run_at = ?, last_status = ?, last_error = ? WHERE id = ?',
@@ -346,6 +381,8 @@ export function openStore(path: string): Store {
         id,
         createdAt,
         active: false,
+        alertState: 'ok',
+        muted: false,
         lastRunAt: null,
         lastStatus: null,
         lastError: null,
@@ -373,11 +410,23 @@ export function openStore(path: string): Store {
       setActiveStmt.run(active ? 1 : 0, id)
     },
 
+    setJobMuted: (id: string, muted: boolean) =>
+      setMutedStmt.run(muted ? 1 : 0, id).changes > 0,
+
+    setJobAlertState(id: string, state: 'ok' | 'failed') {
+      setAlertStateStmt.run(state, id)
+    },
+
+    listMutedJobs: () => listMutedStmt.all() as unknown as MutedJob[],
+
     deleteJob: (id: string) => deleteJobStmt.run(id).changes > 0,
 
     recordRun(id: string, run: RunResult) {
       recordRunStmt.run(run.at, run.status, run.error, id)
     },
+
+    getConfig: (key: string) => get(key),
+    setConfig: (key: string, value: string) => set(key, value),
 
     close: () => db.close(),
   }

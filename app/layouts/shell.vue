@@ -11,6 +11,15 @@ const { targets, refresh: refreshTargets } = useTargets()
 onMounted(refreshTargets)
 const backupsOpen = ref(true)
 
+// Muted-jobs badge in the topbar; poll so it reflects mutes made elsewhere.
+const { count: mutedCount, refresh: refreshMuted } = useMutedJobs()
+let mutedTimer: ReturnType<typeof setInterval> | undefined
+onMounted(() => {
+  refreshMuted()
+  mutedTimer = setInterval(refreshMuted, 5000)
+})
+onBeforeUnmount(() => clearInterval(mutedTimer))
+
 /* ---- Logout ---- */
 async function logout() {
   await $fetch('/api/auth/logout', { method: 'POST' })
@@ -87,6 +96,11 @@ onBeforeUnmount(() => {
       <div class="nav-bottom">
         <div class="divider" />
 
+        <NuxtLink to="/app/settings" class="nav-item" active-class="active">
+          <AppIcon name="settings" />
+          <span>Settings</span>
+        </NuxtLink>
+
         <button type="button" class="nav-item nav-btn" @click="logout">
           <AppIcon name="logout" />
           <span>Logout</span>
@@ -123,6 +137,21 @@ onBeforeUnmount(() => {
     </aside>
 
     <main class="main">
+      <div class="topbar">
+        <NuxtLink
+          v-if="mutedCount > 0"
+          to="/app/settings"
+          class="mute-indicator"
+          data-testid="mute-indicator"
+          :title="`${mutedCount} ${mutedCount === 1 ? 'job' : 'jobs'} muted`"
+        >
+          <AppIcon name="bell-off" />
+          <span class="mute-badge" data-testid="mute-count">{{ mutedCount }}</span>
+        </NuxtLink>
+        <NuxtLink to="/app/settings" class="topbar-btn" aria-label="Settings">
+          <AppIcon name="settings" />
+        </NuxtLink>
+      </div>
       <slot />
     </main>
   </div>
@@ -315,5 +344,50 @@ onBeforeUnmount(() => {
   flex: 1;
   min-width: 0;
   background: var(--tsp-bg);
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  height: 52px;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--tsp-border);
+}
+
+.topbar-btn,
+.mute-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: var(--tsp-radius-sm);
+  color: var(--tsp-text-muted);
+  text-decoration: none;
+}
+
+.topbar-btn:hover,
+.mute-indicator:hover {
+  color: var(--tsp-text);
+  background: var(--tsp-surface);
+}
+
+.mute-indicator {
+  color: var(--tsp-primary);
+}
+
+.mute-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--tsp-primary);
+  color: var(--tsp-on-primary);
+  font-size: 11px;
+  font-weight: 700;
 }
 </style>

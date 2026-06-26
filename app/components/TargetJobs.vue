@@ -9,9 +9,10 @@ interface Job {
   sourcePath: string
   output: string
   subdirectory: string
-  excludes: string[]
+  includes: string[]
   dateSuffix: boolean
   active: boolean
+  muted: boolean
   lastRunAt: string | null
   lastStatus: 'success' | 'failed' | null
   lastError: string | null
@@ -49,6 +50,16 @@ async function runNow(job: Job) {
   } finally {
     localRunning.value[job.id] = false
   }
+}
+
+/* ---- mute / unmute (suppress alerts without disabling the job) ---- */
+const { refresh: refreshMuted } = useMutedJobs()
+async function toggleMute(job: Job) {
+  await $fetch(`/api/backups/jobs/${job.id}/mute`, {
+    method: 'POST',
+    body: { muted: !job.muted },
+  })
+  await Promise.all([refreshJobs(), refreshMuted()])
 }
 
 const fmt = (iso: string | null) => (iso ? new Date(iso).toLocaleString() : '')
@@ -147,6 +158,15 @@ function destPath(job: Job): string {
           </span>
           <span v-else class="tsp-muted">No backup yet</span>
         </span>
+        <button
+          class="tsp-btn tsp-btn-sm tsp-btn-icon"
+          :class="{ muted: job.muted }"
+          :aria-label="job.muted ? 'Unmute job' : 'Mute job'"
+          :title="job.muted ? 'Alerts muted — click to unmute' : 'Mute alerts for this job'"
+          @click="toggleMute(job)"
+        >
+          <AppIcon name="bell-off" />
+        </button>
         <button
           class="tsp-btn tsp-btn-sm tsp-btn-icon"
           aria-label="Run job now"
@@ -254,6 +274,12 @@ function destPath(job: Job): string {
 .st-debounce {
   color: var(--tsp-primary);
   font-variant-numeric: tabular-nums;
+}
+
+/* Muted mute-button: orange to signal alerts are suppressed for this job. */
+.tsp-btn-icon.muted {
+  color: var(--tsp-primary);
+  border-color: var(--tsp-primary);
 }
 
 .spinner {

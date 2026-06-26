@@ -10,6 +10,8 @@ import {
 } from './backups.ts'
 import { createArchive, createFileArchive } from '../../lib/archive.ts'
 import { backupSqliteFile } from '../../lib/sqlite-backup.ts'
+import { handleRunResult } from './alerts.ts'
+import type { RunResult } from '../../lib/store.ts'
 
 // In-memory set of jobs currently running. Runtime-only (a run interrupted by a
 // restart should not look "running" forever — startup clears this naturally).
@@ -32,7 +34,12 @@ export async function runBackup(jobId: string): Promise<void> {
   runningJobs.add(jobId)
   const at = new Date().toISOString()
   const work = mkdtempSync(join(tmpdir(), 'srvkit-run-'))
-  const fail = (error: string) => store().recordRun(jobId, { at, status: 'failed', error })
+  // Record the result, then run the alert state machine (never throws).
+  const finish = async (result: RunResult) => {
+    store().recordRun(jobId, result)
+    await handleRunResult(jobId, result)
+  }
+  const fail = (error: string) => finish({ at, status: 'failed', error })
 
   try {
     const target = store().getTarget(job.targetId)
@@ -72,9 +79,9 @@ export async function runBackup(jobId: string): Promise<void> {
         (dir ? dir + '/' : '') +
         archiveFilename(job.name, job.dateSuffix, job.timeSuffix)
       await uploadToWebdav(target.host, target.username, password, destPath, body)
-      store().recordRun(jobId, { at, status: 'success', error: null })
+      await finish({ at, status: 'success', error: null })
     } catch (e) {
-      fail(`Upload failed: ${(e as Error).message}`)
+      await fail(`Upload failed: ${(e as Error).message}`)
     }
   } finally {
     rmSync(work, { recursive: true, force: true })

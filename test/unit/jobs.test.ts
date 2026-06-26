@@ -100,6 +100,54 @@ test('updateJob returns false for an unknown id', () => {
   s.close()
 })
 
+test('jobs start unmuted with alertState ok', () => {
+  const s = openStore(':memory:')
+  const job = s.createJob(sample)
+  assert.equal(job.muted, false)
+  assert.equal(job.alertState, 'ok')
+  s.close()
+})
+
+test('setJobAlertState updates the alert state', () => {
+  const s = openStore(':memory:')
+  const { id } = s.createJob(sample)
+  s.setJobAlertState(id, 'failed')
+  assert.equal(s.getJob(id)?.alertState, 'failed')
+  s.setJobAlertState(id, 'ok')
+  assert.equal(s.getJob(id)?.alertState, 'ok')
+  s.close()
+})
+
+test('mute + listMutedJobs joins the target name', () => {
+  const s = openStore(':memory:')
+  const t = s.createTarget({
+    name: 'my-nextcloud',
+    host: 'https://nc',
+    username: 'u',
+    password: 'p',
+    rootDir: '',
+  })
+  const { id } = s.createJob({ ...sample, targetId: t.id })
+  assert.deepEqual(s.listMutedJobs(), [])
+  assert.equal(s.setJobMuted(id, true), true)
+  assert.equal(s.getJob(id)?.muted, true)
+  const muted = s.listMutedJobs()
+  assert.equal(muted.length, 1)
+  assert.equal(muted[0]?.name, 'Root configs')
+  assert.equal(muted[0]?.targetName, 'my-nextcloud')
+  s.setJobMuted(id, false)
+  assert.deepEqual(s.listMutedJobs(), [])
+  s.close()
+})
+
+test('getConfig/setConfig round-trip', () => {
+  const s = openStore(':memory:')
+  assert.equal(s.getConfig('alerts_k'), null)
+  s.setConfig('alerts_k', 'v')
+  assert.equal(s.getConfig('alerts_k'), 'v')
+  s.close()
+})
+
 test('deleteJob removes the row', () => {
   const s = openStore(':memory:')
   const { id } = s.createJob(sample)

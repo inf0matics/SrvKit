@@ -218,6 +218,46 @@ test.describe.serial('backups', () => {
     )
   })
 
+  test('alerts: muting a job surfaces the topbar badge and settings list', async () => {
+    // Only the App DB job exists here, so the Mute control is unambiguous.
+    await page.getByRole('button', { name: 'Mute job' }).click()
+    await expect(page.getByTestId('mute-indicator')).toBeVisible()
+    await expect(page.getByTestId('mute-count')).toHaveText('1')
+
+    // The indicator links to Settings → Alerts, which lists the muted job.
+    await page.getByTestId('mute-indicator').click()
+    await expect(page).toHaveURL(/\/app\/settings$/)
+    await expect(page.getByTestId('muted-row')).toContainText('App DB')
+    await expect(page.getByTestId('muted-row')).toContainText('My Nextcloud')
+
+    // Unmute → list empties and the badge disappears.
+    await page.getByTestId('muted-row').getByRole('button', { name: 'Unmute' }).click()
+    await expect(page.getByText('No jobs are muted.')).toBeVisible()
+    await expect(page.getByTestId('mute-indicator')).toHaveCount(0)
+  })
+
+  test('alerts: Telegram settings persist and Test validates credentials', async () => {
+    // Continuing on /app/settings. Test with no credentials → inline error, no
+    // external call.
+    await expect(page.getByTestId('alerts-section')).toBeVisible()
+    await page.getByTestId('test-telegram').click()
+    await expect(page.getByTestId('test-result')).toContainText('required')
+
+    // Save chat id + enable; a reload shows it persisted.
+    await page.getByLabel('Chat ID').fill('99887766')
+    await page.getByLabel('Enable Telegram alerts').check()
+    await page.getByRole('button', { name: 'Save' }).click()
+    await expect(page.getByText('✓ Saved.')).toBeVisible()
+
+    await page.reload()
+    await expect(page.getByLabel('Chat ID')).toHaveValue('99887766')
+    await expect(page.getByLabel('Enable Telegram alerts')).toBeChecked()
+
+    // Back to the target detail page for the following tests.
+    await page.locator('.subnav').getByRole('link', { name: 'My Nextcloud' }).click()
+    await expect(page.getByTestId('target-page')).toBeVisible()
+  })
+
   test('detail: saving a SQLite job rejects a non-database file', async () => {
     await page.getByRole('button', { name: 'Add Job' }).click()
     await page.getByLabel('Name', { exact: true }).fill('Bad DB')
