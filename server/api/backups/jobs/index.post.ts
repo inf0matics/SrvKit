@@ -1,11 +1,9 @@
 import { store } from '../../../utils/srvkit.ts'
-import { parseJobInput } from '../../../utils/backups.ts'
-import { registerJob } from '../../../utils/watcher.ts'
+import { parseNewJob } from '../../../utils/backups.ts'
 
-// Create a Files backup job and start watching its selected files.
+// Create a job from the lightweight modal: just name + type. The job is created
+// inactive (no filewatcher) and configured/activated on its edit page.
 export default defineEventHandler(async (event) => {
   const body = await readBody<Record<string, unknown>>(event)
-  const job = store().createJob(parseJobInput(body))
-  registerJob(job)
-  return job
+  return store().createJob(parseNewJob(body))
 })

@@ -8,8 +8,10 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 404, statusMessage: 'Job not found' })
   }
   const body = await readBody<Record<string, unknown>>(event)
+  // Full validation — saving activates the job and starts the filewatcher.
   store().updateJob(id, parseJobInput(body))
+  store().setJobActive(id, true)
   const job = store().getJob(id)!
-  registerJob(job) // re-register over the (possibly changed) selection
+  registerJob(job)
   return job
 })

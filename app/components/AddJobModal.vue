@@ -8,40 +8,26 @@ interface CreatedJob {
 const props = defineProps<{ target: TargetSummary }>()
 const emit = defineEmits<{ close: [] }>()
 
-const form = reactive({ name: '', type: 'files', sourcePath: '' })
-const sources = ref<string[]>([])
+const form = reactive({ name: '', type: 'files' })
 const saving = ref(false)
 const error = ref('')
 
-onMounted(async () => {
-  const res = await $fetch<{ sources: string[] }>('/api/backups/sources')
-  sources.value = res.sources
-})
+const TYPE_INFO: Record<string, string> = {
+  files:
+    'Watches selected files and directories for changes and backs them up as a tar.gz archive.',
+  sqlite:
+    'Watches a SQLite database file for changes and creates a safe point-in-time backup using the SQLite Online Backup API.',
+}
 
-// Reset the selected path when switching type (dir dropdown vs file picker).
-watch(
-  () => form.type,
-  () => (form.sourcePath = ''),
-)
-
-const canCreate = computed(() => form.name.trim().length > 0 && !!form.sourcePath)
+const canCreate = computed(() => form.name.trim().length > 0)
 
 async function create() {
   saving.value = true
   error.value = ''
   try {
-    // Minimal job — file selection and destination are set on the edit page.
     const job = await $fetch<CreatedJob>('/api/backups/jobs', {
       method: 'POST',
-      body: {
-        targetId: props.target.id,
-        name: form.name,
-        type: form.type,
-        sourcePath: form.sourcePath,
-        excludes: [],
-        output: 'single',
-        subdirectory: '',
-      },
+      body: { targetId: props.target.id, name: form.name, type: form.type },
     })
     await navigateTo(`/app/backups/${props.target.id}/jobs/${job.id}/edit`)
   } catch (e: unknown) {
@@ -73,26 +59,8 @@ async function create() {
           <option value="sqlite">SQLite</option>
         </select>
       </label>
-      <!-- Files: pick a mounted directory -->
-      <label v-if="form.type === 'files'" class="field">
-        <span>Mounted path</span>
-        <select v-model="form.sourcePath" class="tsp-input">
-          <option value="" disabled>Select a mounted path…</option>
-          <option v-for="s in sources" :key="s" :value="s">/backups/{{ s }}</option>
-        </select>
-      </label>
 
-      <!-- SQLite: browse for the .db file -->
-      <div v-else class="field">
-        <span>Source file</span>
-        <FilePicker v-model="form.sourcePath" />
-        <input
-          class="tsp-input selected"
-          :value="form.sourcePath ? `/backups/${form.sourcePath}` : ''"
-          placeholder="No file selected"
-          readonly
-        >
-      </div>
+      <p class="info" data-testid="type-info">{{ TYPE_INFO[form.type] }}</p>
 
       <p v-if="error" class="err">{{ error }}</p>
 
@@ -146,8 +114,14 @@ async function create() {
   color: var(--tsp-text-muted);
 }
 
-.selected {
-  margin-top: 8px;
+.info {
+  margin: 0;
+  padding: 10px 12px;
+  background: var(--tsp-bg);
+  border: 1px solid var(--tsp-border);
+  border-radius: var(--tsp-radius-sm);
+  font-size: 0.85rem;
+  color: var(--tsp-text-muted);
 }
 
 .err {

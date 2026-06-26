@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test'
-import { writeFileSync, rmSync } from 'node:fs'
+import { writeFileSync, readFileSync } from 'node:fs'
 
 // Runs after auth.spec.ts (alphabetical). One shared page + a single login so it
 // doesn't eat into the per-IP login rate limit.
@@ -100,32 +100,49 @@ test.describe.serial('backups', () => {
     await expect(page.locator('.test-err')).toBeVisible()
   })
 
-  test('detail: create a job (lightweight modal → edit page)', async () => {
+  test('detail: create a job — modal is name + type; job starts inactive', async () => {
     await page.getByRole('button', { name: 'Add Job' }).click()
-    // Lightweight modal: name, type, mounted path.
+    // Minimal modal: name + type + an info box describing the type.
     await page.getByLabel('Name', { exact: true }).fill('Root configs')
-    await page.getByLabel('Mounted path').selectOption('root')
+    await expect(page.getByTestId('type-info')).toContainText('tar.gz archive')
     await page.getByRole('button', { name: 'Create' }).click()
 
-    // Redirected to the full edit page; file tree loads.
+    // Redirected to the edit page; the job exists but is not yet configured.
     await expect(page).toHaveURL(/\/jobs\/[0-9a-f-]+\/edit$/)
-    await expect(page.getByTestId('job-edit')).toBeVisible()
-    // Lazy tree: root level loads; subfolder children load only on expand.
+    await page.getByRole('link', { name: 'Cancel' }).click()
+
+    // On the detail page the job shows as inactive with Run Now disabled.
+    await expect(page).toHaveURL(/\/app\/backups\/[0-9a-f-]+$/)
+    await expect(page.getByText('Root configs', { exact: true })).toBeVisible()
+    await expect(page.getByTestId('job-status')).toHaveText('Not configured')
+    await expect(page.getByRole('button', { name: 'Run job now' })).toBeDisabled()
+  })
+
+  test('detail: configure + save activates the job', async () => {
+    await page.getByRole('button', { name: 'Edit job' }).click()
+    await expect(page).toHaveURL(/\/jobs\/[0-9a-f-]+\/edit$/)
+
+    // Pick a source dir; the lazy tree loads with nothing selected.
+    await page.getByLabel('Source path').selectOption('root')
     await expect(page.getByText('.bashrc')).toBeVisible()
+    // Lazy expand: subfolder children load only on demand.
     await expect(page.getByText('app.conf')).toHaveCount(0)
     await page.getByRole('button', { name: 'Expand' }).first().click()
     await expect(page.getByText('app.conf')).toBeVisible()
 
+    // Saving with nothing selected is rejected.
     await page.getByLabel('Nextcloud subdirectory').fill('root')
-    // Edit-page archive preview shows the full host path (compact).
+    await page.getByRole('button', { name: 'Save' }).click()
+    await expect(page.getByText('Select at least one file to back up.')).toBeVisible()
+
+    // Explicitly select a file, then save → job becomes active.
+    await page.getByRole('checkbox', { name: '.bashrc' }).check()
     await expect(page.getByTestId('archive')).toContainText(
       '127.0.0.1:1/srvkit/root/Root configs.tar.gz',
     )
     await page.getByRole('button', { name: 'Save' }).click()
 
-    // Back on the target detail page.
     await expect(page).toHaveURL(/\/app\/backups\/[0-9a-f-]+$/)
-    await expect(page.getByText('Root configs', { exact: true })).toBeVisible()
     await expect(page.getByTestId('job-type')).toHaveText('Files')
     await expect(page.getByTestId('job-dest')).toHaveText(
       '127.0.0.1:1/srvkit/root/Root configs.tar.gz',
@@ -155,15 +172,16 @@ test.describe.serial('backups', () => {
   })
 
   test('detail: a file change shows the debounce countdown', async () => {
-    // The job watches tests/fixtures/sources/root; a new file there starts the
-    // 10s debounce, which the row shows as a countdown.
-    const trigger = 'tests/fixtures/sources/root/e2e-trigger.txt'
-    writeFileSync(trigger, String(Date.now()))
+    // The job watches the selected file tests/fixtures/sources/root/.bashrc;
+    // touching it starts the 10s debounce, shown as a countdown. Restore after.
+    const watched = 'tests/fixtures/sources/root/.bashrc'
+    const orig = readFileSync(watched, 'utf8')
+    writeFileSync(watched, orig + '\n# e2e ' + Date.now())
     try {
       await expect(page.locator('.st-debounce')).toBeVisible({ timeout: 9000 })
       await expect(page.locator('.st-debounce')).toContainText(/\d+\s*s/)
     } finally {
-      rmSync(trigger, { force: true })
+      writeFileSync(watched, orig)
     }
   })
 
@@ -178,13 +196,13 @@ test.describe.serial('backups', () => {
     await page.getByRole('button', { name: 'Add Job' }).click()
     await page.getByLabel('Name', { exact: true }).fill('App DB')
     await page.getByLabel('Type').selectOption('sqlite')
-    // File picker (lazy tree from /backups): pick app.db.
-    await page.getByRole('button', { name: 'app.db', exact: true }).click()
+    await expect(page.getByTestId('type-info')).toContainText('SQLite Online Backup API')
     await page.getByRole('button', { name: 'Create' }).click()
 
-    // Edit page: SQLite branch — read-only source file + date toggle, no tree.
+    // Edit page: SQLite branch — file picker (lazy tree from /backups) + date toggle.
     await expect(page).toHaveURL(/\/jobs\/[0-9a-f-]+\/edit$/)
     await expect(page.getByTestId('job-edit')).toBeVisible()
+    await page.getByRole('button', { name: 'app.db', exact: true }).click()
     await page.getByLabel('Append date to filename').check()
     await page.getByLabel('Nextcloud subdirectory').fill('db')
     await expect(page.getByTestId('archive')).toContainText(
@@ -200,16 +218,18 @@ test.describe.serial('backups', () => {
     )
   })
 
-  test('detail: SQLite job rejects a non-database file', async () => {
+  test('detail: saving a SQLite job rejects a non-database file', async () => {
     await page.getByRole('button', { name: 'Add Job' }).click()
     await page.getByLabel('Name', { exact: true }).fill('Bad DB')
     await page.getByLabel('Type').selectOption('sqlite')
-    // Browse into home/ and pick a non-db file.
+    await page.getByRole('button', { name: 'Create' }).click()
+
+    // On the edit page, browse into home/ and pick a non-db file, then save.
+    await expect(page).toHaveURL(/\/jobs\/[0-9a-f-]+\/edit$/)
     await page.getByRole('button', { name: 'home', exact: true }).click()
     await page.getByRole('button', { name: 'notes.txt', exact: true }).click()
-    await page.getByRole('button', { name: 'Create' }).click()
+    await page.getByRole('button', { name: 'Save' }).click()
     await expect(page.getByText('not a valid SQLite database')).toBeVisible()
-    await page.getByRole('button', { name: 'Cancel' }).click()
   })
 
   test('sidebar lists the target and links to its page', async () => {

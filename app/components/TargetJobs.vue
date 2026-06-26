@@ -11,6 +11,7 @@ interface Job {
   subdirectory: string
   excludes: string[]
   dateSuffix: boolean
+  active: boolean
   lastRunAt: string | null
   lastStatus: 'success' | 'failed' | null
   lastError: string | null
@@ -131,7 +132,8 @@ function destPath(job: Job): string {
           <div class="job-meta tsp-muted" data-testid="job-dest">{{ destPath(job) }}</div>
         </div>
         <span class="job-status" data-testid="job-status">
-          <template v-if="runActive(job)">
+          <span v-if="!job.active" class="tsp-muted">Not configured</span>
+          <template v-else-if="runActive(job)">
             <span class="spinner" /> Running…
           </template>
           <span v-else-if="job.state === 'debouncing'" class="st-debounce">
@@ -148,7 +150,8 @@ function destPath(job: Job): string {
         <button
           class="tsp-btn tsp-btn-sm tsp-btn-icon"
           aria-label="Run job now"
-          :disabled="isBusy(job)"
+          :disabled="!job.active || isBusy(job)"
+          :title="!job.active ? 'Configure and save the job first' : ''"
           @click="runNow(job)"
         >
           <AppIcon name="play" />

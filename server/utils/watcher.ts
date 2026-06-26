@@ -42,18 +42,20 @@ export function jobState(job: JobRecord): {
   return { running, state, remainingMs }
 }
 
-/** (Re-)register the filewatcher for a job over its selected files. */
+/** (Re-)register the filewatcher for an active job over its selected paths. */
 export function registerJob(job: JobRecord) {
   unregisterJob(job.id)
-  const sourceDir = join(sourcesDir(), job.sourcePath)
-  const excluded = job.excludes.map((ex) => join(sourceDir, ex))
+  if (!job.active) return
 
-  const watcher = chokidar.watch(sourceDir, {
-    ignoreInitial: true, // no backup on (re-)registration
-    ignored: (p: string) =>
-      excluded.some((ex) => p === ex || p.startsWith(ex + '/')),
-  })
+  // Files: watch each selected path. SQLite: watch the source .db file.
+  const sourceAbs = join(sourcesDir(), job.sourcePath)
+  const watchPaths =
+    job.type === 'sqlite'
+      ? [sourceAbs]
+      : job.includes.map((i) => join(sourceAbs, i))
+  if (watchPaths.length === 0) return
 
+  const watcher = chokidar.watch(watchPaths, { ignoreInitial: true })
   const entry: Entry = { watcher }
   watcher.on('all', () => {
     if (entry.timer) clearTimeout(entry.timer)
@@ -74,7 +76,7 @@ export function unregisterJob(id: string) {
   watchers.delete(id)
 }
 
-/** Re-register watchers for every stored job (called on server startup). */
+/** Re-register watchers for every active job (called on server startup). */
 export function registerAllJobs() {
-  for (const job of store().listJobs()) registerJob(job)
+  for (const job of store().listJobs()) if (job.active) registerJob(job)
 }

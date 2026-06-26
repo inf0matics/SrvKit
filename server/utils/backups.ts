@@ -59,24 +59,12 @@ export function getChildren(rel: string): ChildNode[] | null {
   return listChildren(full, rel)
 }
 
-/** Validate + normalize a job request body (shared by create and update). */
-export function parseJobInput(body: Record<string, unknown> | null): JobInput {
+function baseJobFields(body: Record<string, unknown> | null) {
   const name = trimStr(body?.name)
   const targetId = trimStr(body?.targetId)
   const type = trimStr(body?.type) || 'files'
-  const sourcePath = trimStr(body?.sourcePath)
-  const output = trimStr(body?.output) || 'single'
-  const subdirectory = normalizeRoot(body?.subdirectory)
-  const dateSuffix = body?.dateSuffix === true
-  const excludes = Array.isArray(body?.excludes)
-    ? (body.excludes as unknown[]).filter((e): e is string => typeof e === 'string')
-    : []
-
-  if (!name || !targetId || !sourcePath) {
-    throw createError({
-      statusCode: 400,
-      statusMessage: 'name, targetId and sourcePath are required',
-    })
+  if (!name || !targetId) {
+    throw createError({ statusCode: 400, statusMessage: 'name and targetId are required' })
   }
   if (type !== 'files' && type !== 'sqlite') {
     throw createError({ statusCode: 400, statusMessage: 'unsupported job type' })
@@ -84,11 +72,39 @@ export function parseJobInput(body: Record<string, unknown> | null): JobInput {
   if (!store().getTarget(targetId)) {
     throw createError({ statusCode: 400, statusMessage: 'unknown target' })
   }
+  return { name, targetId, type }
+}
+
+/** Minimal create: just name + type. The job is created inactive, no source. */
+export function parseNewJob(body: Record<string, unknown> | null): JobInput {
+  const { name, targetId, type } = baseJobFields(body)
+  return {
+    targetId,
+    name,
+    type,
+    sourcePath: '',
+    includes: [],
+    output: 'single',
+    subdirectory: '',
+    dateSuffix: false,
+  }
+}
+
+/** Full validation for saving (activating) a job from the edit page. */
+export function parseJobInput(body: Record<string, unknown> | null): JobInput {
+  const { name, targetId, type } = baseJobFields(body)
+  const sourcePath = trimStr(body?.sourcePath)
+  const output = trimStr(body?.output) || 'single'
+  const subdirectory = normalizeRoot(body?.subdirectory)
+  const dateSuffix = body?.dateSuffix === true
+  const includes = Array.isArray(body?.includes)
+    ? (body.includes as unknown[]).filter((e): e is string => typeof e === 'string')
+    : []
+
   if (type === 'sqlite') {
-    // Any mounted file that passes the SQLite header check is a valid source.
-    const abs = resolveSourcePath(sourcePath)
+    const abs = sourcePath ? resolveSourcePath(sourcePath) : null
     if (!abs) {
-      throw createError({ statusCode: 400, statusMessage: 'unknown source path' })
+      throw createError({ statusCode: 400, statusMessage: 'Select a source file.' })
     }
     if (!isSqliteFile(abs)) {
       throw createError({
@@ -96,11 +112,19 @@ export function parseJobInput(body: Record<string, unknown> | null): JobInput {
         statusMessage: 'The selected file is not a valid SQLite database.',
       })
     }
-  } else if (!getSources().includes(sourcePath)) {
-    throw createError({ statusCode: 400, statusMessage: 'unknown source path' })
+  } else {
+    if (!getSources().includes(sourcePath)) {
+      throw createError({ statusCode: 400, statusMessage: 'Select a source directory.' })
+    }
+    if (includes.length === 0) {
+      throw createError({
+        statusCode: 400,
+        statusMessage: 'Select at least one file to back up.',
+      })
+    }
   }
 
-  return { targetId, name, type, sourcePath, excludes, output, subdirectory, dateSuffix }
+  return { targetId, name, type, sourcePath, includes, output, subdirectory, dateSuffix }
 }
 
 export function trimStr(v: unknown): string {

@@ -35,6 +35,7 @@ function onName() {
       <input
         v-if="ctrl.mode === 'checkbox'"
         type="checkbox"
+        :aria-label="node.name"
         :checked="ctrl.isChecked(node)"
         :disabled="ctrl.isDisabled(node)"
         @change="ctrl.toggleCheck(node)"

@@ -27,18 +27,14 @@ async function entries(file: string): Promise<string[]> {
   return found.filter((p) => p && !p.endsWith('/')).sort()
 }
 
-test('archives all files when nothing is excluded', async () => {
-  const out = join(base, 'all.tgz')
-  await createArchive(src, [], out)
-  assert.deepEqual(await entries(out), [
-    '.bashrc',
-    'cache/junk.tmp',
-    'configs/app.conf',
-  ])
+test('archives a directory subtree and a single file by include', async () => {
+  const out = join(base, 'partial.tgz')
+  await createArchive(src, ['configs', '.bashrc'], out)
+  assert.deepEqual(await entries(out), ['.bashrc', 'configs/app.conf'])
 })
 
-test('excludes a directory subtree and a single file', async () => {
-  const out = join(base, 'partial.tgz')
-  await createArchive(src, ['cache', 'configs/app.conf'], out)
+test('includes only the selected file', async () => {
+  const out = join(base, 'one.tgz')
+  await createArchive(src, ['.bashrc'], out)
   assert.deepEqual(await entries(out), ['.bashrc'])
 })

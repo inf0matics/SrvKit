@@ -9,7 +9,7 @@ interface Job {
   sourcePath: string
   output: string
   subdirectory: string
-  excludes: string[]
+  includes: string[]
   dateSuffix: boolean
 }
 
@@ -40,7 +40,7 @@ const form = reactive({
   subdirectory: '',
   dateSuffix: false,
 })
-const excludes = ref<string[]>([])
+const includes = ref<string[]>([])
 
 watch(
   job,
@@ -52,7 +52,7 @@ watch(
     form.output = j.output
     form.subdirectory = j.subdirectory
     form.dateSuffix = j.dateSuffix
-    excludes.value = j.excludes
+    includes.value = j.includes
   },
   { immediate: true },
 )
@@ -80,7 +80,7 @@ async function save() {
         name: form.name,
         type: form.type,
         sourcePath: form.sourcePath,
-        excludes: excludes.value,
+        includes: includes.value,
         output: form.output,
         subdirectory: form.subdirectory,
         dateSuffix: form.dateSuffix,
@@ -115,13 +115,19 @@ async function save() {
         <label class="field">
           <span>Source path</span>
           <select v-model="form.sourcePath" class="tsp-input">
+            <option value="" disabled>Select a source directory…</option>
             <option v-for="s in sources" :key="s" :value="s">{{ s }}</option>
           </select>
         </label>
 
         <div class="field">
-          <span class="label">Files</span>
-          <FileTreeSelect v-model="excludes" :source-path="form.sourcePath" />
+          <span class="label">Files (nothing selected by default)</span>
+          <FileTreeSelect
+            v-if="form.sourcePath"
+            v-model="includes"
+            :source-path="form.sourcePath"
+          />
+          <p v-else class="hint tsp-muted">Select a source directory first.</p>
         </div>
 
         <label class="field">
@@ -132,7 +138,7 @@ async function save() {
         </label>
       </template>
 
-      <!-- SQLite: browse for the .db file + date-suffix toggle -->
+      <!-- SQLite: browse for the .db file -->
       <template v-else>
         <div class="field">
           <span class="label">Source file</span>
@@ -144,11 +150,6 @@ async function save() {
             readonly
           >
         </div>
-
-        <label class="field toggle">
-          <input v-model="form.dateSuffix" type="checkbox">
-          <span>Append date to filename</span>
-        </label>
       </template>
 
       <label class="field">
@@ -163,6 +164,11 @@ async function save() {
       </label>
 
       <p class="archive tsp-muted" data-testid="archive">Archive: {{ archive }}</p>
+
+      <label class="field toggle">
+        <input v-model="form.dateSuffix" type="checkbox">
+        <span>Append date to filename (_YYYY-MM-DD)</span>
+      </label>
       <p v-if="saveError" class="err">{{ saveError }}</p>
 
       <div class="actions">
@@ -223,6 +229,11 @@ async function save() {
 .toggle span {
   margin: 0;
   color: var(--tsp-text);
+}
+
+.hint {
+  margin: 0;
+  font-size: 0.9rem;
 }
 
 .selected {

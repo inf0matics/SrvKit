@@ -45,8 +45,8 @@ export interface JobInput {
   type: string
   /** Source path under the mounted base — a directory ('root') or a .db file. */
   sourcePath: string
-  /** Relative paths excluded from the backup (Files jobs). */
-  excludes: string[]
+  /** Selected paths to back up, relative to the source dir (Files jobs). */
+  includes: string[]
   /** 'single' (one tar.gz) in v1. */
   output: string
   /** Sub-directory on the target where the archive is written. */
@@ -58,6 +58,8 @@ export interface JobInput {
 export interface JobRecord extends JobInput {
   id: string
   createdAt: string
+  /** A job is inactive until its Edit page is saved for the first time. */
+  active: boolean
   /** Last run result (null until the job has run). */
   lastRunAt: string | null
   lastStatus: 'success' | 'failed' | null
@@ -84,6 +86,7 @@ export interface Store {
   getJob(id: string): JobRecord | null
   createJob(input: JobInput): JobRecord
   updateJob(id: string, input: JobInput): boolean
+  setJobActive(id: string, active: boolean): void
   deleteJob(id: string): boolean
   recordRun(id: string, run: RunResult): void
   close(): void
@@ -95,10 +98,11 @@ interface JobRow {
   name: string
   type: string
   sourcePath: string
-  excludes: string
+  includes: string
   output: string
   subdirectory: string
   dateSuffix: number
+  active: number
   createdAt: string
   lastRunAt: string | null
   lastStatus: 'success' | 'failed' | null
@@ -108,8 +112,9 @@ interface JobRow {
 function rowToJob(row: JobRow): JobRecord {
   return {
     ...row,
-    excludes: JSON.parse(row.excludes) as string[],
+    includes: JSON.parse(row.includes) as string[],
     dateSuffix: !!row.dateSuffix,
+    active: !!row.active,
   }
 }
 
@@ -152,11 +157,12 @@ export function openStore(path: string): Store {
        target_id TEXT NOT NULL,
        name TEXT NOT NULL,
        type TEXT NOT NULL,
-       source_path TEXT NOT NULL,
-       excludes TEXT NOT NULL DEFAULT '[]',
-       output TEXT NOT NULL,
+       source_path TEXT NOT NULL DEFAULT '',
+       includes TEXT NOT NULL DEFAULT '[]',
+       output TEXT NOT NULL DEFAULT 'single',
        subdirectory TEXT NOT NULL DEFAULT '',
        date_suffix INTEGER NOT NULL DEFAULT 0,
+       active INTEGER NOT NULL DEFAULT 0,
        created_at TEXT NOT NULL,
        last_run_at TEXT,
        last_status TEXT,
@@ -174,6 +180,12 @@ export function openStore(path: string): Store {
   }
   if (!jobColNames.includes('date_suffix')) {
     db.exec('ALTER TABLE jobs ADD COLUMN date_suffix INTEGER NOT NULL DEFAULT 0')
+  }
+  if (jobColNames.includes('excludes') && !jobColNames.includes('includes')) {
+    db.exec('ALTER TABLE jobs RENAME COLUMN excludes TO includes')
+  }
+  if (!jobColNames.includes('active')) {
+    db.exec('ALTER TABLE jobs ADD COLUMN active INTEGER NOT NULL DEFAULT 0')
   }
 
   const getStmt = db.prepare('SELECT value FROM config WHERE key = ?')
@@ -214,21 +226,22 @@ export function openStore(path: string): Store {
 
   // --- Jobs ---
   const jobCols = `id, target_id AS targetId, name, type, source_path AS sourcePath,
-                   excludes, output, subdirectory, date_suffix AS dateSuffix,
-                   created_at AS createdAt, last_run_at AS lastRunAt,
+                   includes, output, subdirectory, date_suffix AS dateSuffix,
+                   active, created_at AS createdAt, last_run_at AS lastRunAt,
                    last_status AS lastStatus, last_error AS lastError`
   const listJobsStmt = db.prepare(`SELECT ${jobCols} FROM jobs ORDER BY created_at`)
   const getJobStmt = db.prepare(`SELECT ${jobCols} FROM jobs WHERE id = ?`)
   const insertJobStmt = db.prepare(
     `INSERT INTO jobs
-       (id, target_id, name, type, source_path, excludes, output, subdirectory,
+       (id, target_id, name, type, source_path, includes, output, subdirectory,
         date_suffix, created_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
   const updateJobStmt = db.prepare(
     `UPDATE jobs SET target_id = ?, name = ?, type = ?, source_path = ?,
-       excludes = ?, output = ?, subdirectory = ?, date_suffix = ? WHERE id = ?`,
+       includes = ?, output = ?, subdirectory = ?, date_suffix = ? WHERE id = ?`,
   )
+  const setActiveStmt = db.prepare('UPDATE jobs SET active = ? WHERE id = ?')
   const deleteJobStmt = db.prepare('DELETE FROM jobs WHERE id = ?')
   const recordRunStmt = db.prepare(
     'UPDATE jobs SET last_run_at = ?, last_status = ?, last_error = ? WHERE id = ?',
@@ -311,7 +324,7 @@ export function openStore(path: string): Store {
         input.name,
         input.type,
         input.sourcePath,
-        JSON.stringify(input.excludes),
+        JSON.stringify(input.includes),
         input.output,
         input.subdirectory,
         input.dateSuffix ? 1 : 0,
@@ -321,6 +334,7 @@ export function openStore(path: string): Store {
         ...input,
         id,
         createdAt,
+        active: false,
         lastRunAt: null,
         lastStatus: null,
         lastError: null,
@@ -334,13 +348,17 @@ export function openStore(path: string): Store {
           input.name,
           input.type,
           input.sourcePath,
-          JSON.stringify(input.excludes),
+          JSON.stringify(input.includes),
           input.output,
           input.subdirectory,
           input.dateSuffix ? 1 : 0,
           id,
         ).changes > 0
       )
+    },
+
+    setJobActive(id: string, active: boolean) {
+      setActiveStmt.run(active ? 1 : 0, id)
     },
 
     deleteJob: (id: string) => deleteJobStmt.run(id).changes > 0,

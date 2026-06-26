@@ -57,7 +57,7 @@ export async function runBackup(jobId: string): Promise<void> {
       }
     } else {
       try {
-        await createArchive(join(sourcesDir(), job.sourcePath), job.excludes, tarPath)
+        await createArchive(join(sourcesDir(), job.sourcePath), job.includes, tarPath)
       } catch (e) {
         return fail(`Archive failed: ${(e as Error).message}`)
       }

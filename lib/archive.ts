@@ -10,31 +10,14 @@ export async function createFileArchive(
 }
 
 /**
- * Pack the selected files of a source directory into a gzipped tar at `outFile`,
- * preserving relative paths. `excludes` are paths (relative to `sourceDir`) to
- * skip — a directory exclude skips its whole subtree.
+ * Pack the selected paths of a source directory into a gzipped tar at `outFile`,
+ * preserving relative paths. `includes` are paths (relative to `sourceDir`);
+ * a directory include packs its whole subtree.
  */
 export async function createArchive(
   sourceDir: string,
-  excludes: string[],
+  includes: string[],
   outFile: string,
 ): Promise<void> {
-  const excluded = new Set(excludes)
-  await create(
-    {
-      gzip: true,
-      file: outFile,
-      cwd: sourceDir,
-      // Skip excluded paths (and anything beneath an excluded directory).
-      filter: (path) => {
-        const rel = path.replace(/^\.\/?/, '').replace(/\/$/, '')
-        if (!rel) return true
-        for (const ex of excluded) {
-          if (rel === ex || rel.startsWith(ex + '/')) return false
-        }
-        return true
-      },
-    },
-    ['.'],
-  )
+  await create({ gzip: true, file: outFile, cwd: sourceDir }, includes)
 }

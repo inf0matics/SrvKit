@@ -6,24 +6,25 @@ import {
   type LazyTreeController,
 } from '~/utils/lazyTree'
 
-// `sourcePath` is the base-relative source dir (e.g. 'root'); the v-model
-// excludes are stored relative to that source dir (e.g. 'configs/app.conf').
+// `sourcePath` is the base-relative source dir (e.g. 'root'); the v-model is the
+// set of selected (included) paths, relative to the source dir. Nothing is
+// selected by default — the user explicitly checks what to back up.
 const props = defineProps<{ sourcePath: string; modelValue: string[] }>()
 const emit = defineEmits<{ 'update:modelValue': [string[]] }>()
 
 const cache = reactive(new Map<string, ChildNode[]>())
 const expanded = reactive(new Set<string>())
 const loading = reactive(new Set<string>())
-const excluded = ref(new Set(props.modelValue))
+const included = ref(new Set(props.modelValue))
 
 const srcRel = (basePath: string) => basePath.slice(props.sourcePath.length + 1)
 
-function excludedByAncestor(rel: string): boolean {
+function includedByAncestor(rel: string): boolean {
   const parts = rel.split('/')
   let acc = ''
   for (let i = 0; i < parts.length - 1; i++) {
     acc = acc ? `${acc}/${parts[i]}` : parts[i]!
-    if (excluded.value.has(acc)) return true
+    if (included.value.has(acc)) return true
   }
   return false
 }
@@ -55,20 +56,22 @@ const ctrl: LazyTreeController = {
   },
   isChecked(node) {
     const r = srcRel(node.path)
-    return !excluded.value.has(r) && !excludedByAncestor(r)
+    return included.value.has(r) || includedByAncestor(r)
   },
-  isDisabled: (node) => excludedByAncestor(srcRel(node.path)),
+  // Selected via an ancestor folder → can't be unchecked on its own.
+  isDisabled: (node) => includedByAncestor(srcRel(node.path)),
   toggleCheck(node) {
     const r = srcRel(node.path)
-    const next = new Set(excluded.value)
-    if (!next.has(r) && !excludedByAncestor(r)) {
-      // Currently included → exclude it (drop now-redundant descendant excludes).
+    const next = new Set(included.value)
+    if (next.has(r)) {
+      // Uncheck (drop it and any now-redundant descendant selections).
       for (const e of [...next]) if (e === r || e.startsWith(r + '/')) next.delete(e)
-      next.add(r)
     } else {
-      next.delete(r) // re-include
+      // Select it (a folder selects its whole subtree → drop redundant children).
+      for (const e of [...next]) if (e.startsWith(r + '/')) next.delete(e)
+      next.add(r)
     }
-    excluded.value = next
+    included.value = next
     emit('update:modelValue', [...next])
   },
   isSelected: () => false,
@@ -81,9 +84,9 @@ const rootChildren = computed(() => cache.get(props.sourcePath) ?? [])
 
 onMounted(async () => {
   await load(props.sourcePath)
-  // Pre-expand the folders that contain an excluded path.
-  for (const ex of excluded.value) {
-    const parts = ex.split('/')
+  // Pre-expand the folders that contain a selected path.
+  for (const inc of included.value) {
+    const parts = inc.split('/')
     let acc = props.sourcePath
     for (let i = 0; i < parts.length - 1; i++) {
       acc = `${acc}/${parts[i]}`
@@ -98,7 +101,7 @@ watch(
   async () => {
     cache.clear()
     expanded.clear()
-    excluded.value = new Set()
+    included.value = new Set()
     emit('update:modelValue', [])
     await load(props.sourcePath)
   },

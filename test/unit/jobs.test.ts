@@ -7,7 +7,7 @@ const sample = {
   name: 'Root configs',
   type: 'files',
   sourcePath: 'root',
-  excludes: ['root/.cache', 'root/tmp/x.log'],
+  includes: ['configs', '.bashrc'],
   output: 'single',
   subdirectory: 'root',
   dateSuffix: false,
@@ -25,8 +25,18 @@ test('createJob returns a full record with id and createdAt', () => {
   assert.ok(job.id)
   assert.ok(job.createdAt)
   assert.equal(job.name, 'Root configs')
-  assert.deepEqual(job.excludes, ['root/.cache', 'root/tmp/x.log'])
+  assert.deepEqual(job.includes, ['configs', '.bashrc'])
   assert.equal(job.lastStatus, null) // never run yet
+  assert.equal(job.active, false) // inactive until saved
+  s.close()
+})
+
+test('setJobActive toggles the active flag', () => {
+  const s = openStore(':memory:')
+  const { id } = s.createJob(sample)
+  assert.equal(s.getJob(id)?.active, false)
+  s.setJobActive(id, true)
+  assert.equal(s.getJob(id)?.active, true)
   s.close()
 })
 
@@ -55,18 +65,18 @@ test('recordRun stores the last run result', () => {
   s.close()
 })
 
-test('excludes round-trip through JSON storage', () => {
+test('includes round-trip through JSON storage', () => {
   const s = openStore(':memory:')
   const { id } = s.createJob(sample)
-  assert.deepEqual(s.getJob(id)?.excludes, ['root/.cache', 'root/tmp/x.log'])
-  assert.deepEqual(s.listJobs()[0]!.excludes, ['root/.cache', 'root/tmp/x.log'])
+  assert.deepEqual(s.getJob(id)?.includes, ['configs', '.bashrc'])
+  assert.deepEqual(s.listJobs()[0]!.includes, ['configs', '.bashrc'])
   s.close()
 })
 
-test('empty excludes are stored and read as []', () => {
+test('empty includes are stored and read as []', () => {
   const s = openStore(':memory:')
-  const { id } = s.createJob({ ...sample, excludes: [] })
-  assert.deepEqual(s.getJob(id)?.excludes, [])
+  const { id } = s.createJob({ ...sample, includes: [] })
+  assert.deepEqual(s.getJob(id)?.includes, [])
   s.close()
 })
 
@@ -74,12 +84,12 @@ test('updateJob replaces the job fields', () => {
   const s = openStore(':memory:')
   const { id } = s.createJob(sample)
   assert.equal(
-    s.updateJob(id, { ...sample, name: 'Renamed', excludes: ['root/x'] }),
+    s.updateJob(id, { ...sample, name: 'Renamed', includes: ['root/x'] }),
     true,
   )
   const got = s.getJob(id)
   assert.equal(got?.name, 'Renamed')
-  assert.deepEqual(got?.excludes, ['root/x'])
+  assert.deepEqual(got?.includes, ['root/x'])
   s.close()
 })
 
