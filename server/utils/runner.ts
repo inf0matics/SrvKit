@@ -68,7 +68,9 @@ export async function runBackup(jobId: string): Promise<void> {
       const body = readFileSync(tarPath)
       const password = decryptPassword(target.password)
       const dir = [target.rootDir, job.subdirectory].filter(Boolean).join('/')
-      const destPath = (dir ? dir + '/' : '') + archiveFilename(job.name, job.dateSuffix)
+      const destPath =
+        (dir ? dir + '/' : '') +
+        archiveFilename(job.name, job.dateSuffix, job.timeSuffix)
       await uploadToWebdav(target.host, target.username, password, destPath, body)
       store().recordRun(jobId, { at, status: 'success', error: null })
     } catch (e) {

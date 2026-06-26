@@ -1,0 +1,19 @@
+<svg width="256" height="256" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
+  <rect width="256" height="256" rx="16" fill="#212529"/>
+
+  <!-- Unit 1: heartbeat + LED (static) -->
+  <rect x="32" y="36" width="192" height="68" rx="10"
+    fill="#2b3035" stroke="#555b61" stroke-width="10"/>
+  <path d="M 58 70 L 88 70 L 96 58 L 102 85 L 109 54 L 117 70 L 152 70"
+    fill="none" stroke="#fbad18" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="192" cy="70" r="13" fill="#fbad18"/>
+
+  <!-- Unit 2: stripe + LED -->
+  <rect x="32" y="104" width="192" height="68" rx="10"
+    fill="#2b3035" stroke="#555b61" stroke-width="10"/>
+  <rect x="54" y="130" width="96" height="16" rx="8" fill="#555b61"/>
+  <circle cx="192" cy="138" r="13" fill="#fbad18"/>
+
+  <!-- Orange bar -->
+  <rect x="32" y="182" width="192" height="24" rx="12" fill="#fbad18"/>
+</svg>

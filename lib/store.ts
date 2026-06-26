@@ -53,6 +53,8 @@ export interface JobInput {
   subdirectory: string
   /** Append _YYYY-MM-DD to the archive filename. */
   dateSuffix: boolean
+  /** Append _HH-MM-SS to the archive filename. */
+  timeSuffix: boolean
 }
 
 export interface JobRecord extends JobInput {
@@ -102,6 +104,7 @@ interface JobRow {
   output: string
   subdirectory: string
   dateSuffix: number
+  timeSuffix: number
   active: number
   createdAt: string
   lastRunAt: string | null
@@ -114,6 +117,7 @@ function rowToJob(row: JobRow): JobRecord {
     ...row,
     includes: JSON.parse(row.includes) as string[],
     dateSuffix: !!row.dateSuffix,
+    timeSuffix: !!row.timeSuffix,
     active: !!row.active,
   }
 }
@@ -162,6 +166,7 @@ export function openStore(path: string): Store {
        output TEXT NOT NULL DEFAULT 'single',
        subdirectory TEXT NOT NULL DEFAULT '',
        date_suffix INTEGER NOT NULL DEFAULT 0,
+       time_suffix INTEGER NOT NULL DEFAULT 0,
        active INTEGER NOT NULL DEFAULT 0,
        created_at TEXT NOT NULL,
        last_run_at TEXT,
@@ -180,6 +185,9 @@ export function openStore(path: string): Store {
   }
   if (!jobColNames.includes('date_suffix')) {
     db.exec('ALTER TABLE jobs ADD COLUMN date_suffix INTEGER NOT NULL DEFAULT 0')
+  }
+  if (!jobColNames.includes('time_suffix')) {
+    db.exec('ALTER TABLE jobs ADD COLUMN time_suffix INTEGER NOT NULL DEFAULT 0')
   }
   if (jobColNames.includes('excludes') && !jobColNames.includes('includes')) {
     db.exec('ALTER TABLE jobs RENAME COLUMN excludes TO includes')
@@ -227,19 +235,21 @@ export function openStore(path: string): Store {
   // --- Jobs ---
   const jobCols = `id, target_id AS targetId, name, type, source_path AS sourcePath,
                    includes, output, subdirectory, date_suffix AS dateSuffix,
-                   active, created_at AS createdAt, last_run_at AS lastRunAt,
+                   time_suffix AS timeSuffix, active, created_at AS createdAt,
+                   last_run_at AS lastRunAt,
                    last_status AS lastStatus, last_error AS lastError`
   const listJobsStmt = db.prepare(`SELECT ${jobCols} FROM jobs ORDER BY created_at`)
   const getJobStmt = db.prepare(`SELECT ${jobCols} FROM jobs WHERE id = ?`)
   const insertJobStmt = db.prepare(
     `INSERT INTO jobs
        (id, target_id, name, type, source_path, includes, output, subdirectory,
-        date_suffix, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        date_suffix, time_suffix, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
   const updateJobStmt = db.prepare(
     `UPDATE jobs SET target_id = ?, name = ?, type = ?, source_path = ?,
-       includes = ?, output = ?, subdirectory = ?, date_suffix = ? WHERE id = ?`,
+       includes = ?, output = ?, subdirectory = ?, date_suffix = ?,
+       time_suffix = ? WHERE id = ?`,
   )
   const setActiveStmt = db.prepare('UPDATE jobs SET active = ? WHERE id = ?')
   const deleteJobStmt = db.prepare('DELETE FROM jobs WHERE id = ?')
@@ -328,6 +338,7 @@ export function openStore(path: string): Store {
         input.output,
         input.subdirectory,
         input.dateSuffix ? 1 : 0,
+        input.timeSuffix ? 1 : 0,
         createdAt,
       )
       return {
@@ -352,6 +363,7 @@ export function openStore(path: string): Store {
           input.output,
           input.subdirectory,
           input.dateSuffix ? 1 : 0,
+          input.timeSuffix ? 1 : 0,
           id,
         ).changes > 0
       )

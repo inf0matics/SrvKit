@@ -21,6 +21,10 @@ export default defineNuxtConfig({
   app: {
     head: {
       htmlAttrs: { lang: 'en', 'data-theme': 'dark' },
+      link: [
+        { rel: 'icon', type: 'image/x-icon', href: '/favicon.ico' },
+        { rel: 'icon', type: 'image/svg+xml', href: '/srvkit-icon-static.svg' },
+      ],
     },
   },
   // Shared lib/ and cli/ use explicit .ts import specifiers so Node can run

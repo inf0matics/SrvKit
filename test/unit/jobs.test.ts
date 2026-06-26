@@ -11,6 +11,7 @@ const sample = {
   output: 'single',
   subdirectory: 'root',
   dateSuffix: false,
+  timeSuffix: false,
 }
 
 test('starts with no jobs', () => {

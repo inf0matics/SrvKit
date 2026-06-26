@@ -46,7 +46,7 @@ onBeforeUnmount(() => {
   <div class="shell-root">
     <aside class="sidenav">
       <NuxtLink to="/app" class="brand">
-        <img src="/srvkit-icon.svg" width="32" height="32" alt="" class="brand-icon">
+        <img src="/srvkit-icon-static.svg" width="32" height="32" alt="" class="brand-icon">
         <span class="brand-name">SrvKit<span class="brand-dot" aria-hidden="true">.</span></span>
       </NuxtLink>
 

@@ -28,14 +28,17 @@ export function getDbSources(): string[] {
   return listDbFiles(sourcesDir())
 }
 
-/** Archive filename for a job, with optional YYYY-MM-DD suffix. */
+/** Archive filename for a job, with optional _YYYY-MM-DD and _HH-MM-SS suffixes. */
 export function archiveFilename(
   name: string,
   dateSuffix: boolean,
+  timeSuffix = false,
   date = new Date(),
 ): string {
-  const suffix = dateSuffix ? `_${date.toISOString().slice(0, 10)}` : ''
-  return `${name}${suffix}.tar.gz`
+  const iso = date.toISOString()
+  const datePart = dateSuffix ? `_${iso.slice(0, 10)}` : ''
+  const timePart = timeSuffix ? `_${iso.slice(11, 19).replace(/:/g, '-')}` : ''
+  return `${name}${datePart}${timePart}.tar.gz`
 }
 
 /** File tree for a source, or null if the name isn't a known source. */
@@ -87,6 +90,7 @@ export function parseNewJob(body: Record<string, unknown> | null): JobInput {
     output: 'single',
     subdirectory: '',
     dateSuffix: false,
+    timeSuffix: false,
   }
 }
 
@@ -97,6 +101,7 @@ export function parseJobInput(body: Record<string, unknown> | null): JobInput {
   const output = trimStr(body?.output) || 'single'
   const subdirectory = normalizeRoot(body?.subdirectory)
   const dateSuffix = body?.dateSuffix === true
+  const timeSuffix = body?.timeSuffix === true
   const includes = Array.isArray(body?.includes)
     ? (body.includes as unknown[]).filter((e): e is string => typeof e === 'string')
     : []
@@ -124,7 +129,17 @@ export function parseJobInput(body: Record<string, unknown> | null): JobInput {
     }
   }
 
-  return { targetId, name, type, sourcePath, includes, output, subdirectory, dateSuffix }
+  return {
+    targetId,
+    name,
+    type,
+    sourcePath,
+    includes,
+    output,
+    subdirectory,
+    dateSuffix,
+    timeSuffix,
+  }
 }
 
 export function trimStr(v: unknown): string {

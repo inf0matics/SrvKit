@@ -11,6 +11,7 @@ interface Job {
   subdirectory: string
   includes: string[]
   dateSuffix: boolean
+  timeSuffix: boolean
 }
 
 const route = useRoute()
@@ -39,6 +40,7 @@ const form = reactive({
   output: 'single',
   subdirectory: '',
   dateSuffix: false,
+  timeSuffix: false,
 })
 const includes = ref<string[]>([])
 
@@ -52,16 +54,19 @@ watch(
     form.output = j.output
     form.subdirectory = j.subdirectory
     form.dateSuffix = j.dateSuffix
+    form.timeSuffix = j.timeSuffix
     includes.value = j.includes
   },
   { immediate: true },
 )
 
-// Full destination: {host}/{root}/{subdirectory}/{name}[_date].tar.gz
+// Full destination: {host}/{root}/{subdirectory}/{name}[_date][_time].tar.gz
 const archive = computed(() => {
   const host = (target.value?.host ?? '').replace(/^https?:\/\//, '').replace(/\/+$/, '')
-  const date = new Date().toISOString().slice(0, 10)
-  const file = (form.name || 'job') + (form.dateSuffix ? `_${date}` : '') + '.tar.gz'
+  const iso = new Date().toISOString()
+  const date = form.dateSuffix ? `_${iso.slice(0, 10)}` : ''
+  const time = form.timeSuffix ? `_${iso.slice(11, 19).replace(/:/g, '-')}` : ''
+  const file = (form.name || 'job') + date + time + '.tar.gz'
   const segs = [host, target.value?.rootDir, form.subdirectory].filter(Boolean)
   return [...segs, file].join('/')
 })
@@ -84,6 +89,7 @@ async function save() {
         output: form.output,
         subdirectory: form.subdirectory,
         dateSuffix: form.dateSuffix,
+        timeSuffix: form.timeSuffix,
       },
     })
     await navigateTo(`/app/backups/${targetId}`)
@@ -168,6 +174,10 @@ async function save() {
       <label class="field toggle">
         <input v-model="form.dateSuffix" type="checkbox">
         <span>Append date to filename (_YYYY-MM-DD)</span>
+      </label>
+      <label class="field toggle">
+        <input v-model="form.timeSuffix" type="checkbox">
+        <span>Append time to filename (_HH-MM-SS)</span>
       </label>
       <p v-if="saveError" class="err">{{ saveError }}</p>
 

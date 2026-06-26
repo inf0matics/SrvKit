@@ -42,6 +42,7 @@ before(() => {
     output: 'single',
     subdirectory: 'sub',
     dateSuffix: false,
+    timeSuffix: false,
   }).id
 })
 
@@ -90,6 +91,7 @@ test('sqlite job backs up the db and uploads with a dated filename', async () =>
     output: 'single',
     subdirectory: 'db',
     dateSuffix: true,
+    timeSuffix: true,
   }).id
 
   const calls: { method: string; url: string }[] = []
@@ -102,6 +104,9 @@ test('sqlite job backs up the db and uploads with a dated filename', async () =>
 
   assert.equal(store().getJob(sqliteJobId)?.lastStatus, 'success')
   const put = calls.find((c) => c.method === 'PUT')
-  // .../srvkit/db/App_YYYY-MM-DD.tar.gz
-  assert.match(put!.url, /\/srvkit\/db\/App_\d{4}-\d{2}-\d{2}\.tar\.gz$/)
+  // .../srvkit/db/App_YYYY-MM-DD_HH-MM-SS.tar.gz
+  assert.match(
+    put!.url,
+    /\/srvkit\/db\/App_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.tar\.gz$/,
+  )
 })
