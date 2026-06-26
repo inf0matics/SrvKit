@@ -21,6 +21,7 @@ const {
   buildFailedMessage,
   buildRecoveredMessage,
   messagePrefix,
+  sendTestAlert,
 } = await import('../../server/utils/alerts.ts')
 
 let jobId = ''
@@ -150,6 +151,14 @@ test('message builders match the spec format', () => {
     buildRecoveredMessage('[SrvKit]', 'App DB'),
     '✅ [SrvKit]: Backup "App DB" is back to OK.',
   )
+})
+
+test('test message carries the server-name prefix', async () => {
+  store().setConfig('server_name', 'edge-1')
+  await sendTestAlert('TKN', '123')
+  assert.equal(calls.length, 1)
+  assert.match(calls[0]!.text, /^✅ \[edge-1\|SrvKit\]: Test alert/)
+  store().setConfig('server_name', '') // reset for other tests
 })
 
 test('message prefix uses the server name when set', () => {

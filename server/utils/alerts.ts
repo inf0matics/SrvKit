@@ -108,7 +108,9 @@ export async function sendTestAlert(token: string, chatId: string): Promise<void
   if (!token || !chatId) {
     throw new Error('Bot token and chat ID are required to send a test message.')
   }
-  await sendTelegram(token, chatId, '✅ SrvKit test alert — Telegram is configured correctly.')
+  // Use the same prefix real alerts do, so the test previews the server name.
+  const text = `✅ ${messagePrefix()}: Test alert — Telegram is configured correctly.`
+  await sendTelegram(token, chatId, text)
 }
 
 export function buildFailedMessage(prefix: string, name: string, run: RunResult): string {
