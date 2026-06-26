@@ -140,6 +140,35 @@ test('mute + listMutedJobs joins the target name', () => {
   s.close()
 })
 
+test('listIncidents returns failing jobs with target name and since', () => {
+  const s = openStore(':memory:')
+  const t = s.createTarget({
+    name: 'my-nextcloud',
+    host: 'https://nc',
+    username: 'u',
+    password: 'p',
+    rootDir: '',
+  })
+  const ok = s.createJob({ ...sample, name: 'Healthy', targetId: t.id })
+  const bad = s.createJob({ ...sample, name: 'App DB', targetId: t.id })
+  assert.deepEqual(s.listIncidents(), []) // nothing failing yet
+
+  s.setJobAlertState(bad.id, 'failed')
+  s.setIncidentSince(bad.id, '2026-06-25T03:12:00Z')
+  const inc = s.listIncidents()
+  assert.equal(inc.length, 1)
+  assert.equal(inc[0]?.name, 'App DB')
+  assert.equal(inc[0]?.targetName, 'my-nextcloud')
+  assert.equal(inc[0]?.since, '2026-06-25T03:12:00Z')
+
+  // Healthy job stays out; closing the incident removes it from the list.
+  assert.equal(s.getJob(ok.id)?.incidentSince, null)
+  s.setJobAlertState(bad.id, 'ok')
+  s.setIncidentSince(bad.id, null)
+  assert.deepEqual(s.listIncidents(), [])
+  s.close()
+})
+
 test('getConfig/setConfig round-trip', () => {
   const s = openStore(':memory:')
   assert.equal(s.getConfig('alerts_k'), null)

@@ -143,10 +143,14 @@ export async function handleRunResult(jobId: string, run: RunResult): Promise<vo
     const prefix = messagePrefix()
 
     if (run.status === 'failed' && job.alertState !== 'failed') {
+      // Open an incident: record the first failure of this streak.
       store().setJobAlertState(jobId, 'failed')
+      store().setIncidentSince(jobId, run.at)
       if (!job.muted) await dispatch(buildFailedMessage(prefix, job.name, run))
     } else if (run.status === 'success' && job.alertState === 'failed') {
+      // Close the incident.
       store().setJobAlertState(jobId, 'ok')
+      store().setIncidentSince(jobId, null)
       if (!job.muted && recoveryEnabled()) {
         await dispatch(buildRecoveredMessage(prefix, job.name))
       }

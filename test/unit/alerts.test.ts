@@ -67,6 +67,7 @@ beforeEach(() => {
   // Reset to a known channel + state before each test.
   saveAlertSettings({ token: 'TKN', chatId: '123', enabled: true, recovery: true })
   store().setJobAlertState(jobId, 'ok')
+  store().setIncidentSince(jobId, null)
   store().setJobMuted(jobId, false)
 })
 
@@ -92,6 +93,15 @@ test('OK → FAILED sends a failure alert and flips state', async () => {
   assert.match(calls[0]!.text, /Backup "App DB" failed/)
   assert.match(calls[0]!.text, /connection timeout/)
   assert.equal(store().getJob(jobId)?.alertState, 'failed')
+  // The incident opens with the failing run's timestamp.
+  assert.equal(store().getJob(jobId)?.incidentSince, '2026-06-25T03:12:44Z')
+})
+
+test('FAILED → OK closes the incident (clears incidentSince)', async () => {
+  store().setJobAlertState(jobId, 'failed')
+  store().setIncidentSince(jobId, '2026-06-25T01:00:00Z')
+  await handleRunResult(jobId, run('success'))
+  assert.equal(store().getJob(jobId)?.incidentSince, null)
 })
 
 test('FAILED → FAILED stays quiet (no spam)', async () => {

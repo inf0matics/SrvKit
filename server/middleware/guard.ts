@@ -12,7 +12,8 @@ export default defineEventHandler(async (event) => {
     path.startsWith('/api/backups') ||
     path.startsWith('/api/fs') ||
     path.startsWith('/api/settings') ||
-    path.startsWith('/api/alerts')
+    path.startsWith('/api/alerts') ||
+    path.startsWith('/api/dashboard')
   if (!isAppPage && !isProtectedApi) return
 
   const session = await getAuthSession(event)

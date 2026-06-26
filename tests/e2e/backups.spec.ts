@@ -158,6 +158,22 @@ test.describe.serial('backups', () => {
     await expect(page.getByTestId('job-status')).toContainText('Last backup')
   })
 
+  test('dashboard: the failed job opens an incident that links to the job', async () => {
+    await page.goto('/app/dashboard')
+    await expect(page.getByTestId('metric-jobs')).toContainText('1')
+    const incident = page.getByTestId('incident-row')
+    await expect(incident).toContainText('Root configs')
+    await expect(incident).toContainText('My Nextcloud')
+    await expect(incident).toContainText('since')
+
+    await incident.click()
+    await expect(page).toHaveURL(/\/jobs\/[0-9a-f-]+\/edit$/)
+
+    // Back to the target detail page for the following tests.
+    await page.locator('.subnav').getByRole('link', { name: 'My Nextcloud' }).click()
+    await expect(page.getByTestId('target-page')).toBeVisible()
+  })
+
   test('detail: edit a job opens the edit page', async () => {
     await page.getByRole('button', { name: 'Edit job' }).click()
     await expect(page).toHaveURL(/\/jobs\/[0-9a-f-]+\/edit$/)
@@ -305,5 +321,11 @@ test.describe.serial('backups', () => {
     await page.getByRole('button', { name: 'Delete', exact: true }).click()
     await expect(content().getByText('Renamed NC')).toHaveCount(0)
     await expect(page.getByText('No targets yet.')).toBeVisible()
+  })
+
+  test('dashboard: all clear when no incidents are open', async () => {
+    await page.goto('/app/dashboard')
+    await expect(page.getByTestId('all-clear')).toContainText('All systems OK')
+    await expect(page.getByTestId('incidents')).toHaveCount(0)
   })
 })
