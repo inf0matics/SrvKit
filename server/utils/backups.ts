@@ -1,13 +1,16 @@
-import { join } from 'node:path'
+import { join, resolve, sep } from 'node:path'
 import { createError } from 'h3'
 import { encrypt, decrypt } from '../../lib/crypto.ts'
 import {
   listSources,
   listDbFiles,
+  listChildren,
   buildTree,
   type TreeNode,
+  type ChildNode,
 } from '../../lib/sources.ts'
 import type { JobInput } from '../../lib/store.ts'
+import { isSqliteFile } from '../../lib/sqlite-backup.ts'
 import { store } from './srvkit.ts'
 
 /** Base directory holding the mounted backup sources. */
@@ -41,6 +44,21 @@ export function getSourceTree(name: string): TreeNode[] | null {
   return buildTree(join(sourcesDir(), name))
 }
 
+/** Resolve a base-relative path to an absolute path, or null if it escapes. */
+export function resolveSourcePath(rel: string): string | null {
+  const base = resolve(sourcesDir())
+  const full = resolve(base, rel || '.')
+  if (full !== base && !full.startsWith(base + sep)) return null
+  return full
+}
+
+/** Direct children of a base-relative path (lazy tree), or null if invalid. */
+export function getChildren(rel: string): ChildNode[] | null {
+  const full = resolveSourcePath(rel)
+  if (!full) return null
+  return listChildren(full, rel)
+}
+
 /** Validate + normalize a job request body (shared by create and update). */
 export function parseJobInput(body: Record<string, unknown> | null): JobInput {
   const name = trimStr(body?.name)
@@ -66,8 +84,19 @@ export function parseJobInput(body: Record<string, unknown> | null): JobInput {
   if (!store().getTarget(targetId)) {
     throw createError({ statusCode: 400, statusMessage: 'unknown target' })
   }
-  const validSources = type === 'sqlite' ? getDbSources() : getSources()
-  if (!validSources.includes(sourcePath)) {
+  if (type === 'sqlite') {
+    // Any mounted file that passes the SQLite header check is a valid source.
+    const abs = resolveSourcePath(sourcePath)
+    if (!abs) {
+      throw createError({ statusCode: 400, statusMessage: 'unknown source path' })
+    }
+    if (!isSqliteFile(abs)) {
+      throw createError({
+        statusCode: 400,
+        statusMessage: 'The selected file is not a valid SQLite database.',
+      })
+    }
+  } else if (!getSources().includes(sourcePath)) {
     throw createError({ statusCode: 400, statusMessage: 'unknown source path' })
   }
 

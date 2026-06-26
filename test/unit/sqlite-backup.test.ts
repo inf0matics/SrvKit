@@ -4,7 +4,7 @@ import { mkdtempSync, writeFileSync, rmSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
-import { backupSqliteFile } from '../../lib/sqlite-backup.ts'
+import { backupSqliteFile, isSqliteFile } from '../../lib/sqlite-backup.ts'
 import { listDbFiles } from '../../lib/sources.ts'
 
 let base = ''
@@ -24,6 +24,12 @@ after(() => rmSync(base, { recursive: true, force: true }))
 
 test('listDbFiles returns only *.db files', () => {
   assert.deepEqual(listDbFiles(base), ['app.db'])
+})
+
+test('isSqliteFile detects the header magic', () => {
+  assert.equal(isSqliteFile(join(base, 'app.db')), true)
+  assert.equal(isSqliteFile(join(base, 'notes.txt')), false) // not a db
+  assert.equal(isSqliteFile(join(base, 'missing.db')), false) // unreadable
 })
 
 test('backupSqliteFile produces a readable copy with the same rows', async () => {

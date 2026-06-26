@@ -110,7 +110,11 @@ test.describe.serial('backups', () => {
     // Redirected to the full edit page; file tree loads.
     await expect(page).toHaveURL(/\/jobs\/[0-9a-f-]+\/edit$/)
     await expect(page.getByTestId('job-edit')).toBeVisible()
+    // Lazy tree: root level loads; subfolder children load only on expand.
     await expect(page.getByText('.bashrc')).toBeVisible()
+    await expect(page.getByText('app.conf')).toHaveCount(0)
+    await page.getByRole('button', { name: 'Expand' }).first().click()
+    await expect(page.getByText('app.conf')).toBeVisible()
 
     await page.getByLabel('Nextcloud subdirectory').fill('root')
     // Edit-page archive preview shows the full host path (compact).
@@ -170,11 +174,12 @@ test.describe.serial('backups', () => {
     await expect(page.getByText('No backup jobs yet.')).toBeVisible()
   })
 
-  test('detail: create a SQLite job (type + date suffix)', async () => {
+  test('detail: create a SQLite job (file picker + date suffix)', async () => {
     await page.getByRole('button', { name: 'Add Job' }).click()
     await page.getByLabel('Name', { exact: true }).fill('App DB')
     await page.getByLabel('Type').selectOption('sqlite')
-    await page.getByLabel('Mounted path').selectOption('app.db')
+    // File picker (lazy tree from /backups): pick app.db.
+    await page.getByRole('button', { name: 'app.db', exact: true }).click()
     await page.getByRole('button', { name: 'Create' }).click()
 
     // Edit page: SQLite branch — read-only source file + date toggle, no tree.
@@ -193,6 +198,18 @@ test.describe.serial('backups', () => {
     await expect(page.getByTestId('job-dest')).toContainText(
       /\/srvkit\/db\/App DB_\d{4}-\d{2}-\d{2}\.tar\.gz/,
     )
+  })
+
+  test('detail: SQLite job rejects a non-database file', async () => {
+    await page.getByRole('button', { name: 'Add Job' }).click()
+    await page.getByLabel('Name', { exact: true }).fill('Bad DB')
+    await page.getByLabel('Type').selectOption('sqlite')
+    // Browse into home/ and pick a non-db file.
+    await page.getByRole('button', { name: 'home', exact: true }).click()
+    await page.getByRole('button', { name: 'notes.txt', exact: true }).click()
+    await page.getByRole('button', { name: 'Create' }).click()
+    await expect(page.getByText('not a valid SQLite database')).toBeVisible()
+    await page.getByRole('button', { name: 'Cancel' }).click()
   })
 
   test('sidebar lists the target and links to its page', async () => {

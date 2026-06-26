@@ -1,4 +1,23 @@
 import { DatabaseSync, backup } from 'node:sqlite'
+import { openSync, readSync, closeSync } from 'node:fs'
+
+// "SQLite format 3\0" — the 16-byte header magic at the start of every db file.
+const SQLITE_MAGIC = Buffer.from('SQLite format 3\0', 'latin1')
+
+/** True if `path` is a readable file beginning with the SQLite header magic. */
+export function isSqliteFile(path: string): boolean {
+  let fd: number | undefined
+  try {
+    fd = openSync(path, 'r')
+    const buf = Buffer.alloc(16)
+    const n = readSync(fd, buf, 0, 16, 0)
+    return n === 16 && buf.equals(SQLITE_MAGIC)
+  } catch {
+    return false
+  } finally {
+    if (fd !== undefined) closeSync(fd)
+  }
+}
 
 /**
  * Make a consistent copy of a (possibly live) SQLite database using the online

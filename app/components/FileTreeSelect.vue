@@ -1,106 +1,119 @@
 <script setup lang="ts">
-interface TreeNode {
-  name: string
-  path: string
-  type: 'file' | 'dir'
-  children?: TreeNode[]
-}
-interface FlatNode {
-  name: string
-  path: string
-  type: 'file' | 'dir'
-  depth: number
-  parentPath: string
-}
+import {
+  lazyTreeKey,
+  fetchChildren,
+  type ChildNode,
+  type LazyTreeController,
+} from '~/utils/lazyTree'
 
+// `sourcePath` is the base-relative source dir (e.g. 'root'); the v-model
+// excludes are stored relative to that source dir (e.g. 'configs/app.conf').
 const props = defineProps<{ sourcePath: string; modelValue: string[] }>()
 const emit = defineEmits<{ 'update:modelValue': [string[]] }>()
 
-const flat = ref<FlatNode[]>([])
-const checked = ref<Set<string>>(new Set())
-const loading = ref(false)
-const error = ref('')
+const cache = reactive(new Map<string, ChildNode[]>())
+const expanded = reactive(new Set<string>())
+const loading = reactive(new Set<string>())
+const excluded = ref(new Set(props.modelValue))
 
-function flatten(nodes: TreeNode[], depth: number, parent: string, out: FlatNode[]) {
-  for (const n of nodes) {
-    out.push({ name: n.name, path: n.path, type: n.type, depth, parentPath: parent })
-    if (n.children) flatten(n.children, depth + 1, n.path, out)
+const srcRel = (basePath: string) => basePath.slice(props.sourcePath.length + 1)
+
+function excludedByAncestor(rel: string): boolean {
+  const parts = rel.split('/')
+  let acc = ''
+  for (let i = 0; i < parts.length - 1; i++) {
+    acc = acc ? `${acc}/${parts[i]}` : parts[i]!
+    if (excluded.value.has(acc)) return true
   }
+  return false
 }
 
-const isChecked = (path: string) => checked.value.has(path)
-
-// Minimal exclude set: an unchecked node whose parent is still checked.
-function computeExcludes(): string[] {
-  return flat.value
-    .filter(
-      (n) =>
-        !checked.value.has(n.path) &&
-        (n.parentPath === '' || checked.value.has(n.parentPath)),
-    )
-    .map((n) => n.path)
-}
-
-async function load(excludes: string[]) {
-  if (!props.sourcePath) return
-  loading.value = true
-  error.value = ''
+async function load(basePath: string) {
+  if (cache.has(basePath)) return
+  loading.add(basePath)
   try {
-    const { tree } = await $fetch<{ tree: TreeNode[] }>(
-      `/api/backups/sources/${encodeURIComponent(props.sourcePath)}/tree`,
-    )
-    const out: FlatNode[] = []
-    flatten(tree, 0, '', out)
-    flat.value = out
-    const set = new Set(out.map((n) => n.path)) // all selected by default
-    for (const ex of excludes) {
-      for (const f of out) {
-        if (f.path === ex || f.path.startsWith(ex + '/')) set.delete(f.path)
-      }
-    }
-    checked.value = set
-    emit('update:modelValue', computeExcludes())
+    cache.set(basePath, await fetchChildren(basePath))
   } catch {
-    flat.value = []
-    error.value = 'Could not read the source directory'
+    cache.set(basePath, [])
   } finally {
-    loading.value = false
+    loading.delete(basePath)
   }
 }
 
-function toggle(node: FlatNode) {
-  const turnOn = !checked.value.has(node.path)
-  const next = new Set(checked.value)
-  for (const f of flat.value) {
-    if (f.path === node.path || f.path.startsWith(node.path + '/')) {
-      if (turnOn) next.add(f.path)
-      else next.delete(f.path)
+const ctrl: LazyTreeController = {
+  mode: 'checkbox',
+  childrenOf: (p) => cache.get(p) ?? [],
+  isExpanded: (p) => expanded.has(p),
+  isLoading: (p) => loading.has(p),
+  async toggleExpand(node) {
+    if (expanded.has(node.path)) {
+      expanded.delete(node.path)
+      return
+    }
+    await load(node.path)
+    expanded.add(node.path)
+  },
+  isChecked(node) {
+    const r = srcRel(node.path)
+    return !excluded.value.has(r) && !excludedByAncestor(r)
+  },
+  isDisabled: (node) => excludedByAncestor(srcRel(node.path)),
+  toggleCheck(node) {
+    const r = srcRel(node.path)
+    const next = new Set(excluded.value)
+    if (!next.has(r) && !excludedByAncestor(r)) {
+      // Currently included → exclude it (drop now-redundant descendant excludes).
+      for (const e of [...next]) if (e === r || e.startsWith(r + '/')) next.delete(e)
+      next.add(r)
+    } else {
+      next.delete(r) // re-include
+    }
+    excluded.value = next
+    emit('update:modelValue', [...next])
+  },
+  isSelected: () => false,
+  selectFile: () => {},
+  matches: () => true,
+}
+provide(lazyTreeKey, ctrl)
+
+const rootChildren = computed(() => cache.get(props.sourcePath) ?? [])
+
+onMounted(async () => {
+  await load(props.sourcePath)
+  // Pre-expand the folders that contain an excluded path.
+  for (const ex of excluded.value) {
+    const parts = ex.split('/')
+    let acc = props.sourcePath
+    for (let i = 0; i < parts.length - 1; i++) {
+      acc = `${acc}/${parts[i]}`
+      await load(acc)
+      expanded.add(acc)
     }
   }
-  checked.value = next
-  emit('update:modelValue', computeExcludes())
-}
+})
 
-onMounted(() => load(props.modelValue))
-// A new source starts fully selected.
-watch(() => props.sourcePath, () => load([]))
+watch(
+  () => props.sourcePath,
+  async () => {
+    cache.clear()
+    expanded.clear()
+    excluded.value = new Set()
+    emit('update:modelValue', [])
+    await load(props.sourcePath)
+  },
+)
 </script>
 
 <template>
   <div class="tree">
-    <p v-if="loading" class="tsp-muted pad">Loading…</p>
-    <p v-else-if="error" class="err pad">{{ error }}</p>
-    <p v-else-if="!flat.length" class="tsp-muted pad">This directory is empty.</p>
-    <label
-      v-for="n in flat"
-      :key="n.path"
-      class="tree-row"
-      :style="{ paddingLeft: 8 + n.depth * 18 + 'px' }"
-    >
-      <input type="checkbox" :checked="isChecked(n.path)" @change="toggle(n)">
-      <AppIcon :name="n.type === 'dir' ? 'folder' : 'tag'" />
-      <span>{{ n.name }}</span>
-    </label>
+    <p v-if="loading.has(sourcePath) && !cache.has(sourcePath)" class="tsp-muted pad">
+      Loading…
+    </p>
+    <p v-else-if="!rootChildren.length" class="tsp-muted pad">
+      This directory is empty.
+    </p>
+    <FsTreeNode v-for="n in rootChildren" :key="n.path" :node="n" :depth="0" />
   </div>
 </template>
 
@@ -113,29 +126,8 @@ watch(() => props.sourcePath, () => load([]))
   padding: 4px;
 }
 
-.tree-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 5px 6px;
-  font-size: 0.9rem;
-  border-radius: var(--tsp-radius-sm);
-  cursor: pointer;
-}
-
-.tree-row:hover {
-  background: var(--tsp-bg);
-}
-
 .tree .pad {
   padding: 8px;
   margin: 0;
-}
-
-.err {
-  padding: 8px;
-  margin: 0;
-  color: var(--tsp-danger);
-  font-size: 0.9rem;
 }
 </style>

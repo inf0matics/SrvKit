@@ -8,15 +8,16 @@ export default defineEventHandler(async (event) => {
   const path = event.path.split('?')[0]
 
   const isAppPage = path === '/app' || path.startsWith('/app/')
-  const isBackupsApi = path.startsWith('/api/backups')
-  if (!isAppPage && !isBackupsApi) return
+  const isProtectedApi =
+    path.startsWith('/api/backups') || path.startsWith('/api/fs')
+  if (!isAppPage && !isProtectedApi) return
 
   const session = await getAuthSession(event)
   const authed =
     store().isInitialized() && session.data.authenticated === true
 
   if (!authed) {
-    if (isBackupsApi) {
+    if (isProtectedApi) {
       throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
     }
     await sendRedirect(event, '/', 302)

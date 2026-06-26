@@ -132,11 +132,17 @@ async function save() {
         </label>
       </template>
 
-      <!-- SQLite: read-only source file + date-suffix toggle -->
+      <!-- SQLite: browse for the .db file + date-suffix toggle -->
       <template v-else>
         <div class="field">
           <span class="label">Source file</span>
-          <input class="tsp-input" :value="`/backups/${form.sourcePath}`" readonly>
+          <FilePicker v-model="form.sourcePath" />
+          <input
+            class="tsp-input selected"
+            :value="form.sourcePath ? `/backups/${form.sourcePath}` : ''"
+            placeholder="No file selected"
+            readonly
+          >
         </div>
 
         <label class="field toggle">
@@ -217,6 +223,10 @@ async function save() {
 .toggle span {
   margin: 0;
   color: var(--tsp-text);
+}
+
+.selected {
+  margin-top: 8px;
 }
 
 .archive {

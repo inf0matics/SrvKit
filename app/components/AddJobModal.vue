@@ -10,22 +10,15 @@ const emit = defineEmits<{ close: [] }>()
 
 const form = reactive({ name: '', type: 'files', sourcePath: '' })
 const sources = ref<string[]>([])
-const dbFiles = ref<string[]>([])
 const saving = ref(false)
 const error = ref('')
 
 onMounted(async () => {
-  const res = await $fetch<{ sources: string[]; dbFiles: string[] }>(
-    '/api/backups/sources',
-  )
+  const res = await $fetch<{ sources: string[] }>('/api/backups/sources')
   sources.value = res.sources
-  dbFiles.value = res.dbFiles
 })
 
-// Mounted paths depend on the type: directories for Files, .db files for SQLite.
-const mountedPaths = computed(() =>
-  form.type === 'sqlite' ? dbFiles.value : sources.value,
-)
+// Reset the selected path when switching type (dir dropdown vs file picker).
 watch(
   () => form.type,
   () => (form.sourcePath = ''),
@@ -80,13 +73,26 @@ async function create() {
           <option value="sqlite">SQLite</option>
         </select>
       </label>
-      <label class="field">
+      <!-- Files: pick a mounted directory -->
+      <label v-if="form.type === 'files'" class="field">
         <span>Mounted path</span>
         <select v-model="form.sourcePath" class="tsp-input">
           <option value="" disabled>Select a mounted path…</option>
-          <option v-for="s in mountedPaths" :key="s" :value="s">/backups/{{ s }}</option>
+          <option v-for="s in sources" :key="s" :value="s">/backups/{{ s }}</option>
         </select>
       </label>
+
+      <!-- SQLite: browse for the .db file -->
+      <div v-else class="field">
+        <span>Source file</span>
+        <FilePicker v-model="form.sourcePath" />
+        <input
+          class="tsp-input selected"
+          :value="form.sourcePath ? `/backups/${form.sourcePath}` : ''"
+          placeholder="No file selected"
+          readonly
+        >
+      </div>
 
       <p v-if="error" class="err">{{ error }}</p>
 
@@ -138,6 +144,10 @@ async function create() {
   font-size: 0.85rem;
   font-weight: 600;
   color: var(--tsp-text-muted);
+}
+
+.selected {
+  margin-top: 8px;
 }
 
 .err {
