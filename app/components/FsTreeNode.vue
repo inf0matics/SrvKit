@@ -37,12 +37,20 @@ function onName() {
         type="checkbox"
         :aria-label="node.name"
         :checked="ctrl.isChecked(node)"
+        :indeterminate="ctrl.isPartial(node)"
         :disabled="ctrl.isDisabled(node)"
         @change="ctrl.toggleCheck(node)"
       >
 
       <AppIcon :name="isDir ? 'folder' : 'tag'" />
       <button class="name" @click="onName">{{ node.name }}</button>
+      <span
+        v-if="ctrl.mode === 'checkbox' && ctrl.isPartial(node)"
+        class="partial"
+        data-testid="partial-indicator"
+        title="Some files in this folder are selected"
+        aria-hidden="true"
+      />
     </div>
 
     <template v-if="isDir && ctrl.isExpanded(node.path)">
@@ -103,6 +111,15 @@ function onName() {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Marker on a folder that has some (not all) of its contents selected. */
+.partial {
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--tsp-primary);
 }
 
 .spinner {

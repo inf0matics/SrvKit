@@ -17,6 +17,8 @@ export interface LazyTreeController {
   // checkbox mode
   isChecked: (node: ChildNode) => boolean
   isDisabled: (node: ChildNode) => boolean
+  /** A folder with some (but not all) descendants selected. */
+  isPartial: (node: ChildNode) => boolean
   toggleCheck: (node: ChildNode) => void
   // pick mode
   isSelected: (node: ChildNode) => boolean

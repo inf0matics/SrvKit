@@ -135,7 +135,13 @@ test.describe.serial('backups', () => {
     await page.getByRole('button', { name: 'Save' }).click()
     await expect(page.getByText('Select at least one file to back up.')).toBeVisible()
 
-    // Explicitly select a file, then save → job becomes active.
+    // Selecting a file inside a folder marks that folder as partially selected.
+    const configsRow = page.locator('.row', { hasText: 'configs' })
+    await expect(configsRow.getByTestId('partial-indicator')).toHaveCount(0)
+    await page.getByRole('checkbox', { name: 'app.conf' }).check()
+    await expect(configsRow.getByTestId('partial-indicator')).toBeVisible()
+
+    // Select a top-level file too, then save → job becomes active.
     await page.getByRole('checkbox', { name: '.bashrc' }).check()
     await expect(page.getByTestId('archive')).toContainText(
       '127.0.0.1:1/srvkit/root/Root configs.tar.gz',

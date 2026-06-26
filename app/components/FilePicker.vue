@@ -43,6 +43,7 @@ const ctrl: LazyTreeController = {
   },
   isChecked: () => false,
   isDisabled: () => false,
+  isPartial: () => false,
   toggleCheck: () => {},
   isSelected: (node) => node.type === 'file' && selected.value === node.path,
   selectFile(node) {

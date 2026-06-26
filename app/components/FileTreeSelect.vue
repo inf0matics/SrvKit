@@ -60,6 +60,17 @@ const ctrl: LazyTreeController = {
   },
   // Selected via an ancestor folder → can't be unchecked on its own.
   isDisabled: (node) => includedByAncestor(srcRel(node.path)),
+  // A folder is "partial" when it isn't fully selected but holds a selection
+  // somewhere below it. Derived from the flat set, so it works while collapsed.
+  isPartial(node) {
+    if (node.type !== 'dir') return false
+    const r = srcRel(node.path)
+    if (included.value.has(r) || includedByAncestor(r)) return false
+    for (const inc of included.value) {
+      if (inc.startsWith(r + '/')) return true
+    }
+    return false
+  },
   toggleCheck(node) {
     const r = srcRel(node.path)
     const next = new Set(included.value)
