@@ -1,23 +1,33 @@
 import type { MaybeRefOrGetter } from 'vue'
 
 /**
- * Shared server name (set via Settings → General). Fetched once into shared
- * state; the Settings page updates it on save so titles refresh live.
+ * Shared general server info — name (set via Settings) and timezone (the zone
+ * cron schedules run in). Fetched once into shared state; the Settings page
+ * updates the name on save so titles refresh live.
  */
-export function useServerName() {
+export function useServerInfo() {
   const serverName = useState<string>('server-name', () => '')
+  const timezone = useState<string>('server-tz', () => '')
 
   async function refresh() {
     try {
-      const { serverName: sn } = await $fetch<{ serverName: string }>(
-        '/api/settings/general',
-      )
+      const { serverName: sn, timezone: tz } = await $fetch<{
+        serverName: string
+        timezone: string
+      }>('/api/settings/general')
       serverName.value = sn
+      timezone.value = tz
     } catch {
-      // Unauthenticated / endpoint unavailable — leave the current value.
+      // Unauthenticated / endpoint unavailable — leave the current values.
     }
   }
 
+  return { serverName, timezone, refresh }
+}
+
+/** Server name + refresh (used by the page-title prefix). */
+export function useServerName() {
+  const { serverName, refresh } = useServerInfo()
   return { serverName, refresh }
 }
 

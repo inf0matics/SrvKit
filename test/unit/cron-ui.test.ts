@@ -28,10 +28,17 @@ test('cronNextRun returns a future Date, or null when invalid', () => {
   assert.equal(cronNextRun('bad'), null)
 })
 
-test('formatNextRun: today / tomorrow / DD.MM', () => {
+test('formatNextRun: today / tomorrow / DD.MM.YYYY', () => {
   assert.ok(formatNextRun(at(0, 3, 0)).startsWith('today '))
   assert.ok(formatNextRun(at(1, 3, 0)).startsWith('tomorrow '))
-  assert.match(formatNextRun(at(5, 3, 0)), /^\d{2}\.\d{2} /) // DD.MM HH:MM
+  assert.match(formatNextRun(at(5, 3, 0)), /^\d{2}\.\d{2}\.\d{4} \d{2}:\d{2}$/)
+})
+
+test('formatNextRun honours an explicit timezone', () => {
+  // 12:00 UTC renders as 12:00 in UTC and 14:00 in UTC+2 (Europe/Berlin, summer).
+  const noonUtc = new Date('2026-07-15T12:00:00Z')
+  assert.match(formatNextRun(noonUtc, 'UTC'), /12:00$/)
+  assert.match(formatNextRun(noonUtc, 'Europe/Berlin'), /14:00$/)
 })
 
 test('cronNextLabel is empty for an invalid/empty expression', () => {

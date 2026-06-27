@@ -16,12 +16,17 @@ const PRESETS = [
   { label: 'Every month (1st, 03:00)', cron: '0 3 1 * *' },
 ]
 
+// Times are interpreted/shown in the server timezone (where cron runs).
+const { timezone } = useServerInfo()
+
 const trimmed = computed(() => props.modelValue.trim())
 // null = empty (neutral), true = valid, false = invalid.
 const validity = computed<boolean | null>(() =>
   trimmed.value === '' ? null : cronIsValid(trimmed.value),
 )
-const nextLabel = computed(() => (validity.value ? cronNextLabel(trimmed.value) : ''))
+const nextLabel = computed(() =>
+  validity.value ? cronNextLabel(trimmed.value, timezone.value) : '',
+)
 
 const presetsOpen = ref(false)
 function selectPreset(cron: string) {
@@ -82,7 +87,10 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
       data-testid="cron-next"
     >
       <template v-if="validity === false">Invalid cron expression</template>
-      <template v-else>Next run: {{ nextLabel || '—' }}</template>
+      <template v-else>
+        Next run: {{ nextLabel || '—' }}
+        <span v-if="validity && timezone" class="tz">({{ timezone }})</span>
+      </template>
     </p>
   </div>
 </template>
@@ -166,5 +174,9 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
 
 .next.err {
   color: var(--tsp-danger);
+}
+
+.tz {
+  color: var(--tsp-text-muted);
 }
 </style>

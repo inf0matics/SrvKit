@@ -11,34 +11,51 @@ export function cronIsValid(expr: string): boolean {
   }
 }
 
-/** Next fire time for `expr`, or null when empty/invalid. */
-export function cronNextRun(expr: string): Date | null {
+/**
+ * Next fire time for `expr`, interpreted in `tz` (the server's timezone) so the
+ * preview matches when the job actually runs. Null when empty/invalid.
+ */
+export function cronNextRun(expr: string, tz?: string): Date | null {
   if (!cronIsValid(expr)) return null
-  return new Cron(expr).nextRun()
+  return (tz ? new Cron(expr, { timezone: tz }) : new Cron(expr)).nextRun()
+}
+
+function zoneOpts(tz?: string): { timeZone?: string } {
+  return tz ? { timeZone: tz } : {}
+}
+
+// YYYY-MM-DD calendar key for `d` in the given timezone.
+function dayKey(d: Date, tz?: string): string {
+  return d.toLocaleDateString('en-CA', zoneOpts(tz))
 }
 
 /**
- * Human "next run" label relative to now:
- *   `today 03:00` · `tomorrow 03:00` · `26.06 03:00`
+ * Human "next run" label in timezone `tz`:
+ *   `today 19:00` · `tomorrow 19:00` · `28.06.2026 19:00`
  */
-export function formatNextRun(d: Date): string {
-  const time = d.toLocaleTimeString([], {
+export function formatNextRun(d: Date, tz?: string): string {
+  const time = d.toLocaleTimeString('en-GB', {
+    ...zoneOpts(tz),
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,
   })
-  const dayStart = (x: Date) =>
-    new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime()
-  const diffDays = Math.round((dayStart(d) - dayStart(new Date())) / 86_400_000)
-  if (diffDays === 0) return `today ${time}`
-  if (diffDays === 1) return `tomorrow ${time}`
-  const dd = String(d.getDate()).padStart(2, '0')
-  const mm = String(d.getMonth() + 1).padStart(2, '0')
-  return `${dd}.${mm} ${time}`
+  const key = dayKey(d, tz)
+  if (key === dayKey(new Date(), tz)) return `today ${time}`
+  if (key === dayKey(new Date(Date.now() + 86_400_000), tz)) return `tomorrow ${time}`
+  const date = d
+    .toLocaleDateString('en-GB', {
+      ...zoneOpts(tz),
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    })
+    .replace(/\//g, '.') // 28/06/2026 → 28.06.2026
+  return `${date} ${time}`
 }
 
 /** Convenience: next-run label for a cron expression, or '' when none. */
-export function cronNextLabel(expr: string): string {
-  const next = cronNextRun(expr)
-  return next ? formatNextRun(next) : ''
+export function cronNextLabel(expr: string, tz?: string): string {
+  const next = cronNextRun(expr, tz)
+  return next ? formatNextRun(next, tz) : ''
 }

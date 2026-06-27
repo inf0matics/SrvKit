@@ -116,7 +116,8 @@ const TYPE_LABELS: Record<string, string> = {
   files: 'Files',
 }
 const typeLabel = (job: Job) => TYPE_LABELS[job.type] ?? 'Files'
-const fmtNext = (iso: string) => formatNextRun(new Date(iso))
+const { timezone } = useServerInfo()
+const fmtNext = (iso: string) => formatNextRun(new Date(iso), timezone.value)
 
 /** Full Nextcloud destination path: {host}/{root}/{subdir}/{name}[_date].tar.gz */
 function destPath(job: Job): string {
