@@ -59,3 +59,23 @@ export function cronNextLabel(expr: string, tz?: string): string {
   const next = cronNextRun(expr, tz)
   return next ? formatNextRun(next, tz) : ''
 }
+
+/**
+ * Human "last run" label in timezone `tz`:
+ *   `today 21:00` · `yesterday 21:00` · `28.06 21:00`
+ */
+export function formatLastRun(d: Date, tz?: string): string {
+  const time = d.toLocaleTimeString('en-GB', {
+    ...zoneOpts(tz),
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  })
+  const key = dayKey(d, tz)
+  if (key === dayKey(new Date(), tz)) return `today ${time}`
+  if (key === dayKey(new Date(Date.now() - 86_400_000), tz)) return `yesterday ${time}`
+  const date = d
+    .toLocaleDateString('en-GB', { ...zoneOpts(tz), day: '2-digit', month: '2-digit' })
+    .replace(/\//g, '.') // 28/06 → 28.06
+  return `${date} ${time}`
+}

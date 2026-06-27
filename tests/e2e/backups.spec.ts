@@ -163,9 +163,9 @@ test.describe.serial('backups', () => {
   test('detail: Run Now records a failed run (upload unreachable)', async () => {
     await expect(page.getByTestId('job-status')).toHaveText('No backup yet')
     await page.getByRole('button', { name: 'Run job now' }).click()
-    // Failed run shows "Last backup: …" with the error inline.
-    await expect(page.getByTestId('job-status')).toContainText('Upload failed')
-    await expect(page.getByTestId('job-status')).toContainText('Last backup')
+    // Failed run: status shows the shortened time; full error sits in its own area.
+    await expect(page.getByTestId('job-status')).toContainText('today')
+    await expect(page.getByTestId('job-error')).toContainText('Upload failed')
   })
 
   test('dashboard: the failed job opens an incident that links to the job', async () => {

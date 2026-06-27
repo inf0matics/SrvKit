@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { TargetSummary } from '~/composables/useTargets'
-import { formatNextRun } from '~/utils/cron'
+import { formatNextRun, formatLastRun } from '~/utils/cron'
 
 interface Job {
   id: string
@@ -65,7 +65,10 @@ async function toggleMute(job: Job) {
   await Promise.all([refreshJobs(), refreshMuted()])
 }
 
-const fmt = (iso: string | null) => (iso ? new Date(iso).toLocaleString() : '')
+// Cron/last-run times render in the server timezone (where jobs run).
+const { timezone } = useServerInfo()
+const fmt = (iso: string | null) =>
+  iso ? formatLastRun(new Date(iso), timezone.value) : ''
 
 /* ---- debounce countdown (client-side, seeded from server remainingMs) ---- */
 const nowMs = ref(Date.now())
@@ -116,7 +119,6 @@ const TYPE_LABELS: Record<string, string> = {
   files: 'Files',
 }
 const typeLabel = (job: Job) => TYPE_LABELS[job.type] ?? 'Files'
-const { timezone } = useServerInfo()
 const fmtNext = (iso: string) => formatNextRun(new Date(iso), timezone.value)
 
 /** Full Nextcloud destination path: {host}/{root}/{subdir}/{name}[_date].tar.gz */
@@ -132,6 +134,7 @@ function destPath(job: Job): string {
 <template>
   <div class="jobs">
     <div v-for="job in jobs" :key="job.id" class="job">
+      <div class="job-row">
       <template v-if="confirmingDelete === job.id">
         <div class="job-info">
           <div class="job-name">{{ job.name }}</div>
@@ -161,10 +164,10 @@ function destPath(job: Job): string {
             ⏳ {{ countdownSeconds(job) }}s
           </span>
           <span v-else-if="job.state === 'success'" class="tsp-muted">
-            ✓ Last backup: {{ fmt(job.lastRunAt) }}
+            ✓ {{ fmt(job.lastRunAt) }}
           </span>
           <span v-else-if="job.state === 'failed'" class="st-fail">
-            ✗ Last backup: {{ fmt(job.lastRunAt) }}<template v-if="job.lastError"> — {{ job.lastError }}</template>
+            ✗ {{ fmt(job.lastRunAt) }}
           </span>
           <span v-else class="tsp-muted">No backup yet</span>
         </span>
@@ -204,6 +207,14 @@ function destPath(job: Job): string {
           <AppIcon name="trash" />
         </button>
       </template>
+      </div>
+
+      <!-- Failed run: full error in a dedicated area below the row. -->
+      <pre
+        v-if="confirmingDelete !== job.id && job.state === 'failed' && job.lastError"
+        class="job-error"
+        data-testid="job-error"
+      >{{ job.lastError }}</pre>
     </div>
 
     <p v-if="!jobs.length" class="tsp-muted no-jobs">No backup jobs yet.</p>
@@ -220,11 +231,28 @@ function destPath(job: Job): string {
 }
 
 .job {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--tsp-border);
+}
+
+.job-row {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px 0;
-  border-bottom: 1px solid var(--tsp-border);
+}
+
+.job-error {
+  margin: 8px 0 2px;
+  padding: 8px 10px;
+  background: rgba(255, 99, 71, 0.08);
+  border: 1px solid var(--tsp-danger);
+  border-radius: var(--tsp-radius-sm);
+  color: var(--tsp-danger);
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-all;
 }
 
 .job-info {
