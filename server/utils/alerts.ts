@@ -87,10 +87,12 @@ export async function sendTelegram(
   chatId: string,
   text: string,
 ): Promise<void> {
+  // Plain text (no parse_mode): alert text contains arbitrary error output and
+  // the [server|SrvKit] prefix, which would break Markdown/HTML entity parsing.
   const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'Markdown' }),
+    body: JSON.stringify({ chat_id: chatId, text }),
   })
   if (!res.ok) {
     let detail = ''

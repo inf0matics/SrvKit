@@ -26,11 +26,12 @@ const {
 
 let jobId = ''
 const realFetch = globalThis.fetch
-let calls: { url: string; text: string }[] = []
+let calls: { url: string; text: string; parseMode: string | undefined }[] = []
 
 function mockOk() {
   globalThis.fetch = (async (url: string, init: { body: string }) => {
-    calls.push({ url: String(url), text: JSON.parse(init.body).text })
+    const body = JSON.parse(init.body)
+    calls.push({ url: String(url), text: body.text, parseMode: body.parse_mode })
     return { ok: true, status: 200, json: async () => ({}) } as Response
   }) as typeof fetch
 }
@@ -99,6 +100,8 @@ test('OK → FAILED sends a failure alert and flips state', async () => {
   assert.match(calls[0]!.url, /api\.telegram\.org\/botTKN\/sendMessage$/)
   assert.match(calls[0]!.text, /Backup "App DB" failed/)
   assert.match(calls[0]!.text, /connection timeout/)
+  // Sent as plain text — Markdown would choke on error output / the [..] prefix.
+  assert.equal(calls[0]!.parseMode, undefined)
   assert.equal(store().getJob(jobId)?.alertState, 'failed')
   // The incident opens with the failing run's timestamp.
   assert.equal(store().getJob(jobId)?.incidentSince, '2026-06-25T03:12:44Z')
@@ -109,6 +112,15 @@ test('FAILED → OK closes the incident (clears incidentSince)', async () => {
   store().setIncidentSince(jobId, '2026-06-25T01:00:00Z')
   await handleRunResult(jobId, run('success'))
   assert.equal(store().getJob(jobId)?.incidentSince, null)
+})
+
+test('failure text with Markdown-special characters is sent verbatim', async () => {
+  const err =
+    'pg_dump exited 1: role "x_y" does not exist [FATAL] *socket* `/var/run/postgresql`'
+  await handleRunResult(jobId, run('failed', err))
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0]!.parseMode, undefined)
+  assert.ok(calls[0]!.text.includes(err)) // unescaped, intact
 })
 
 test('FAILED → FAILED stays quiet (no spam)', async () => {
