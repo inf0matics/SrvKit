@@ -1,6 +1,23 @@
 # Changelog
 
 
+## v0.0.6
+
+[compare changes](https://github.com/inf0matics/SrvKit/compare/v0.0.5...v0.0.6)
+
+### 🚀 Enhancements
+
+- Cron field UX, job-row next run, PG create gating (07.01, 11.01, 11.02) ([dfc6d20](https://github.com/inf0matics/SrvKit/commit/dfc6d20))
+- Job-row status — short timestamps + dedicated error area (07.02) ([80dcc9d](https://github.com/inf0matics/SrvKit/commit/80dcc9d))
+
+### 🩹 Fixes
+
+- Cron next-run uses the server timezone; date as DD.MM.YYYY ([c5c84c7](https://github.com/inf0matics/SrvKit/commit/c5c84c7))
+
+### ❤️ Contributors
+
+- Inf0matics <fil@thespielplatz.com>
+
 ## v0.0.5
 
 [compare changes](https://github.com/inf0matics/SrvKit/compare/v0.0.4...v0.0.5)
