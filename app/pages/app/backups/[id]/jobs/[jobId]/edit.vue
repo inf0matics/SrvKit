@@ -65,7 +65,6 @@ const form = reactive({
 })
 const includes = ref<string[]>([])
 const hasDbPassword = ref(false)
-const nextRun = ref<string | null>(null)
 const walDetected = ref(false)
 
 watch(
@@ -85,7 +84,6 @@ watch(
     form.dbUser = j.dbUser
     form.schedule = j.schedule
     hasDbPassword.value = j.hasDbPassword
-    nextRun.value = j.nextRun
     includes.value = j.includes
   },
   { immediate: true },
@@ -126,10 +124,6 @@ onMounted(async () => {
     dockerAvailable.value = false
   }
 })
-
-const fmtNextRun = computed(() =>
-  nextRun.value ? new Date(nextRun.value).toLocaleString() : '—',
-)
 
 // Full destination: {host}/{root}/{subdirectory}/{name}[_date][_time].tar.gz
 const archive = computed(() => {
@@ -246,17 +240,10 @@ async function save() {
           a cron schedule is required.
         </p>
 
-        <label v-if="form.trigger === 'cron'" class="field">
-          <span>Schedule (cron)</span>
-          <input
-            v-model="form.schedule"
-            class="tsp-input"
-            type="text"
-            placeholder="0 3 * * *"
-            autocomplete="off"
-          >
-          <span class="hint tsp-muted">Next run: {{ fmtNextRun }}</span>
-        </label>
+        <div v-if="form.trigger === 'cron'" class="field">
+          <span class="label">Schedule (cron)</span>
+          <CronField v-model="form.schedule" />
+        </div>
       </template>
 
       <!-- PostgreSQL: pg_dump inside a Docker container on a cron schedule -->
@@ -297,17 +284,10 @@ async function save() {
             :placeholder="hasDbPassword ? '•••••••• (stored — leave blank to keep)' : 'Database password'"
           >
         </label>
-        <label class="field">
-          <span>Schedule (cron)</span>
-          <input
-            v-model="form.schedule"
-            class="tsp-input"
-            type="text"
-            placeholder="0 3 * * *"
-            autocomplete="off"
-          >
-          <span class="hint tsp-muted">Next run: {{ fmtNextRun }}</span>
-        </label>
+        <div class="field">
+          <span class="label">Schedule (cron)</span>
+          <CronField v-model="form.schedule" />
+        </div>
       </template>
 
       <label class="field">

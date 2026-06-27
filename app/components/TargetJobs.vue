@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { TargetSummary } from '~/composables/useTargets'
+import { formatNextRun } from '~/utils/cron'
 
 interface Job {
   id: string
@@ -19,6 +20,8 @@ interface Job {
   running: boolean
   state: 'never' | 'debouncing' | 'running' | 'success' | 'failed'
   remainingMs: number
+  /** ISO next scheduled run for cron jobs; null for filewatcher/unscheduled. */
+  nextRun: string | null
 }
 
 const props = defineProps<{ target: TargetSummary }>()
@@ -113,6 +116,7 @@ const TYPE_LABELS: Record<string, string> = {
   files: 'Files',
 }
 const typeLabel = (job: Job) => TYPE_LABELS[job.type] ?? 'Files'
+const fmtNext = (iso: string) => formatNextRun(new Date(iso))
 
 /** Full Nextcloud destination path: {host}/{root}/{subdir}/{name}[_date].tar.gz */
 function destPath(job: Job): string {
@@ -162,6 +166,9 @@ function destPath(job: Job): string {
             ✗ Last backup: {{ fmt(job.lastRunAt) }}<template v-if="job.lastError"> — {{ job.lastError }}</template>
           </span>
           <span v-else class="tsp-muted">No backup yet</span>
+        </span>
+        <span v-if="job.nextRun" class="job-next tsp-muted" data-testid="job-next">
+          Next: {{ fmtNext(job.nextRun) }}
         </span>
         <button
           class="tsp-btn tsp-btn-sm tsp-btn-icon"
@@ -278,6 +285,12 @@ function destPath(job: Job): string {
 
 .st-debounce {
   color: var(--tsp-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.job-next {
+  font-size: 0.8rem;
+  white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
 

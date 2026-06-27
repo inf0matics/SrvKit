@@ -32,7 +32,12 @@ onMounted(async () => {
   }
 })
 
-const canCreate = computed(() => form.name.trim().length > 0)
+// PostgreSQL needs the Docker socket — block creation until it's available.
+const canCreate = computed(
+  () =>
+    form.name.trim().length > 0 &&
+    !(form.type === 'postgres' && !dockerAvailable.value),
+)
 
 async function create() {
   saving.value = true

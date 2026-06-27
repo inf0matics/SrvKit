@@ -311,27 +311,17 @@ test.describe.serial('backups', () => {
     await expect(page.getByText('not a valid SQLite database')).toBeVisible()
   })
 
-  test('detail: PostgreSQL job — Docker-not-mounted notice + validation', async () => {
+  test('detail: PostgreSQL create is disabled without the Docker socket', async () => {
     await page.locator('.subnav').getByRole('link', { name: 'My Nextcloud' }).click()
     await expect(page.getByTestId('target-page')).toBeVisible()
 
     await page.getByRole('button', { name: 'Add Job' }).click()
     await page.getByLabel('Name', { exact: true }).fill('PG job')
     await page.getByLabel('Type').selectOption('postgres')
-    // No Docker socket in e2e → the modal warns.
+    // No Docker socket in e2e → warning shown and Create blocked.
     await expect(page.getByTestId('type-info')).toContainText('Docker socket not mounted')
-    await page.getByRole('button', { name: 'Create' }).click()
-
-    // Edit page: postgres fields + the same not-mounted warning.
-    await expect(page).toHaveURL(/\/jobs\/[0-9a-f-]+\/edit$/)
-    await expect(page.getByTestId('docker-warning')).toBeVisible()
-    await page.getByLabel('Database').fill('appdb')
-    await page.getByLabel('User').fill('postgres')
-    await page.getByLabel('Schedule (cron)').fill('0 3 * * *')
-
-    // No container is available, so saving is rejected.
-    await page.getByRole('button', { name: 'Save' }).click()
-    await expect(page.getByText('Select a container.')).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Create' })).toBeDisabled()
+    await page.getByRole('button', { name: 'Cancel' }).click()
   })
 
   test('detail: a WAL SQLite database locks the trigger to Cron', async () => {
@@ -355,11 +345,22 @@ test.describe.serial('backups', () => {
       page.getByTestId('trigger').locator('option[value="filewatcher"]'),
     ).toHaveJSProperty('disabled', true)
 
-    // The cron schedule field appears; filling it lets the job save + activate.
-    await page.getByLabel('Schedule (cron)').fill('0 3 * * *')
+    // CronField: live preview reacts to typing, presets fill the input.
+    const cron = page.getByTestId('cron-input')
+    await cron.fill('0 3 * * *')
+    await expect(page.getByTestId('cron-next')).toContainText('Next run:')
+    await expect(page.getByTestId('cron-next')).not.toContainText('Invalid')
+    await cron.fill('not a cron')
+    await expect(page.getByTestId('cron-next')).toContainText('Invalid cron expression')
+    await page.getByTestId('cron-presets').click()
+    await page.getByText('Every day at 03:00').click()
+    await expect(cron).toHaveValue('0 3 * * *')
+
     await page.getByRole('button', { name: 'Save' }).click()
     await expect(page).toHaveURL(/\/app\/backups\/[0-9a-f-]+$/)
     await expect(page.getByText('WAL db', { exact: true })).toBeVisible()
+    // Job row shows the next scheduled run for the cron job (spec 07.01).
+    await expect(page.getByTestId('job-next')).toContainText('Next:')
   })
 
   test('sidebar lists the target and links to its page', async () => {
