@@ -1,6 +1,23 @@
 # Changelog
 
 
+## v0.0.4
+
+[compare changes](https://github.com/inf0matics/SrvKit/compare/v0.0.3...v0.0.4)
+
+### 🚀 Enhancements
+
+- Partial-selection indicator on folders in the job file tree ([a7ad6d4](https://github.com/inf0matics/SrvKit/commit/a7ad6d4))
+- PostgreSQL backup job type (spec 11) ([4dd76d3](https://github.com/inf0matics/SrvKit/commit/4dd76d3))
+
+### 🩹 Fixes
+
+- Test alert uses the server-name prefix like real alerts ([4dc6a34](https://github.com/inf0matics/SrvKit/commit/4dc6a34))
+
+### ❤️ Contributors
+
+- Inf0matics <fil@thespielplatz.com>
+
 ## v0.0.3
 
 [compare changes](https://github.com/inf0matics/SrvKit/compare/v0.0.2...v0.0.3)
