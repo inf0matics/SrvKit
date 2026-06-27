@@ -1,6 +1,23 @@
 # Changelog
 
 
+## v0.0.5
+
+[compare changes](https://github.com/inf0matics/SrvKit/compare/v0.0.4...v0.0.5)
+
+### 🚀 Enhancements
+
+- SQLite cron trigger + WAL auto-detection (spec 08.02) ([5bcbece](https://github.com/inf0matics/SrvKit/commit/5bcbece))
+- Dynamic browser tab titles (spec 02.03) ([bfd2423](https://github.com/inf0matics/SrvKit/commit/bfd2423))
+
+### 🩹 Fixes
+
+- Send Telegram alerts as plain text (drop Markdown parse_mode) ([9dec49c](https://github.com/inf0matics/SrvKit/commit/9dec49c))
+
+### ❤️ Contributors
+
+- Inf0matics <fil@thespielplatz.com>
+
 ## v0.0.4
 
 [compare changes](https://github.com/inf0matics/SrvKit/compare/v0.0.3...v0.0.4)
