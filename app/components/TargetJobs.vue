@@ -107,7 +107,12 @@ async function confirmDelete(job: Job) {
   await refreshJobs()
 }
 
-const typeLabel = (job: Job) => (job.type === 'sqlite' ? 'SQLite' : 'Files')
+const TYPE_LABELS: Record<string, string> = {
+  sqlite: 'SQLite',
+  postgres: 'PostgreSQL',
+  files: 'Files',
+}
+const typeLabel = (job: Job) => TYPE_LABELS[job.type] ?? 'Files'
 
 /** Full Nextcloud destination path: {host}/{root}/{subdir}/{name}[_date].tar.gz */
 function destPath(job: Job): string {

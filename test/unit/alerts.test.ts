@@ -59,6 +59,11 @@ before(() => {
     subdirectory: '',
     dateSuffix: false,
     timeSuffix: false,
+    container: '',
+    database: '',
+    dbUser: '',
+    dbPassword: '',
+    schedule: '',
   }).id
 })
 

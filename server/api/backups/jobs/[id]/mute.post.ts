@@ -1,4 +1,5 @@
 import { store } from '../../../../utils/srvkit.ts'
+import { publicJob } from '../../../../utils/backups.ts'
 
 // Mute / unmute a job: suppresses its alerts without disabling the job.
 export default defineEventHandler(async (event) => {
@@ -8,5 +9,5 @@ export default defineEventHandler(async (event) => {
   if (!store().setJobMuted(id, muted)) {
     throw createError({ statusCode: 404, statusMessage: 'Job not found' })
   }
-  return store().getJob(id)
+  return publicJob(store().getJob(id)!)
 })

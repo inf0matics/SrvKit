@@ -1,6 +1,6 @@
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { readFileSync, rmSync, mkdtempSync, existsSync } from 'node:fs'
+import { readFileSync, writeFileSync, rmSync, mkdtempSync, existsSync } from 'node:fs'
 import { store } from './srvkit.ts'
 import {
   archiveFilename,
@@ -10,6 +10,7 @@ import {
 } from './backups.ts'
 import { createArchive, createFileArchive } from '../../lib/archive.ts'
 import { backupSqliteFile } from '../../lib/sqlite-backup.ts'
+import { dockerAvailable, pgDump } from './docker.ts'
 import { handleRunResult } from './alerts.ts'
 import type { RunResult } from '../../lib/store.ts'
 
@@ -59,6 +60,26 @@ export async function runBackup(jobId: string): Promise<void> {
       }
       try {
         await createFileArchive(work, dbName, tarPath)
+      } catch (e) {
+        return fail(`Archive failed: ${(e as Error).message}`)
+      }
+    } else if (job.type === 'postgres') {
+      if (!dockerAvailable()) return fail('Docker socket not accessible')
+      const sqlName = job.name.replace(/[\\/]/g, '_') + '.sql'
+      let dump: Buffer
+      try {
+        dump = await pgDump({
+          container: job.container,
+          database: job.database,
+          user: job.dbUser,
+          password: decryptPassword(job.dbPassword),
+        })
+      } catch (e) {
+        return fail(`pg_dump failed: ${(e as Error).message}`)
+      }
+      try {
+        writeFileSync(join(work, sqlName), dump)
+        await createFileArchive(work, sqlName, tarPath)
       } catch (e) {
         return fail(`Archive failed: ${(e as Error).message}`)
       }

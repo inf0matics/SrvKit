@@ -22,6 +22,9 @@ export default defineConfig({
       COOKIE_SECURE: 'false', // plain http in e2e
       ENCRYPTION_KEY: 'e2e-encryption-key',
       BACKUP_SOURCES_DIR: './tests/fixtures/sources',
+      // No Docker in CI — point at a missing socket so PostgreSQL jobs report
+      // the "not mounted" state deterministically.
+      DOCKER_SOCKET: '/tmp/srvkit-e2e-no-docker.sock',
     },
     reuseExistingServer: false,
     timeout: 120_000,

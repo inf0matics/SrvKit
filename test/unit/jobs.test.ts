@@ -12,6 +12,11 @@ const sample = {
   subdirectory: 'root',
   dateSuffix: false,
   timeSuffix: false,
+  container: '',
+  database: '',
+  dbUser: '',
+  dbPassword: '',
+  schedule: '',
 }
 
 test('starts with no jobs', () => {

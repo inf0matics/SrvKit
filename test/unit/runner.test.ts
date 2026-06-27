@@ -43,6 +43,11 @@ before(() => {
     subdirectory: 'sub',
     dateSuffix: false,
     timeSuffix: false,
+    container: '',
+    database: '',
+    dbUser: '',
+    dbPassword: '',
+    schedule: '',
   }).id
 })
 
@@ -92,6 +97,11 @@ test('sqlite job backs up the db and uploads with a dated filename', async () =>
     subdirectory: 'db',
     dateSuffix: true,
     timeSuffix: true,
+    container: '',
+    database: '',
+    dbUser: '',
+    dbPassword: '',
+    schedule: '',
   }).id
 
   const calls: { method: string; url: string }[] = []

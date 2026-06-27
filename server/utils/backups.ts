@@ -9,8 +9,9 @@ import {
   type TreeNode,
   type ChildNode,
 } from '../../lib/sources.ts'
-import type { JobInput } from '../../lib/store.ts'
+import type { JobInput, JobRecord } from '../../lib/store.ts'
 import { isSqliteFile } from '../../lib/sqlite-backup.ts'
+import { isValidCron } from '../../lib/cron.ts'
 import { store } from './srvkit.ts'
 
 /** Base directory holding the mounted backup sources. */
@@ -69,7 +70,7 @@ function baseJobFields(body: Record<string, unknown> | null) {
   if (!name || !targetId) {
     throw createError({ statusCode: 400, statusMessage: 'name and targetId are required' })
   }
-  if (type !== 'files' && type !== 'sqlite') {
+  if (type !== 'files' && type !== 'sqlite' && type !== 'postgres') {
     throw createError({ statusCode: 400, statusMessage: 'unsupported job type' })
   }
   if (!store().getTarget(targetId)) {
@@ -77,6 +78,9 @@ function baseJobFields(body: Record<string, unknown> | null) {
   }
   return { name, targetId, type }
 }
+
+/** Empty PostgreSQL fields, shared by every non-postgres job. */
+const emptyPgFields = { container: '', database: '', dbUser: '', dbPassword: '', schedule: '' }
 
 /** Minimal create: just name + type. The job is created inactive, no source. */
 export function parseNewJob(body: Record<string, unknown> | null): JobInput {
@@ -91,7 +95,16 @@ export function parseNewJob(body: Record<string, unknown> | null): JobInput {
     subdirectory: '',
     dateSuffix: false,
     timeSuffix: false,
+    ...emptyPgFields,
   }
+}
+
+/** Strip the encrypted DB password from a job before returning it to the UI. */
+export function publicJob(job: JobRecord): Omit<JobRecord, 'dbPassword'> & {
+  hasDbPassword: boolean
+} {
+  const { dbPassword, ...rest } = job
+  return { ...rest, hasDbPassword: !!dbPassword }
 }
 
 /** Full validation for saving (activating) a job from the edit page. */
@@ -106,7 +119,29 @@ export function parseJobInput(body: Record<string, unknown> | null): JobInput {
     ? (body.includes as unknown[]).filter((e): e is string => typeof e === 'string')
     : []
 
-  if (type === 'sqlite') {
+  const pg = { ...emptyPgFields }
+
+  if (type === 'postgres') {
+    pg.container = trimStr(body?.container)
+    pg.database = trimStr(body?.database)
+    pg.dbUser = trimStr(body?.dbUser)
+    pg.schedule = trimStr(body?.schedule)
+    const password = typeof body?.dbPassword === 'string' ? body.dbPassword : ''
+    if (!pg.container) {
+      throw createError({ statusCode: 400, statusMessage: 'Select a container.' })
+    }
+    if (!pg.database) {
+      throw createError({ statusCode: 400, statusMessage: 'Database name is required.' })
+    }
+    if (!pg.dbUser) {
+      throw createError({ statusCode: 400, statusMessage: 'Database user is required.' })
+    }
+    if (!isValidCron(pg.schedule)) {
+      throw createError({ statusCode: 400, statusMessage: 'A valid cron schedule is required.' })
+    }
+    // Empty = "keep the stored password"; the PUT handler resolves it.
+    pg.dbPassword = password ? encryptPassword(password) : ''
+  } else if (type === 'sqlite') {
     const abs = sourcePath ? resolveSourcePath(sourcePath) : null
     if (!abs) {
       throw createError({ statusCode: 400, statusMessage: 'Select a source file.' })
@@ -139,6 +174,7 @@ export function parseJobInput(body: Record<string, unknown> | null): JobInput {
     subdirectory,
     dateSuffix,
     timeSuffix,
+    ...pg,
   }
 }
 

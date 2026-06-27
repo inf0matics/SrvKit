@@ -17,7 +17,20 @@ const TYPE_INFO: Record<string, string> = {
     'Watches selected files and directories for changes and backs them up as a tar.gz archive.',
   sqlite:
     'Watches a SQLite database file for changes and creates a safe point-in-time backup using the SQLite Online Backup API.',
+  postgres:
+    'Runs pg_dump inside the selected Docker container and streams the output to your Nextcloud target. No extra tools required.',
 }
+
+// Whether the Docker socket is mounted — gates the PostgreSQL info box.
+const dockerAvailable = ref(true)
+onMounted(async () => {
+  try {
+    const { available } = await $fetch<{ available: boolean }>('/api/docker/containers')
+    dockerAvailable.value = available
+  } catch {
+    dockerAvailable.value = false
+  }
+})
 
 const canCreate = computed(() => form.name.trim().length > 0)
 
@@ -57,10 +70,21 @@ async function create() {
         <select v-model="form.type" class="tsp-input">
           <option value="files">Files</option>
           <option value="sqlite">SQLite</option>
+          <option value="postgres">PostgreSQL</option>
         </select>
       </label>
 
-      <p class="info" data-testid="type-info">{{ TYPE_INFO[form.type] }}</p>
+      <p
+        v-if="form.type === 'postgres' && !dockerAvailable"
+        class="info warn"
+        data-testid="type-info"
+      >
+        ⚠️ Docker socket not mounted. PostgreSQL backups require
+        <code>/var/run/docker.sock</code> to be mounted into SrvKit. Add
+        <code>- /var/run/docker.sock:/var/run/docker.sock</code> to your
+        <code>docker-compose.yml</code>.
+      </p>
+      <p v-else class="info" data-testid="type-info">{{ TYPE_INFO[form.type] }}</p>
 
       <p v-if="error" class="err">{{ error }}</p>
 
@@ -122,6 +146,16 @@ async function create() {
   border-radius: var(--tsp-radius-sm);
   font-size: 0.85rem;
   color: var(--tsp-text-muted);
+}
+
+.info.warn {
+  border-color: var(--tsp-primary);
+  color: var(--tsp-text);
+}
+
+.info code {
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 0.8rem;
 }
 
 .err {

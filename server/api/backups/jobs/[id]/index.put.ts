@@ -1,17 +1,35 @@
 import { store } from '../../../../utils/srvkit.ts'
-import { parseJobInput } from '../../../../utils/backups.ts'
-import { registerJob } from '../../../../utils/watcher.ts'
+import { parseJobInput, publicJob } from '../../../../utils/backups.ts'
+import { registerJob, unregisterJob } from '../../../../utils/watcher.ts'
+import { registerCron, unregisterCron } from '../../../../utils/scheduler.ts'
 
 export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id')!
-  if (!store().getJob(id)) {
+  const existing = store().getJob(id)
+  if (!existing) {
     throw createError({ statusCode: 404, statusMessage: 'Job not found' })
   }
   const body = await readBody<Record<string, unknown>>(event)
-  // Full validation — saving activates the job and starts the filewatcher.
-  store().updateJob(id, parseJobInput(body))
+  // Full validation — saving activates the job and starts its trigger.
+  const input = parseJobInput(body)
+  // A blank PostgreSQL password means "keep the stored one".
+  if (input.type === 'postgres') {
+    if (!input.dbPassword) input.dbPassword = existing.dbPassword
+    if (!input.dbPassword) {
+      throw createError({ statusCode: 400, statusMessage: 'Database password is required.' })
+    }
+  }
+  store().updateJob(id, input)
   store().setJobActive(id, true)
   const job = store().getJob(id)!
-  registerJob(job)
-  return job
+
+  // PostgreSQL runs on a cron schedule; Files/SQLite use the filewatcher.
+  if (job.type === 'postgres') {
+    unregisterJob(job.id)
+    registerCron(job)
+  } else {
+    unregisterCron(job.id)
+    registerJob(job)
+  }
+  return publicJob(job)
 })

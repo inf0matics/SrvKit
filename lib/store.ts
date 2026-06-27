@@ -41,7 +41,7 @@ export interface TargetInput {
 export interface JobInput {
   targetId: string
   name: string
-  /** 'files' or 'sqlite'. */
+  /** 'files', 'sqlite' or 'postgres'. */
   type: string
   /** Source path under the mounted base — a directory ('root') or a .db file. */
   sourcePath: string
@@ -55,6 +55,16 @@ export interface JobInput {
   dateSuffix: boolean
   /** Append _HH-MM-SS to the archive filename. */
   timeSuffix: boolean
+  /** PostgreSQL: Docker container to run pg_dump in. */
+  container: string
+  /** PostgreSQL: database name to dump. */
+  database: string
+  /** PostgreSQL: database user. */
+  dbUser: string
+  /** PostgreSQL: database password, encrypted at rest (like target passwords). */
+  dbPassword: string
+  /** PostgreSQL: cron schedule (e.g. '0 3 * * *'). Empty = unscheduled. */
+  schedule: string
 }
 
 export interface JobRecord extends JobInput {
@@ -136,6 +146,11 @@ interface JobRow {
   subdirectory: string
   dateSuffix: number
   timeSuffix: number
+  container: string
+  database: string
+  dbUser: string
+  dbPassword: string
+  schedule: string
   active: number
   alertState: 'ok' | 'failed'
   incidentSince: string | null
@@ -202,6 +217,11 @@ export function openStore(path: string): Store {
        subdirectory TEXT NOT NULL DEFAULT '',
        date_suffix INTEGER NOT NULL DEFAULT 0,
        time_suffix INTEGER NOT NULL DEFAULT 0,
+       container TEXT NOT NULL DEFAULT '',
+       database TEXT NOT NULL DEFAULT '',
+       db_user TEXT NOT NULL DEFAULT '',
+       db_password TEXT NOT NULL DEFAULT '',
+       schedule TEXT NOT NULL DEFAULT '',
        active INTEGER NOT NULL DEFAULT 0,
        alert_state TEXT NOT NULL DEFAULT 'ok',
        incident_since TEXT,
@@ -241,6 +261,11 @@ export function openStore(path: string): Store {
   }
   if (!jobColNames.includes('incident_since')) {
     db.exec('ALTER TABLE jobs ADD COLUMN incident_since TEXT')
+  }
+  for (const col of ['container', 'database', 'db_user', 'db_password', 'schedule']) {
+    if (!jobColNames.includes(col)) {
+      db.exec(`ALTER TABLE jobs ADD COLUMN ${col} TEXT NOT NULL DEFAULT ''`)
+    }
   }
 
   const getStmt = db.prepare('SELECT value FROM config WHERE key = ?')
@@ -282,7 +307,9 @@ export function openStore(path: string): Store {
   // --- Jobs ---
   const jobCols = `id, target_id AS targetId, name, type, source_path AS sourcePath,
                    includes, output, subdirectory, date_suffix AS dateSuffix,
-                   time_suffix AS timeSuffix, active, alert_state AS alertState,
+                   time_suffix AS timeSuffix, container, database,
+                   db_user AS dbUser, db_password AS dbPassword, schedule,
+                   active, alert_state AS alertState,
                    incident_since AS incidentSince, muted, created_at AS createdAt,
                    last_run_at AS lastRunAt,
                    last_status AS lastStatus, last_error AS lastError`
@@ -291,13 +318,15 @@ export function openStore(path: string): Store {
   const insertJobStmt = db.prepare(
     `INSERT INTO jobs
        (id, target_id, name, type, source_path, includes, output, subdirectory,
-        date_suffix, time_suffix, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        date_suffix, time_suffix, container, database, db_user, db_password,
+        schedule, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
   const updateJobStmt = db.prepare(
     `UPDATE jobs SET target_id = ?, name = ?, type = ?, source_path = ?,
        includes = ?, output = ?, subdirectory = ?, date_suffix = ?,
-       time_suffix = ? WHERE id = ?`,
+       time_suffix = ?, container = ?, database = ?, db_user = ?,
+       db_password = ?, schedule = ? WHERE id = ?`,
   )
   const setActiveStmt = db.prepare('UPDATE jobs SET active = ? WHERE id = ?')
   const setMutedStmt = db.prepare('UPDATE jobs SET muted = ? WHERE id = ?')
@@ -405,6 +434,11 @@ export function openStore(path: string): Store {
         input.subdirectory,
         input.dateSuffix ? 1 : 0,
         input.timeSuffix ? 1 : 0,
+        input.container,
+        input.database,
+        input.dbUser,
+        input.dbPassword,
+        input.schedule,
         createdAt,
       )
       return {
@@ -433,6 +467,11 @@ export function openStore(path: string): Store {
           input.subdirectory,
           input.dateSuffix ? 1 : 0,
           input.timeSuffix ? 1 : 0,
+          input.container,
+          input.database,
+          input.dbUser,
+          input.dbPassword,
+          input.schedule,
           id,
         ).changes > 0
       )

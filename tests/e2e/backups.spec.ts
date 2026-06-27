@@ -305,6 +305,29 @@ test.describe.serial('backups', () => {
     await expect(page.getByText('not a valid SQLite database')).toBeVisible()
   })
 
+  test('detail: PostgreSQL job — Docker-not-mounted notice + validation', async () => {
+    await page.locator('.subnav').getByRole('link', { name: 'My Nextcloud' }).click()
+    await expect(page.getByTestId('target-page')).toBeVisible()
+
+    await page.getByRole('button', { name: 'Add Job' }).click()
+    await page.getByLabel('Name', { exact: true }).fill('PG job')
+    await page.getByLabel('Type').selectOption('postgres')
+    // No Docker socket in e2e → the modal warns.
+    await expect(page.getByTestId('type-info')).toContainText('Docker socket not mounted')
+    await page.getByRole('button', { name: 'Create' }).click()
+
+    // Edit page: postgres fields + the same not-mounted warning.
+    await expect(page).toHaveURL(/\/jobs\/[0-9a-f-]+\/edit$/)
+    await expect(page.getByTestId('docker-warning')).toBeVisible()
+    await page.getByLabel('Database').fill('appdb')
+    await page.getByLabel('User').fill('postgres')
+    await page.getByLabel('Schedule (cron)').fill('0 3 * * *')
+
+    // No container is available, so saving is rejected.
+    await page.getByRole('button', { name: 'Save' }).click()
+    await expect(page.getByText('Select a container.')).toBeVisible()
+  })
+
   test('sidebar lists the target and links to its page', async () => {
     const link = page.locator('.subnav').getByRole('link', { name: 'My Nextcloud' })
     await expect(link).toBeVisible()

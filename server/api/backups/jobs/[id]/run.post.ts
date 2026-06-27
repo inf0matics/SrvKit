@@ -1,5 +1,6 @@
 import { store } from '../../../../utils/srvkit.ts'
 import { runBackup } from '../../../../utils/runner.ts'
+import { publicJob } from '../../../../utils/backups.ts'
 
 // Run a job immediately (manual trigger). Returns the job with its run result.
 export default defineEventHandler(async (event) => {
@@ -12,5 +13,5 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 409, statusMessage: 'Configure and save the job first' })
   }
   await runBackup(id)
-  return store().getJob(id)
+  return publicJob(store().getJob(id)!)
 })

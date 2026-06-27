@@ -12,6 +12,18 @@ interface Job {
   includes: string[]
   dateSuffix: boolean
   timeSuffix: boolean
+  container: string
+  database: string
+  dbUser: string
+  hasDbPassword: boolean
+  schedule: string
+  nextRun: string | null
+}
+
+interface DockerContainer {
+  id: string
+  name: string
+  image: string
 }
 
 const route = useRoute()
@@ -41,8 +53,15 @@ const form = reactive({
   subdirectory: '',
   dateSuffix: false,
   timeSuffix: false,
+  container: '',
+  database: '',
+  dbUser: '',
+  dbPassword: '',
+  schedule: '',
 })
 const includes = ref<string[]>([])
+const hasDbPassword = ref(false)
+const nextRun = ref<string | null>(null)
 
 watch(
   job,
@@ -55,9 +74,34 @@ watch(
     form.subdirectory = j.subdirectory
     form.dateSuffix = j.dateSuffix
     form.timeSuffix = j.timeSuffix
+    form.container = j.container
+    form.database = j.database
+    form.dbUser = j.dbUser
+    form.schedule = j.schedule
+    hasDbPassword.value = j.hasDbPassword
+    nextRun.value = j.nextRun
     includes.value = j.includes
   },
   { immediate: true },
+)
+
+// Running Docker containers for the PostgreSQL container picker.
+const dockerAvailable = ref(true)
+const containers = ref<DockerContainer[]>([])
+onMounted(async () => {
+  try {
+    const res = await $fetch<{ available: boolean; containers: DockerContainer[] }>(
+      '/api/docker/containers',
+    )
+    dockerAvailable.value = res.available
+    containers.value = res.containers
+  } catch {
+    dockerAvailable.value = false
+  }
+})
+
+const fmtNextRun = computed(() =>
+  nextRun.value ? new Date(nextRun.value).toLocaleString() : '—',
 )
 
 // Full destination: {host}/{root}/{subdirectory}/{name}[_date][_time].tar.gz
@@ -90,6 +134,11 @@ async function save() {
         subdirectory: form.subdirectory,
         dateSuffix: form.dateSuffix,
         timeSuffix: form.timeSuffix,
+        container: form.container,
+        database: form.database,
+        dbUser: form.dbUser,
+        dbPassword: form.dbPassword, // blank = keep stored password
+        schedule: form.schedule,
       },
     })
     await navigateTo(`/app/backups/${targetId}`)
@@ -145,7 +194,7 @@ async function save() {
       </template>
 
       <!-- SQLite: browse for the .db file -->
-      <template v-else>
+      <template v-else-if="form.type === 'sqlite'">
         <div class="field">
           <span class="label">Source file</span>
           <FilePicker v-model="form.sourcePath" />
@@ -156,6 +205,57 @@ async function save() {
             readonly
           >
         </div>
+      </template>
+
+      <!-- PostgreSQL: pg_dump inside a Docker container on a cron schedule -->
+      <template v-else>
+        <p v-if="!dockerAvailable" class="warn-box" data-testid="docker-warning">
+          ⚠️ Docker socket not mounted. Mount
+          <code>/var/run/docker.sock</code> into SrvKit to run PostgreSQL backups.
+        </p>
+
+        <label class="field">
+          <span>Container</span>
+          <select v-model="form.container" class="tsp-input" data-testid="pg-container">
+            <option value="" disabled>Select a container…</option>
+            <option v-if="form.container && !containers.some((c) => c.name === form.container)" :value="form.container">
+              {{ form.container }} (not running)
+            </option>
+            <option v-for="c in containers" :key="c.id" :value="c.name">
+              {{ c.name }} ({{ c.image }})
+            </option>
+          </select>
+        </label>
+
+        <label class="field">
+          <span>Database</span>
+          <input v-model="form.database" class="tsp-input" type="text" autocomplete="off">
+        </label>
+        <label class="field">
+          <span>User</span>
+          <input v-model="form.dbUser" class="tsp-input" type="text" autocomplete="off">
+        </label>
+        <label class="field">
+          <span>Password</span>
+          <input
+            v-model="form.dbPassword"
+            class="tsp-input"
+            type="password"
+            autocomplete="off"
+            :placeholder="hasDbPassword ? '•••••••• (stored — leave blank to keep)' : 'Database password'"
+          >
+        </label>
+        <label class="field">
+          <span>Schedule (cron)</span>
+          <input
+            v-model="form.schedule"
+            class="tsp-input"
+            type="text"
+            placeholder="0 3 * * *"
+            autocomplete="off"
+          >
+          <span class="hint tsp-muted">Next run: {{ fmtNextRun }}</span>
+        </label>
       </template>
 
       <label class="field">
@@ -244,6 +344,21 @@ async function save() {
 .hint {
   margin: 0;
   font-size: 0.9rem;
+}
+
+.warn-box {
+  margin: 0 0 1rem;
+  padding: 10px 12px;
+  background: var(--tsp-surface);
+  border: 1px solid var(--tsp-primary);
+  border-radius: var(--tsp-radius-sm);
+  font-size: 0.85rem;
+}
+
+.warn-box code,
+.hint code {
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 0.8rem;
 }
 
 .selected {
