@@ -12,6 +12,7 @@ const sample = {
   subdirectory: 'root',
   dateSuffix: false,
   timeSuffix: false,
+  trigger: 'filewatcher',
   container: '',
   database: '',
   dbUser: '',
@@ -171,6 +172,15 @@ test('listIncidents returns failing jobs with target name and since', () => {
   s.setJobAlertState(bad.id, 'ok')
   s.setIncidentSince(bad.id, null)
   assert.deepEqual(s.listIncidents(), [])
+  s.close()
+})
+
+test('trigger defaults to filewatcher and round-trips', () => {
+  const s = openStore(':memory:')
+  assert.equal(s.createJob(sample).trigger, 'filewatcher')
+  const { id } = s.createJob({ ...sample, type: 'sqlite', trigger: 'cron', schedule: '0 3 * * *' })
+  assert.equal(s.getJob(id)?.trigger, 'cron')
+  assert.equal(s.getJob(id)?.schedule, '0 3 * * *')
   s.close()
 })
 

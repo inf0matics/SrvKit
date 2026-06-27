@@ -1,7 +1,7 @@
 import { store } from '../../../../utils/srvkit.ts'
 import { parseJobInput, publicJob } from '../../../../utils/backups.ts'
 import { registerJob, unregisterJob } from '../../../../utils/watcher.ts'
-import { registerCron, unregisterCron } from '../../../../utils/scheduler.ts'
+import { registerCron, unregisterCron, usesCron } from '../../../../utils/scheduler.ts'
 
 export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id')!
@@ -23,8 +23,8 @@ export default defineEventHandler(async (event) => {
   store().setJobActive(id, true)
   const job = store().getJob(id)!
 
-  // PostgreSQL runs on a cron schedule; Files/SQLite use the filewatcher.
-  if (job.type === 'postgres') {
+  // Route activation to the job's trigger: cron schedule or filewatcher.
+  if (usesCron(job)) {
     unregisterJob(job.id)
     registerCron(job)
   } else {

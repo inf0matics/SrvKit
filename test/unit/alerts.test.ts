@@ -59,6 +59,7 @@ before(() => {
     subdirectory: '',
     dateSuffix: false,
     timeSuffix: false,
+    trigger: 'filewatcher',
     container: '',
     database: '',
     dbUser: '',

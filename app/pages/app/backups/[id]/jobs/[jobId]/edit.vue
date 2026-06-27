@@ -12,6 +12,7 @@ interface Job {
   includes: string[]
   dateSuffix: boolean
   timeSuffix: boolean
+  trigger: string
   container: string
   database: string
   dbUser: string
@@ -53,6 +54,7 @@ const form = reactive({
   subdirectory: '',
   dateSuffix: false,
   timeSuffix: false,
+  trigger: 'filewatcher',
   container: '',
   database: '',
   dbUser: '',
@@ -62,6 +64,7 @@ const form = reactive({
 const includes = ref<string[]>([])
 const hasDbPassword = ref(false)
 const nextRun = ref<string | null>(null)
+const walDetected = ref(false)
 
 watch(
   job,
@@ -74,6 +77,7 @@ watch(
     form.subdirectory = j.subdirectory
     form.dateSuffix = j.dateSuffix
     form.timeSuffix = j.timeSuffix
+    form.trigger = j.trigger
     form.container = j.container
     form.database = j.database
     form.dbUser = j.dbUser
@@ -83,6 +87,27 @@ watch(
     includes.value = j.includes
   },
   { immediate: true },
+)
+
+// SQLite: detect WAL mode when a source file is picked. WAL databases can only
+// be cron-triggered (the filewatcher is unreliable), so lock the trigger to Cron.
+watch(
+  () => form.sourcePath,
+  async (path) => {
+    if (form.type !== 'sqlite' || !path) {
+      walDetected.value = false
+      return
+    }
+    try {
+      const { wal } = await $fetch<{ wal: boolean }>('/api/fs/wal-check', {
+        params: { path },
+      })
+      walDetected.value = wal
+      if (wal) form.trigger = 'cron'
+    } catch {
+      walDetected.value = false
+    }
+  },
 )
 
 // Running Docker containers for the PostgreSQL container picker.
@@ -134,6 +159,7 @@ async function save() {
         subdirectory: form.subdirectory,
         dateSuffix: form.dateSuffix,
         timeSuffix: form.timeSuffix,
+        trigger: form.trigger,
         container: form.container,
         database: form.database,
         dbUser: form.dbUser,
@@ -205,6 +231,30 @@ async function save() {
             readonly
           >
         </div>
+
+        <label class="field">
+          <span>Trigger</span>
+          <select v-model="form.trigger" class="tsp-input" data-testid="trigger">
+            <option value="filewatcher" :disabled="walDetected">Filewatcher</option>
+            <option value="cron">Cron</option>
+          </select>
+        </label>
+        <p v-if="walDetected" class="warn-box" data-testid="wal-notice">
+          ℹ️ This database uses WAL mode. Filewatcher is not reliable in WAL mode —
+          a cron schedule is required.
+        </p>
+
+        <label v-if="form.trigger === 'cron'" class="field">
+          <span>Schedule (cron)</span>
+          <input
+            v-model="form.schedule"
+            class="tsp-input"
+            type="text"
+            placeholder="0 3 * * *"
+            autocomplete="off"
+          >
+          <span class="hint tsp-muted">Next run: {{ fmtNextRun }}</span>
+        </label>
       </template>
 
       <!-- PostgreSQL: pg_dump inside a Docker container on a cron schedule -->

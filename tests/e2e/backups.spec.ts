@@ -328,6 +328,34 @@ test.describe.serial('backups', () => {
     await expect(page.getByText('Select a container.')).toBeVisible()
   })
 
+  test('detail: a WAL SQLite database locks the trigger to Cron', async () => {
+    await page.locator('.subnav').getByRole('link', { name: 'My Nextcloud' }).click()
+    await expect(page.getByTestId('target-page')).toBeVisible()
+
+    await page.getByRole('button', { name: 'Add Job' }).click()
+    await page.getByLabel('Name', { exact: true }).fill('WAL db')
+    await page.getByLabel('Type').selectOption('sqlite')
+    await page.getByRole('button', { name: 'Create' }).click()
+    await expect(page).toHaveURL(/\/jobs\/[0-9a-f-]+\/edit$/)
+
+    // Default trigger is Filewatcher until a WAL database is selected.
+    await expect(page.getByTestId('trigger')).toHaveValue('filewatcher')
+    await page.getByRole('button', { name: 'wal.db', exact: true }).click()
+
+    // WAL detected → trigger forced to Cron, Filewatcher disabled, notice shown.
+    await expect(page.getByTestId('wal-notice')).toBeVisible()
+    await expect(page.getByTestId('trigger')).toHaveValue('cron')
+    await expect(
+      page.getByTestId('trigger').locator('option[value="filewatcher"]'),
+    ).toHaveJSProperty('disabled', true)
+
+    // The cron schedule field appears; filling it lets the job save + activate.
+    await page.getByLabel('Schedule (cron)').fill('0 3 * * *')
+    await page.getByRole('button', { name: 'Save' }).click()
+    await expect(page).toHaveURL(/\/app\/backups\/[0-9a-f-]+$/)
+    await expect(page.getByText('WAL db', { exact: true })).toBeVisible()
+  })
+
   test('sidebar lists the target and links to its page', async () => {
     const link = page.locator('.subnav').getByRole('link', { name: 'My Nextcloud' })
     await expect(link).toBeVisible()

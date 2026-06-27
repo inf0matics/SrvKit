@@ -42,10 +42,12 @@ export function jobState(job: JobRecord): {
   return { running, state, remainingMs }
 }
 
-/** (Re-)register the filewatcher for an active job over its selected paths. */
+/** (Re-)register the filewatcher for an active, filewatcher-triggered job. */
 export function registerJob(job: JobRecord) {
   unregisterJob(job.id)
   if (!job.active) return
+  // PostgreSQL and cron-triggered SQLite jobs fire on a schedule, not a watcher.
+  if (job.type === 'postgres' || (job.type === 'sqlite' && job.trigger === 'cron')) return
 
   // Files: watch each selected path. SQLite: watch the source .db file.
   const sourceAbs = join(sourcesDir(), job.sourcePath)

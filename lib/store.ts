@@ -55,6 +55,8 @@ export interface JobInput {
   dateSuffix: boolean
   /** Append _HH-MM-SS to the archive filename. */
   timeSuffix: boolean
+  /** What fires the job: 'filewatcher' or 'cron'. (Files = always filewatcher.) */
+  trigger: string
   /** PostgreSQL: Docker container to run pg_dump in. */
   container: string
   /** PostgreSQL: database name to dump. */
@@ -146,6 +148,7 @@ interface JobRow {
   subdirectory: string
   dateSuffix: number
   timeSuffix: number
+  trigger: string
   container: string
   database: string
   dbUser: string
@@ -217,6 +220,7 @@ export function openStore(path: string): Store {
        subdirectory TEXT NOT NULL DEFAULT '',
        date_suffix INTEGER NOT NULL DEFAULT 0,
        time_suffix INTEGER NOT NULL DEFAULT 0,
+       "trigger" TEXT NOT NULL DEFAULT 'filewatcher',
        container TEXT NOT NULL DEFAULT '',
        database TEXT NOT NULL DEFAULT '',
        db_user TEXT NOT NULL DEFAULT '',
@@ -267,6 +271,9 @@ export function openStore(path: string): Store {
       db.exec(`ALTER TABLE jobs ADD COLUMN ${col} TEXT NOT NULL DEFAULT ''`)
     }
   }
+  if (!jobColNames.includes('trigger')) {
+    db.exec(`ALTER TABLE jobs ADD COLUMN "trigger" TEXT NOT NULL DEFAULT 'filewatcher'`)
+  }
 
   const getStmt = db.prepare('SELECT value FROM config WHERE key = ?')
   const setStmt = db.prepare(
@@ -307,7 +314,7 @@ export function openStore(path: string): Store {
   // --- Jobs ---
   const jobCols = `id, target_id AS targetId, name, type, source_path AS sourcePath,
                    includes, output, subdirectory, date_suffix AS dateSuffix,
-                   time_suffix AS timeSuffix, container, database,
+                   time_suffix AS timeSuffix, "trigger", container, database,
                    db_user AS dbUser, db_password AS dbPassword, schedule,
                    active, alert_state AS alertState,
                    incident_since AS incidentSince, muted, created_at AS createdAt,
@@ -318,14 +325,14 @@ export function openStore(path: string): Store {
   const insertJobStmt = db.prepare(
     `INSERT INTO jobs
        (id, target_id, name, type, source_path, includes, output, subdirectory,
-        date_suffix, time_suffix, container, database, db_user, db_password,
-        schedule, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        date_suffix, time_suffix, "trigger", container, database, db_user,
+        db_password, schedule, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
   const updateJobStmt = db.prepare(
     `UPDATE jobs SET target_id = ?, name = ?, type = ?, source_path = ?,
        includes = ?, output = ?, subdirectory = ?, date_suffix = ?,
-       time_suffix = ?, container = ?, database = ?, db_user = ?,
+       time_suffix = ?, "trigger" = ?, container = ?, database = ?, db_user = ?,
        db_password = ?, schedule = ? WHERE id = ?`,
   )
   const setActiveStmt = db.prepare('UPDATE jobs SET active = ? WHERE id = ?')
@@ -434,6 +441,7 @@ export function openStore(path: string): Store {
         input.subdirectory,
         input.dateSuffix ? 1 : 0,
         input.timeSuffix ? 1 : 0,
+        input.trigger,
         input.container,
         input.database,
         input.dbUser,
@@ -467,6 +475,7 @@ export function openStore(path: string): Store {
           input.subdirectory,
           input.dateSuffix ? 1 : 0,
           input.timeSuffix ? 1 : 0,
+          input.trigger,
           input.container,
           input.database,
           input.dbUser,

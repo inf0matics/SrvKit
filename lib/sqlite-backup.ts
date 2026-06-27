@@ -1,8 +1,17 @@
 import { DatabaseSync, backup } from 'node:sqlite'
-import { openSync, readSync, closeSync } from 'node:fs'
+import { openSync, readSync, closeSync, existsSync } from 'node:fs'
 
 // "SQLite format 3\0" — the 16-byte header magic at the start of every db file.
 const SQLITE_MAGIC = Buffer.from('SQLite format 3\0', 'latin1')
+
+/**
+ * True when `path` is a WAL-mode database — detected by a `-wal`/`-shm` sidecar
+ * next to it. In WAL mode writes land in the sidecar and the main `.db` file
+ * only changes on checkpoint, so a filewatcher on it is unreliable.
+ */
+export function isWalDatabase(path: string): boolean {
+  return existsSync(path + '-wal') || existsSync(path + '-shm')
+}
 
 /** True if `path` is a readable file beginning with the SQLite header magic. */
 export function isSqliteFile(path: string): boolean {

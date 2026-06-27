@@ -132,6 +132,7 @@ test('runBackup runs a PostgreSQL job and uploads the archive', async () => {
     subdirectory: 'db',
     dateSuffix: false,
     timeSuffix: false,
+    trigger: 'filewatcher',
     container: 'pg',
     database: 'app',
     dbUser: 'postgres',

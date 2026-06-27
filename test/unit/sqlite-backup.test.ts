@@ -4,7 +4,7 @@ import { mkdtempSync, writeFileSync, rmSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
-import { backupSqliteFile, isSqliteFile } from '../../lib/sqlite-backup.ts'
+import { backupSqliteFile, isSqliteFile, isWalDatabase } from '../../lib/sqlite-backup.ts'
 import { listDbFiles } from '../../lib/sources.ts'
 
 let base = ''
@@ -40,4 +40,13 @@ test('backupSqliteFile produces a readable copy with the same rows', async () =>
   const { c } = copy.prepare('SELECT count(*) AS c FROM t').get() as { c: number }
   copy.close()
   assert.equal(c, 2)
+})
+
+test('isWalDatabase detects a -wal/-shm sidecar', () => {
+  assert.equal(isWalDatabase(join(base, 'app.db')), false) // journal mode, no sidecar
+  writeFileSync(join(base, 'app.db-wal'), '')
+  assert.equal(isWalDatabase(join(base, 'app.db')), true)
+  rmSync(join(base, 'app.db-wal'))
+  writeFileSync(join(base, 'app.db-shm'), '')
+  assert.equal(isWalDatabase(join(base, 'app.db')), true)
 })

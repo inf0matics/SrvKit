@@ -10,7 +10,7 @@ import {
   type ChildNode,
 } from '../../lib/sources.ts'
 import type { JobInput, JobRecord } from '../../lib/store.ts'
-import { isSqliteFile } from '../../lib/sqlite-backup.ts'
+import { isSqliteFile, isWalDatabase } from '../../lib/sqlite-backup.ts'
 import { isValidCron } from '../../lib/cron.ts'
 import { store } from './srvkit.ts'
 
@@ -80,7 +80,7 @@ function baseJobFields(body: Record<string, unknown> | null) {
 }
 
 /** Empty PostgreSQL fields, shared by every non-postgres job. */
-const emptyPgFields = { container: '', database: '', dbUser: '', dbPassword: '', schedule: '' }
+const emptyPgFields = { container: '', database: '', dbUser: '', dbPassword: '' }
 
 /** Minimal create: just name + type. The job is created inactive, no source. */
 export function parseNewJob(body: Record<string, unknown> | null): JobInput {
@@ -95,6 +95,8 @@ export function parseNewJob(body: Record<string, unknown> | null): JobInput {
     subdirectory: '',
     dateSuffix: false,
     timeSuffix: false,
+    trigger: 'filewatcher',
+    schedule: '',
     ...emptyPgFields,
   }
 }
@@ -120,12 +122,15 @@ export function parseJobInput(body: Record<string, unknown> | null): JobInput {
     : []
 
   const pg = { ...emptyPgFields }
+  let trigger = 'filewatcher'
+  let schedule = ''
 
   if (type === 'postgres') {
     pg.container = trimStr(body?.container)
     pg.database = trimStr(body?.database)
     pg.dbUser = trimStr(body?.dbUser)
-    pg.schedule = trimStr(body?.schedule)
+    schedule = trimStr(body?.schedule)
+    trigger = 'cron' // PostgreSQL is always cron-triggered
     const password = typeof body?.dbPassword === 'string' ? body.dbPassword : ''
     if (!pg.container) {
       throw createError({ statusCode: 400, statusMessage: 'Select a container.' })
@@ -136,7 +141,7 @@ export function parseJobInput(body: Record<string, unknown> | null): JobInput {
     if (!pg.dbUser) {
       throw createError({ statusCode: 400, statusMessage: 'Database user is required.' })
     }
-    if (!isValidCron(pg.schedule)) {
+    if (!isValidCron(schedule)) {
       throw createError({ statusCode: 400, statusMessage: 'A valid cron schedule is required.' })
     }
     // Empty = "keep the stored password"; the PUT handler resolves it.
@@ -151,6 +156,15 @@ export function parseJobInput(body: Record<string, unknown> | null): JobInput {
         statusCode: 400,
         statusMessage: 'The selected file is not a valid SQLite database.',
       })
+    }
+    // WAL-mode databases can only be cron-triggered (the filewatcher is unreliable).
+    const wal = isWalDatabase(abs)
+    trigger = wal || trimStr(body?.trigger) === 'cron' ? 'cron' : 'filewatcher'
+    if (trigger === 'cron') {
+      schedule = trimStr(body?.schedule)
+      if (!isValidCron(schedule)) {
+        throw createError({ statusCode: 400, statusMessage: 'A valid cron schedule is required.' })
+      }
     }
   } else {
     if (!getSources().includes(sourcePath)) {
@@ -174,6 +188,8 @@ export function parseJobInput(body: Record<string, unknown> | null): JobInput {
     subdirectory,
     dateSuffix,
     timeSuffix,
+    trigger,
+    schedule,
     ...pg,
   }
 }
