@@ -34,6 +34,8 @@ test.describe.serial('backups', () => {
 
   test('overview shows the empty state', async () => {
     await expect(page.getByText('No targets yet.')).toBeVisible()
+    // Tab title: no server name set yet.
+    await expect(page).toHaveTitle('SrvKit | Backups')
   })
 
   test('tests the connection from the Add modal', async () => {
@@ -66,6 +68,8 @@ test.describe.serial('backups', () => {
     await expect(page.getByTestId('target-page')).toBeVisible()
     await expect(page.getByRole('heading', { name: 'My Nextcloud' })).toBeVisible()
     await expect(page.getByTestId('location')).toHaveText('/')
+    // Tab title uses the target name for the detail page.
+    await expect(page).toHaveTitle('SrvKit | My Nextcloud')
   })
 
   test('detail: directory browser errors on an unreachable share', async () => {
@@ -285,6 +289,8 @@ test.describe.serial('backups', () => {
 
     await page.reload()
     await expect(page.getByLabel('Server name')).toHaveValue('prod-1')
+    // With a server name set, the tab title gains the {server name} segment.
+    await expect(page).toHaveTitle('SrvKit | prod-1 | Settings')
 
     // Back to the target detail page for the following tests.
     await page.locator('.subnav').getByRole('link', { name: 'My Nextcloud' }).click()

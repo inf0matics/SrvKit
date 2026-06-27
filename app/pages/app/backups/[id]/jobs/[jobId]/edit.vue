@@ -46,6 +46,8 @@ const { data: job } = await useFetch<Job | null>(`/api/backups/jobs/${jobId}`, {
   default: () => null,
 })
 
+usePageTitle(() => job.value?.name ?? 'Edit job')
+
 const form = reactive({
   name: '',
   type: 'files',

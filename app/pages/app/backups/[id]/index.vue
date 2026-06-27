@@ -8,6 +8,8 @@ onMounted(refresh)
 const target = computed(() =>
   targets.value.find((t) => t.id === (route.params.id as string)),
 )
+
+usePageTitle(() => target.value?.name ?? 'Backups')
 </script>
 
 <template>

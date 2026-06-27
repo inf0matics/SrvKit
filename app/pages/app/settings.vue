@@ -1,5 +1,9 @@
 <script setup lang="ts">
 definePageMeta({ middleware: 'auth', layout: 'shell' })
+usePageTitle('Settings')
+
+// Shared with the tab-title prefix so it updates live when saved here.
+const { serverName: sharedServerName } = useServerName()
 
 const form = reactive({ serverName: '' })
 const saving = ref(false)
@@ -9,6 +13,7 @@ const saveError = ref('')
 async function load() {
   const { serverName } = await $fetch<{ serverName: string }>('/api/settings/general')
   form.serverName = serverName
+  sharedServerName.value = serverName
 }
 onMounted(load)
 
@@ -22,6 +27,7 @@ async function save() {
       body: { serverName: form.serverName },
     })
     form.serverName = serverName
+    sharedServerName.value = serverName
     saved.value = true
   } catch (e: unknown) {
     saveError.value = (e as { statusMessage?: string }).statusMessage || 'Could not save'

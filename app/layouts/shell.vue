@@ -11,6 +11,10 @@ const { targets, refresh: refreshTargets } = useTargets()
 onMounted(refreshTargets)
 const backupsOpen = ref(true)
 
+// Server name drives the browser tab title prefix (Settings → General).
+const { refresh: refreshServerName } = useServerName()
+onMounted(refreshServerName)
+
 // Muted-jobs badge in the topbar; poll so it reflects mutes made elsewhere.
 const { count: mutedCount, refresh: refreshMuted } = useMutedJobs()
 let mutedTimer: ReturnType<typeof setInterval> | undefined

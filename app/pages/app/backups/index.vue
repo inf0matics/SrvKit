@@ -2,6 +2,7 @@
 import type { TargetSummary } from '~/composables/useTargets'
 
 definePageMeta({ middleware: 'auth', layout: 'shell' })
+usePageTitle('Backups')
 
 type Target = TargetSummary
 
