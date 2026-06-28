@@ -1,6 +1,31 @@
 # Changelog
 
 
+## v0.0.7
+
+[compare changes](https://github.com/inf0matics/SrvKit/compare/v0.0.6...v0.0.7)
+
+### 🚀 Enhancements
+
+- Host monitoring — /proc metrics, thresholds, sidebar badge (spec 12, core slice) ([9122f2b](https://github.com/inf0matics/SrvKit/commit/9122f2b))
+- Host monitoring — disk + network metrics (spec 12, 2nd patch) ([01c65ac](https://github.com/inf0matics/SrvKit/commit/01c65ac))
+- Label the host-root mount as optional (disk-only) ([284ef14](https://github.com/inf0matics/SrvKit/commit/284ef14))
+- MySQL backup job type (spec 13) ([555059c](https://github.com/inf0matics/SrvKit/commit/555059c))
+
+### 💅 Refactors
+
+- Remove topbar settings cog; move Host monitoring under Dashboard ([ae9084a](https://github.com/inf0matics/SrvKit/commit/ae9084a))
+- Remove content-area topbar; muted-jobs badge moves to Alerts nav ([8afea65](https://github.com/inf0matics/SrvKit/commit/8afea65))
+- Host page shows each missing-mount warning before its own section ([f294df9](https://github.com/inf0matics/SrvKit/commit/f294df9))
+
+### ✅ Tests
+
+- **e2e:** Comprehensive host monitoring coverage (spec 12.01) ([c350580](https://github.com/inf0matics/SrvKit/commit/c350580))
+
+### ❤️ Contributors
+
+- Inf0matics <fil@thespielplatz.com>
+
 ## v0.0.6
 
 [compare changes](https://github.com/inf0matics/SrvKit/compare/v0.0.5...v0.0.6)
