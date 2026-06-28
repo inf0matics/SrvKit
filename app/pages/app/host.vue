@@ -17,11 +17,16 @@ onBeforeUnmount(() => clearInterval(timer))
 // missing mounts gating that category, so the warning sits before its section.
 const ORDER = ['CPU', 'Memory', 'Disk', 'Network', 'System']
 const sections = computed(() =>
-  ORDER.map((cat) => ({
-    cat,
-    rows: metrics.value.filter((m) => m.category === cat),
-    missing: mounts.value.filter((mt) => !mt.present && mt.section === cat),
-  })).filter((s) => s.rows.length || s.missing.length),
+  ORDER.map((cat) => {
+    const missing = mounts.value.filter((mt) => !mt.present && mt.section === cat)
+    return {
+      cat,
+      rows: metrics.value.filter((m) => m.category === cat),
+      missing,
+      // A purely-optional gap reads as "enable extra metrics", not an error.
+      optionalOnly: missing.length > 0 && missing.every((m) => m.optional),
+    }
+  }).filter((s) => s.rows.length || s.missing.length),
 )
 
 const STATUS_LABEL: Record<string, string> = {
@@ -64,10 +69,19 @@ const cmp = (m: HostMetric) => (m.dir === 'low' ? '<' : '>')
       <section
         v-if="s.missing.length"
         class="warn-box"
+        :class="{ optional: s.optionalOnly }"
         :data-testid="`missing-${s.cat}`"
       >
-        <strong>⚠️ {{ s.cat }} metrics need a volume mount.</strong>
-        Add to your <code>docker-compose.yml</code> and restart:
+        <strong v-if="s.optionalOnly">
+          ℹ️ {{ s.cat }} metrics are optional.
+        </strong>
+        <strong v-else>⚠️ {{ s.cat }} metrics need a volume mount.</strong>
+        {{
+          s.optionalOnly
+            ? 'They need the host filesystem mounted (broad, read-only access — only add it if you want these). In your'
+            : 'Add to your'
+        }}
+        <code>docker-compose.yml</code> and restart:
         <pre>volumes:
 <template v-for="m in s.missing" :key="m.path">  {{ m.compose }}
 </template></pre>
@@ -149,6 +163,12 @@ const cmp = (m: HostMetric) => (m.dir === 'low' ? '<' : '>')
   padding: 14px 16px;
   margin: 16px 0;
   font-size: 0.9rem;
+}
+
+/* Optional mounts are informational, not an error — use a neutral border. */
+.warn-box.optional {
+  border-color: var(--tsp-border);
+  color: var(--tsp-text-muted);
 }
 
 .warn-box pre,

@@ -21,6 +21,7 @@ export interface HostMount {
   present: boolean
   compose: string
   section: string
+  optional: boolean
 }
 
 interface HostData {

@@ -24,6 +24,8 @@ export interface MountInfo {
   compose: string
   /** Category section the warning is shown under when this mount is missing. */
   section: string
+  /** Optional mounts (host root) enable extra metrics but aren't required. */
+  optional: boolean
 }
 
 export function mounts(): MountInfo[] {
@@ -33,18 +35,22 @@ export function mounts(): MountInfo[] {
       present: existsSync(hostProc()),
       compose: '- /proc:/host/proc:ro',
       section: 'CPU',
+      optional: false,
     },
     {
       path: hostSys(),
       present: existsSync(hostSys()),
       compose: '- /sys:/host/sys:ro',
       section: 'CPU',
+      optional: false,
     },
     {
+      // Whole host filesystem — broad exposure, only needed for disk usage.
       path: hostRoot(),
       present: existsSync(hostRoot()),
       compose: '- /:/host/root:ro',
       section: 'Disk',
+      optional: true,
     },
   ]
 }

@@ -12,5 +12,6 @@ export default defineEventHandler(async (event) => {
   setMetricConfig(id, patch)
 
   const mts = mounts()
-  return { mounts: mts, available: mts.every((m) => m.present), ...readMetrics() }
+  const available = mts.filter((m) => !m.optional).every((m) => m.present)
+  return { mounts: mts, available, ...readMetrics() }
 })
