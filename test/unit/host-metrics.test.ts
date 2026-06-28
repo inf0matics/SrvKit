@@ -44,3 +44,44 @@ test('thresholdStatus + worstStatus', () => {
   assert.equal(H.worstStatus(['ok', 'crit', 'warn']), 'crit')
   assert.equal(H.worstStatus(['ok', 'ok']), 'ok')
 })
+
+test('thresholdStatusLow (lower-is-worse, e.g. inodes remaining)', () => {
+  assert.equal(H.thresholdStatusLow(3, 10, 5), 'crit') // <5
+  assert.equal(H.thresholdStatusLow(8, 10, 5), 'warn') // <10
+  assert.equal(H.thresholdStatusLow(50, 10, 5), 'ok')
+})
+
+test('parseMtab keeps real disk filesystems only', () => {
+  const m = H.parseMtab(
+    '/dev/sda1 / ext4 rw 0 0\ntmpfs /run tmpfs rw 0 0\n/dev/sdb1 /data\\040dir xfs rw 0 0\nproc /proc proc rw 0 0\n',
+  )
+  assert.deepEqual(
+    m.map((e) => `${e.mountpoint}:${e.fstype}`),
+    ['/:ext4', '/data dir:xfs'], // tmpfs/proc excluded, octal-escape decoded
+  )
+})
+
+test('parseNetDev + errorRatePct', () => {
+  const dev = H.parseNetDev(
+    'Inter-|   Receive\n face |bytes\n    lo:  100 10 0 0 0 0 0 0  100 10 0 0\n  eth0: 5000 1000 5 0 0 0 0 0 6000 1000 5 0\n',
+  )
+  const eth0 = dev.find((d) => d.iface === 'eth0')!
+  assert.equal(eth0.rxPackets, 1000)
+  assert.equal(eth0.txErrs, 5)
+  // (5 + 5) errs / (1000 + 1000) packets = 0.5%
+  assert.equal(H.errorRatePct(eth0), 0.5)
+  assert.equal(H.errorRatePct({ ...eth0, rxPackets: 0, txPackets: 0 }), 0)
+})
+
+test('parseDiskstats (whole disks) + bytes + formatRate', () => {
+  const s = H.parseDiskstats(
+    '   8       0 sda 100 0 200 0 50 0 400 0 0 0 0\n   8       1 sda1 1 0 2 0 1 0 4 0 0 0 0\n   7       0 loop0 1 0 1 0 1 0 1 0 0 0 0\n',
+  )
+  assert.deepEqual(
+    s.map((d) => d.dev),
+    ['sda'], // sda1 partition + loop excluded
+  )
+  assert.equal(H.diskstatsBytes(s), (200 + 400) * 512)
+  assert.equal(H.formatRate(0), '0 B/s')
+  assert.equal(H.formatRate(1536), '1.5 KB/s')
+})

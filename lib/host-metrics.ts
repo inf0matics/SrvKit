@@ -105,6 +105,114 @@ export function thresholdStatus(value: number, warn: number, crit: number): Stat
   return 'ok'
 }
 
+/** OK/WARN/CRIT for a lower-is-worse value (e.g. inodes remaining %). */
+export function thresholdStatusLow(value: number, warn: number, crit: number): Status {
+  if (value < crit) return 'crit'
+  if (value < warn) return 'warn'
+  return 'ok'
+}
+
+// --- Disk: mount table (mtab / proc-mounts) ---
+export interface MountEntry {
+  device: string
+  mountpoint: string
+  fstype: string
+}
+
+// Real disk filesystems worth a usage row (tmpfs/proc/sysfs/etc excluded).
+const DISK_FS = new Set(['ext4', 'xfs', 'btrfs', 'ext3', 'ext2'])
+
+function unescapeMount(s: string): string {
+  return s.replace(/\\(\d{3})/g, (_, o: string) => String.fromCharCode(parseInt(o, 8)))
+}
+
+export function parseMtab(content: string): MountEntry[] {
+  const out: MountEntry[] = []
+  for (const line of content.split('\n')) {
+    const [device, mountpoint, fstype] = line.trim().split(/\s+/)
+    if (device && mountpoint && fstype && DISK_FS.has(fstype)) {
+      out.push({ device, mountpoint: unescapeMount(mountpoint), fstype })
+    }
+  }
+  return out
+}
+
+// --- Network: /proc/net/dev ---
+export interface NetIface {
+  iface: string
+  rxBytes: number
+  rxPackets: number
+  rxErrs: number
+  txBytes: number
+  txPackets: number
+  txErrs: number
+}
+
+export function parseNetDev(content: string): NetIface[] {
+  const out: NetIface[] = []
+  for (const line of content.split('\n')) {
+    const m = line.match(/^\s*([\w.-]+):\s*(.+)$/)
+    if (!m) continue
+    const f = m[2]!.trim().split(/\s+/).map(Number)
+    // rx: bytes packets errs drop fifo frame compressed multicast (0..7)
+    // tx: bytes packets errs (8,9,10)
+    out.push({
+      iface: m[1]!,
+      rxBytes: f[0] ?? 0,
+      rxPackets: f[1] ?? 0,
+      rxErrs: f[2] ?? 0,
+      txBytes: f[8] ?? 0,
+      txPackets: f[9] ?? 0,
+      txErrs: f[10] ?? 0,
+    })
+  }
+  return out
+}
+
+/** Errors as a % of total packets (rx+tx); 0 when there's no traffic. */
+export function errorRatePct(n: NetIface): number {
+  const packets = n.rxPackets + n.txPackets
+  const errs = n.rxErrs + n.txErrs
+  return packets > 0 ? (errs / packets) * 100 : 0
+}
+
+// --- Disk I/O: /proc/diskstats ---
+export interface DiskStat {
+  dev: string
+  sectorsRead: number
+  sectorsWritten: number
+}
+
+// Whole block devices only (skip partitions, loop, ram, dm).
+const WHOLE_DISK = /^(sd[a-z]+|vd[a-z]+|xvd[a-z]+|hd[a-z]+|nvme\d+n\d+|mmcblk\d+)$/
+
+export function parseDiskstats(content: string): DiskStat[] {
+  const out: DiskStat[] = []
+  for (const line of content.split('\n')) {
+    const f = line.trim().split(/\s+/)
+    if (f.length < 14 || !WHOLE_DISK.test(f[2]!)) continue
+    out.push({ dev: f[2]!, sectorsRead: Number(f[5]), sectorsWritten: Number(f[9]) })
+  }
+  return out
+}
+
+/** Total bytes read+written across whole disks (sectors are 512 bytes). */
+export function diskstatsBytes(stats: DiskStat[]): number {
+  return stats.reduce((a, s) => a + (s.sectorsRead + s.sectorsWritten) * 512, 0)
+}
+
+/** Human byte-rate, e.g. "12.3 MB/s". */
+export function formatRate(bytesPerSec: number): string {
+  const units = ['B', 'KB', 'MB', 'GB']
+  let v = bytesPerSec
+  let i = 0
+  while (v >= 1024 && i < units.length - 1) {
+    v /= 1024
+    i++
+  }
+  return `${v.toFixed(v < 10 && i > 0 ? 1 : 0)} ${units[i]}/s`
+}
+
 /** Worst of a set of statuses (crit > warn > ok). */
 export function worstStatus(statuses: Status[]): Status {
   if (statuses.includes('crit')) return 'crit'

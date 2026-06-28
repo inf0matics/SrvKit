@@ -9,6 +9,7 @@ export interface HostMetric {
   unit: string
   warn: number | null
   crit: number | null
+  dir: 'high' | 'low'
   status: HostStatus
   enabled: boolean
   informational: boolean

@@ -404,6 +404,15 @@ test.describe.serial('backups', () => {
     await expect(page.getByTestId('status-kernel')).toContainText('info only')
     // No thermal zone in the fixture.
     await expect(page.getByTestId('status-cpu_temp')).toContainText('not available')
+
+    // Disk (statfs of the fixture host root) + Network (eth0 from /proc/net/dev).
+    await expect(page.getByTestId('value-disk_root')).toHaveText(/\d+%/)
+    await expect(page.getByTestId('metric-inode_root')).toContainText('<10') // lower-is-worse
+    await expect(page.getByTestId('metric-disk_io')).toBeVisible()
+    await expect(page.getByTestId('status-net_err_eth0')).toHaveText('OK') // 0 errors
+    // Loopback is excluded.
+    await expect(page.getByTestId('metric-net_err_lo')).toHaveCount(0)
+
     // Aggregated badge in the sidebar.
     await expect(page.getByTestId('host-badge')).toBeVisible()
   })

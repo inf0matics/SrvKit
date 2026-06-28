@@ -49,6 +49,9 @@ async function toggle(m: HostMetric) {
   m.enabled = !m.enabled // optimistic so the switch reflects the click immediately
   await saveMetric(m.id, { enabled: m.enabled })
 }
+
+// Comparator shown for thresholds: '>' for higher-is-worse, '<' for lower (inodes).
+const cmp = (m: HostMetric) => (m.dir === 'low' ? '<' : '>')
 </script>
 
 <template>
@@ -74,8 +77,8 @@ async function toggle(m: HostMetric) {
           <span class="m-value" :data-testid="`value-${m.id}`">{{ m.display }}</span>
 
           <span v-if="!m.informational && m.warn !== null" class="m-thresholds tsp-muted">
-            <span class="thr-warn">WARN &gt;{{ m.warn }}{{ m.unit }}</span>
-            <span class="thr-crit">CRIT &gt;{{ m.crit }}{{ m.unit }}</span>
+            <span class="thr-warn">WARN {{ cmp(m) }}{{ m.warn }}{{ m.unit }}</span>
+            <span class="thr-crit">CRIT {{ cmp(m) }}{{ m.crit }}{{ m.unit }}</span>
           </span>
           <span v-else class="m-thresholds" />
 
@@ -112,8 +115,8 @@ async function toggle(m: HostMetric) {
         </div>
 
         <div v-if="editingId === m.id" class="editor" :data-testid="`editor-${m.id}`">
-          <label>WARN &gt; <input v-model.number="draft.warn" type="number" class="tsp-input num"> {{ m.unit }}</label>
-          <label>CRIT &gt; <input v-model.number="draft.crit" type="number" class="tsp-input num"> {{ m.unit }}</label>
+          <label>WARN {{ cmp(m) }} <input v-model.number="draft.warn" type="number" class="tsp-input num"> {{ m.unit }}</label>
+          <label>CRIT {{ cmp(m) }} <input v-model.number="draft.crit" type="number" class="tsp-input num"> {{ m.unit }}</label>
           <button class="tsp-btn tsp-btn-sm tsp-btn-primary" @click="saveThresholds(m)">Save</button>
           <button class="tsp-btn tsp-btn-sm" @click="editingId = null">Cancel</button>
         </div>
