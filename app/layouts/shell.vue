@@ -123,6 +123,15 @@ onBeforeUnmount(() => {
           <span class="gutter" />
           <AppIcon name="bell" />
           <span>Alerts</span>
+          <span
+            v-if="mutedCount > 0"
+            class="muted-badge"
+            data-testid="mute-indicator"
+            :title="`${mutedCount} ${mutedCount === 1 ? 'job' : 'jobs'} muted`"
+          >
+            <AppIcon name="bell-off" />
+            <span data-testid="mute-count">{{ mutedCount }}</span>
+          </span>
         </NuxtLink>
       </nav>
 
@@ -170,18 +179,6 @@ onBeforeUnmount(() => {
     </aside>
 
     <main class="main">
-      <div class="topbar">
-        <NuxtLink
-          v-if="mutedCount > 0"
-          to="/app/alerts"
-          class="mute-indicator"
-          data-testid="mute-indicator"
-          :title="`${mutedCount} ${mutedCount === 1 ? 'job' : 'jobs'} muted`"
-        >
-          <AppIcon name="bell-off" />
-          <span class="mute-badge" data-testid="mute-count">{{ mutedCount }}</span>
-        </NuxtLink>
-      </div>
       <slot />
     </main>
   </div>
@@ -400,41 +397,22 @@ onBeforeUnmount(() => {
   background: var(--tsp-bg);
 }
 
-.topbar {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-  height: 52px;
-  padding: 0 20px;
-  border-bottom: 1px solid var(--tsp-border);
-}
-
-.mute-indicator {
+/* Muted-jobs indicator on the Alerts nav entry. */
+.muted-badge {
+  margin-left: auto;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 8px;
-  border-radius: var(--tsp-radius-sm);
-  color: var(--tsp-primary);
-  text-decoration: none;
-}
-
-.mute-indicator:hover {
-  background: var(--tsp-surface);
-}
-
-.mute-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 5px;
+  gap: 3px;
+  padding: 1px 7px 1px 5px;
   border-radius: 999px;
   background: var(--tsp-primary);
   color: var(--tsp-on-primary);
   font-size: 11px;
   font-weight: 700;
+}
+
+.muted-badge .app-icon {
+  width: 12px;
+  height: 12px;
 }
 </style>
