@@ -4,7 +4,7 @@ import type { HostMetric } from '~/composables/useHost'
 definePageMeta({ middleware: 'auth', layout: 'shell' })
 usePageTitle('Host monitoring')
 
-const { metrics, missing, refresh, saveMetric } = useHost()
+const { metrics, mounts, refresh, saveMetric } = useHost()
 
 let timer: ReturnType<typeof setInterval> | undefined
 onMounted(() => {
@@ -13,16 +13,16 @@ onMounted(() => {
 })
 onBeforeUnmount(() => clearInterval(timer))
 
-// Metrics grouped by category, in a stable order.
+// One section per category (stable order). Each carries its metrics plus any
+// missing mounts gating that category, so the warning sits before its section.
 const ORDER = ['CPU', 'Memory', 'Disk', 'Network', 'System']
-const groups = computed(() => {
-  const by = new Map<string, HostMetric[]>()
-  for (const m of metrics.value) {
-    if (!by.has(m.category)) by.set(m.category, [])
-    by.get(m.category)!.push(m)
-  }
-  return [...by.entries()].sort((a, b) => ORDER.indexOf(a[0]) - ORDER.indexOf(b[0]))
-})
+const sections = computed(() =>
+  ORDER.map((cat) => ({
+    cat,
+    rows: metrics.value.filter((m) => m.category === cat),
+    missing: mounts.value.filter((mt) => !mt.present && mt.section === cat),
+  })).filter((s) => s.rows.length || s.missing.length),
+)
 
 const STATUS_LABEL: Record<string, string> = {
   ok: 'OK',
@@ -60,18 +60,22 @@ const cmp = (m: HostMetric) => (m.dir === 'low' ? '<' : '>')
       <h1>Host monitoring</h1>
     </header>
 
-    <section v-if="missing.length" class="warn-box" data-testid="missing-mounts">
-      <strong>⚠️ Missing volume mounts.</strong>
-      Host metrics need these mounted read-only into SrvKit. Add to your
-      <code>docker-compose.yml</code>:
-      <pre>volumes:
-<template v-for="m in missing" :key="m.path">  {{ m.compose }}
+    <template v-for="s in sections" :key="s.cat">
+      <section
+        v-if="s.missing.length"
+        class="warn-box"
+        :data-testid="`missing-${s.cat}`"
+      >
+        <strong>⚠️ {{ s.cat }} metrics need a volume mount.</strong>
+        Add to your <code>docker-compose.yml</code> and restart:
+        <pre>volumes:
+<template v-for="m in s.missing" :key="m.path">  {{ m.compose }}
 </template></pre>
-    </section>
+      </section>
 
-    <section v-for="[cat, rows] in groups" :key="cat" class="card">
-      <h2>{{ cat }}</h2>
-      <div v-for="m in rows" :key="m.id" class="metric" :data-testid="`metric-${m.id}`">
+      <section v-if="s.rows.length" class="card">
+        <h2>{{ s.cat }}</h2>
+        <div v-for="m in s.rows" :key="m.id" class="metric" :data-testid="`metric-${m.id}`">
         <div class="metric-row">
           <span class="m-name">{{ m.name }}</span>
           <span class="m-value" :data-testid="`value-${m.id}`">{{ m.display }}</span>
@@ -120,8 +124,9 @@ const cmp = (m: HostMetric) => (m.dir === 'low' ? '<' : '>')
           <button class="tsp-btn tsp-btn-sm tsp-btn-primary" @click="saveThresholds(m)">Save</button>
           <button class="tsp-btn tsp-btn-sm" @click="editingId = null">Cancel</button>
         </div>
-      </div>
-    </section>
+        </div>
+      </section>
+    </template>
   </div>
 </template>
 

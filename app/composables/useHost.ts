@@ -20,6 +20,7 @@ export interface HostMount {
   path: string
   present: boolean
   compose: string
+  section: string
 }
 
 interface HostData {

@@ -22,13 +22,30 @@ export interface MountInfo {
   path: string
   present: boolean
   compose: string
+  /** Category section the warning is shown under when this mount is missing. */
+  section: string
 }
 
 export function mounts(): MountInfo[] {
   return [
-    { path: hostProc(), present: existsSync(hostProc()), compose: '- /proc:/host/proc:ro' },
-    { path: hostSys(), present: existsSync(hostSys()), compose: '- /sys:/host/sys:ro' },
-    { path: hostRoot(), present: existsSync(hostRoot()), compose: '- /:/host/root:ro' },
+    {
+      path: hostProc(),
+      present: existsSync(hostProc()),
+      compose: '- /proc:/host/proc:ro',
+      section: 'CPU',
+    },
+    {
+      path: hostSys(),
+      present: existsSync(hostSys()),
+      compose: '- /sys:/host/sys:ro',
+      section: 'CPU',
+    },
+    {
+      path: hostRoot(),
+      present: existsSync(hostRoot()),
+      compose: '- /:/host/root:ro',
+      section: 'Disk',
+    },
   ]
 }
 
