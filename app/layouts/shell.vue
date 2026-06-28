@@ -79,6 +79,20 @@ onBeforeUnmount(() => {
           <span>Dashboard</span>
         </NuxtLink>
 
+        <NuxtLink to="/app/host" class="nav-item" active-class="active">
+          <span class="gutter" />
+          <AppIcon name="server" />
+          <span>Host monitoring</span>
+          <span
+            v-if="hostAvailable"
+            class="host-badge"
+            :class="`hb-${hostStatus}`"
+            data-testid="host-badge"
+          >
+            {{ hostStatus.toUpperCase() }}
+          </span>
+        </NuxtLink>
+
         <div class="nav-group">
           <NuxtLink to="/app/backups" class="nav-item" exact-active-class="active">
             <button
@@ -109,20 +123,6 @@ onBeforeUnmount(() => {
           <span class="gutter" />
           <AppIcon name="bell" />
           <span>Alerts</span>
-        </NuxtLink>
-
-        <NuxtLink to="/app/host" class="nav-item" active-class="active">
-          <span class="gutter" />
-          <AppIcon name="server" />
-          <span>Host monitoring</span>
-          <span
-            v-if="hostAvailable"
-            class="host-badge"
-            :class="`hb-${hostStatus}`"
-            data-testid="host-badge"
-          >
-            {{ hostStatus.toUpperCase() }}
-          </span>
         </NuxtLink>
       </nav>
 
@@ -180,9 +180,6 @@ onBeforeUnmount(() => {
         >
           <AppIcon name="bell-off" />
           <span class="mute-badge" data-testid="mute-count">{{ mutedCount }}</span>
-        </NuxtLink>
-        <NuxtLink to="/app/settings" class="topbar-btn" aria-label="Settings">
-          <AppIcon name="settings" />
         </NuxtLink>
       </div>
       <slot />
@@ -413,25 +410,18 @@ onBeforeUnmount(() => {
   border-bottom: 1px solid var(--tsp-border);
 }
 
-.topbar-btn,
 .mute-indicator {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   padding: 6px 8px;
   border-radius: var(--tsp-radius-sm);
-  color: var(--tsp-text-muted);
+  color: var(--tsp-primary);
   text-decoration: none;
 }
 
-.topbar-btn:hover,
 .mute-indicator:hover {
-  color: var(--tsp-text);
   background: var(--tsp-surface);
-}
-
-.mute-indicator {
-  color: var(--tsp-primary);
 }
 
 .mute-badge {
