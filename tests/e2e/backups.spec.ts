@@ -393,42 +393,66 @@ test.describe.serial('backups', () => {
     await expect(page.getByTestId('incidents')).toHaveCount(0)
   })
 
-  test('host: metrics render with statuses and a sidebar badge', async () => {
+  test('host: a missing mount shows its docker-compose lines', async () => {
     await page.getByRole('link', { name: 'Host monitoring' }).click()
     await expect(page).toHaveURL(/\/app\/host$/)
     await expect(page.getByTestId('host')).toBeVisible()
-
-    // Fixture RAM is 85% → WARN; kernel is informational.
-    await expect(page.getByTestId('value-ram_usage')).toHaveText('85%')
-    await expect(page.getByTestId('status-ram_usage')).toHaveText('WARN')
-    await expect(page.getByTestId('status-kernel')).toContainText('info only')
-    // No thermal zone in the fixture.
-    await expect(page.getByTestId('status-cpu_temp')).toContainText('not available')
-
-    // Disk (statfs of the fixture host root) + Network (eth0 from /proc/net/dev).
-    await expect(page.getByTestId('value-disk_root')).toHaveText(/\d+%/)
-    await expect(page.getByTestId('metric-inode_root')).toContainText('<10') // lower-is-worse
-    await expect(page.getByTestId('metric-disk_io')).toBeVisible()
-    await expect(page.getByTestId('status-net_err_eth0')).toHaveText('OK') // 0 errors
-    // Loopback is excluded.
-    await expect(page.getByTestId('metric-net_err_lo')).toHaveCount(0)
-
-    // Aggregated badge in the sidebar.
-    await expect(page.getByTestId('host-badge')).toBeVisible()
+    // The optional host-root mount is absent in e2e → Disk warning + compose line.
+    const warning = page.getByTestId('missing-Disk')
+    await expect(warning).toBeVisible()
+    await expect(warning).toContainText('- /:/host/root:ro')
   })
 
-  test('host: editing a threshold updates the status live', async () => {
+  test('host: all metric groups render with row details', async () => {
+    for (const group of ['CPU', 'Memory', 'Disk', 'Network', 'System']) {
+      await expect(page.getByRole('heading', { name: group, exact: true })).toBeVisible()
+    }
+    // A representative row carries name, value, thresholds, status badge, toggle.
+    const row = page.getByTestId('metric-ram_usage')
+    await expect(row).toContainText('RAM usage')
+    await expect(page.getByTestId('value-ram_usage')).toHaveText('85%')
+    await expect(row).toContainText('WARN >80%')
+    await expect(page.getByTestId('status-ram_usage')).toHaveText('WARN')
+    await expect(page.getByTestId('toggle-ram_usage')).toBeVisible()
+    // Informational rows have no threshold/toggle; loopback is excluded.
+    await expect(page.getByTestId('status-kernel')).toContainText('info only')
+    await expect(page.getByTestId('metric-net_err_lo')).toHaveCount(0)
+  })
+
+  test('host: toggle disables then re-enables a metric', async () => {
+    await page.getByTestId('toggle-ram_usage').click()
+    await expect(page.getByTestId('status-ram_usage')).toHaveText('disabled')
+    await page.getByTestId('toggle-ram_usage').click()
+    await expect(page.getByTestId('status-ram_usage')).toHaveText('WARN')
+  })
+
+  test('host: inline threshold editor saves and cancels', async () => {
+    // Save: raising WARN above the current 85% flips RAM to OK.
     await page.getByTestId('edit-ram_usage').click()
     const editor = page.getByTestId('editor-ram_usage')
     await expect(editor).toBeVisible()
-    await editor.locator('input').first().fill('90') // WARN
-    await editor.locator('input').nth(1).fill('95') // CRIT
+    await editor.locator('input').first().fill('90')
     await editor.getByRole('button', { name: 'Save' }).click()
-    await expect(page.getByTestId('status-ram_usage')).toHaveText('OK') // 85 < 90
+    await expect(editor).toHaveCount(0) // collapses on save
+    await expect(page.getByTestId('metric-ram_usage')).toContainText('WARN >90%')
+    await expect(page.getByTestId('status-ram_usage')).toHaveText('OK')
+
+    // Cancel: edits are discarded.
+    await page.getByTestId('edit-ram_usage').click()
+    await editor.locator('input').first().fill('50')
+    await editor.getByRole('button', { name: 'Cancel' }).click()
+    await expect(editor).toHaveCount(0)
+    await expect(page.getByTestId('metric-ram_usage')).toContainText('WARN >90%') // unchanged
   })
 
-  test('host: toggling a metric off disables it', async () => {
-    await page.getByTestId('toggle-ram_usage').click()
-    await expect(page.getByTestId('status-ram_usage')).toHaveText('disabled')
+  test('host: sidebar badge tracks the aggregate status', async () => {
+    // After the editor test RAM is OK (warn 90) and nothing else is failing.
+    await expect(page.getByTestId('host-badge')).toHaveText('OK')
+    // Drop RAM's WARN back below 85% → RAM WARN → aggregate WARN.
+    await page.getByTestId('edit-ram_usage').click()
+    const editor = page.getByTestId('editor-ram_usage')
+    await editor.locator('input').first().fill('80')
+    await editor.getByRole('button', { name: 'Save' }).click()
+    await expect(page.getByTestId('host-badge')).toHaveText('WARN')
   })
 })
