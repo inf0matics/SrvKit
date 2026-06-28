@@ -13,7 +13,7 @@ process.env.ENCRYPTION_KEY = 'docker-test-key'
 process.env.BACKUP_SOURCES_DIR = join(base, 'sources')
 process.env.DOCKER_SOCKET = socketPath
 
-const { parseDockerFrames, listRunningContainers, pgDump, dockerAvailable } =
+const { parseDockerFrames, listRunningContainers, pgDump, mysqlDump, dockerAvailable } =
   await import('../../server/utils/docker.ts')
 const { store } = await import('../../server/utils/srvkit.ts')
 const { encryptPassword } = await import('../../server/utils/backups.ts')
@@ -31,10 +31,24 @@ function frame(type: number, payload: string): Buffer {
 let server: Server
 const realFetch = globalThis.fetch
 
+// Records the body of the most recent exec-create call so tests can assert the
+// command + env (e.g. mysqldump + MYSQL_PWD).
+let lastExec: { Cmd: string[]; Env: string[] } | null = null
+
 before(async () => {
   server = createServer((req, res) => {
     const url = req.url ?? ''
     let m: RegExpMatchArray | null
+    if (req.method === 'POST' && (m = url.match(/^\/containers\/([^/]+)\/exec$/))) {
+      const chunks: Buffer[] = []
+      req.on('data', (c: Buffer) => chunks.push(c))
+      req.on('end', () => {
+        lastExec = JSON.parse(Buffer.concat(chunks).toString() || '{}')
+        res.writeHead(201, { 'content-type': 'application/json' })
+        res.end(JSON.stringify({ Id: `exec-${decodeURIComponent(m![1]!)}` }))
+      })
+      return
+    }
     req.resume() // drain request body
     if (req.method === 'GET' && url === '/containers/json') {
       res.writeHead(200, { 'content-type': 'application/json' })
@@ -44,9 +58,6 @@ before(async () => {
           { Id: 'c2', Names: ['/cache'], Image: 'redis' },
         ]),
       )
-    } else if (req.method === 'POST' && (m = url.match(/^\/containers\/([^/]+)\/exec$/))) {
-      res.writeHead(201, { 'content-type': 'application/json' })
-      res.end(JSON.stringify({ Id: `exec-${decodeURIComponent(m[1]!)}` }))
     } else if (req.method === 'POST' && (m = url.match(/^\/exec\/exec-([^/]+)\/start$/))) {
       res.writeHead(200, { 'content-type': 'application/vnd.docker.raw-stream' })
       res.end(
@@ -114,6 +125,13 @@ test('pgDump throws on a non-zero exit with stderr detail', async () => {
   )
 })
 
+test('mysqlDump runs mysqldump with the password in MYSQL_PWD (not on the cmdline)', async () => {
+  const dump = await mysqlDump({ container: 'pg', database: 'app', user: 'root', password: 'sik' })
+  assert.equal(dump.toString(), 'PG DUMP for pg') // mock returns stdout verbatim
+  assert.deepEqual(lastExec!.Cmd, ['mysqldump', '-u', 'root', 'app'])
+  assert.deepEqual(lastExec!.Env, ['MYSQL_PWD=sik'])
+})
+
 test('runBackup runs a PostgreSQL job and uploads the archive', async () => {
   const targetId = store().createTarget({
     name: 'T',
@@ -151,4 +169,43 @@ test('runBackup runs a PostgreSQL job and uploads the archive', async () => {
   assert.equal(store().getJob(jobId)?.lastStatus, 'success')
   const put = calls.find((c) => c.method === 'PUT')
   assert.match(put!.url, /\/srvkit\/db\/pgdb\.tar\.gz$/)
+})
+
+test('runBackup runs a MySQL job (mysqldump) and uploads the archive', async () => {
+  const targetId = store().createTarget({
+    name: 'T2',
+    host: 'https://nc.example.com',
+    username: 'bob',
+    password: encryptPassword('secret'),
+    rootDir: 'srvkit',
+  }).id
+  const jobId = store().createJob({
+    targetId,
+    name: 'mydb',
+    type: 'mysql',
+    sourcePath: '',
+    includes: [],
+    output: 'single',
+    subdirectory: 'db',
+    dateSuffix: false,
+    timeSuffix: false,
+    trigger: 'cron',
+    container: 'pg',
+    database: 'app',
+    dbUser: 'root',
+    dbPassword: encryptPassword('s3cret'),
+    schedule: '0 3 * * *',
+  }).id
+
+  const calls: { method: string; url: string }[] = []
+  globalThis.fetch = (async (url: string, init: { method: string }) => {
+    calls.push({ method: init.method, url: String(url) })
+    return { ok: true, status: 201 } as Response
+  }) as typeof fetch
+
+  await runBackup(jobId)
+
+  assert.equal(store().getJob(jobId)?.lastStatus, 'success')
+  assert.deepEqual(lastExec!.Cmd, ['mysqldump', '-u', 'root', 'app'])
+  assert.match(calls.find((c) => c.method === 'PUT')!.url, /\/srvkit\/db\/mydb\.tar\.gz$/)
 })

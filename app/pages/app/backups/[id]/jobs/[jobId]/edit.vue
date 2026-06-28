@@ -246,11 +246,11 @@ async function save() {
         </div>
       </template>
 
-      <!-- PostgreSQL: pg_dump inside a Docker container on a cron schedule -->
+      <!-- PostgreSQL / MySQL: dump inside a Docker container on a cron schedule -->
       <template v-else>
         <p v-if="!dockerAvailable" class="warn-box" data-testid="docker-warning">
           ⚠️ Docker socket not mounted. Mount
-          <code>/var/run/docker.sock</code> into SrvKit to run PostgreSQL backups.
+          <code>/var/run/docker.sock</code> into SrvKit to run database backups.
         </p>
 
         <label class="field">

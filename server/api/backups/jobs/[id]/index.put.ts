@@ -12,8 +12,8 @@ export default defineEventHandler(async (event) => {
   const body = await readBody<Record<string, unknown>>(event)
   // Full validation — saving activates the job and starts its trigger.
   const input = parseJobInput(body)
-  // A blank PostgreSQL password means "keep the stored one".
-  if (input.type === 'postgres') {
+  // A blank DB password (PostgreSQL/MySQL) means "keep the stored one".
+  if (input.type === 'postgres' || input.type === 'mysql') {
     if (!input.dbPassword) input.dbPassword = existing.dbPassword
     if (!input.dbPassword) {
       throw createError({ statusCode: 400, statusMessage: 'Database password is required.' })

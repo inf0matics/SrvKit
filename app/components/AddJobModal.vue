@@ -19,9 +19,13 @@ const TYPE_INFO: Record<string, string> = {
     'Watches a SQLite database file for changes and creates a safe point-in-time backup using the SQLite Online Backup API.',
   postgres:
     'Runs pg_dump inside the selected Docker container and streams the output to your Nextcloud target. No extra tools required.',
+  mysql:
+    'Runs mysqldump inside the selected Docker container and streams the output to your Nextcloud target. No extra tools required.',
 }
 
-// Whether the Docker socket is mounted — gates the PostgreSQL info box.
+// PostgreSQL/MySQL run a dump inside a container, so they need the Docker socket.
+const needsDocker = computed(() => form.type === 'postgres' || form.type === 'mysql')
+
 const dockerAvailable = ref(true)
 onMounted(async () => {
   try {
@@ -32,11 +36,9 @@ onMounted(async () => {
   }
 })
 
-// PostgreSQL needs the Docker socket — block creation until it's available.
+// Block creation of a container-dump job until the Docker socket is available.
 const canCreate = computed(
-  () =>
-    form.name.trim().length > 0 &&
-    !(form.type === 'postgres' && !dockerAvailable.value),
+  () => form.name.trim().length > 0 && !(needsDocker.value && !dockerAvailable.value),
 )
 
 async function create() {
@@ -76,15 +78,17 @@ async function create() {
           <option value="files">Files</option>
           <option value="sqlite">SQLite</option>
           <option value="postgres">PostgreSQL</option>
+          <option value="mysql">MySQL</option>
         </select>
       </label>
 
       <p
-        v-if="form.type === 'postgres' && !dockerAvailable"
+        v-if="needsDocker && !dockerAvailable"
         class="info warn"
         data-testid="type-info"
       >
-        ⚠️ Docker socket not mounted. PostgreSQL backups require
+        ⚠️ Docker socket not mounted. {{ form.type === 'mysql' ? 'MySQL' : 'PostgreSQL' }}
+        backups require
         <code>/var/run/docker.sock</code> to be mounted into SrvKit. Add
         <code>- /var/run/docker.sock:/var/run/docker.sock</code> to your
         <code>docker-compose.yml</code>.

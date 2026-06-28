@@ -321,6 +321,11 @@ test.describe.serial('backups', () => {
     // No Docker socket in e2e → warning shown and Create blocked.
     await expect(page.getByTestId('type-info')).toContainText('Docker socket not mounted')
     await expect(page.getByRole('button', { name: 'Create' })).toBeDisabled()
+
+    // MySQL is the same container-dump flow → also blocked, with a MySQL warning.
+    await page.getByLabel('Type').selectOption('mysql')
+    await expect(page.getByTestId('type-info')).toContainText('MySQL backups require')
+    await expect(page.getByRole('button', { name: 'Create' })).toBeDisabled()
     await page.getByRole('button', { name: 'Cancel' }).click()
   })
 

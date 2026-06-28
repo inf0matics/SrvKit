@@ -10,7 +10,7 @@ import {
 } from './backups.ts'
 import { createArchive, createFileArchive } from '../../lib/archive.ts'
 import { backupSqliteFile } from '../../lib/sqlite-backup.ts'
-import { dockerAvailable, pgDump } from './docker.ts'
+import { dockerAvailable, pgDump, mysqlDump } from './docker.ts'
 import { handleRunResult } from './alerts.ts'
 import type { RunResult } from '../../lib/store.ts'
 
@@ -63,19 +63,21 @@ export async function runBackup(jobId: string): Promise<void> {
       } catch (e) {
         return fail(`Archive failed: ${(e as Error).message}`)
       }
-    } else if (job.type === 'postgres') {
+    } else if (job.type === 'postgres' || job.type === 'mysql') {
       if (!dockerAvailable()) return fail('Docker socket not accessible')
+      const isMysql = job.type === 'mysql'
       const sqlName = job.name.replace(/[\\/]/g, '_') + '.sql'
+      const opts = {
+        container: job.container,
+        database: job.database,
+        user: job.dbUser,
+        password: decryptPassword(job.dbPassword),
+      }
       let dump: Buffer
       try {
-        dump = await pgDump({
-          container: job.container,
-          database: job.database,
-          user: job.dbUser,
-          password: decryptPassword(job.dbPassword),
-        })
+        dump = isMysql ? await mysqlDump(opts) : await pgDump(opts)
       } catch (e) {
-        return fail(`pg_dump failed: ${(e as Error).message}`)
+        return fail(`${isMysql ? 'mysqldump' : 'pg_dump'} failed: ${(e as Error).message}`)
       }
       try {
         writeFileSync(join(work, sqlName), dump)

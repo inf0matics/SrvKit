@@ -70,7 +70,7 @@ function baseJobFields(body: Record<string, unknown> | null) {
   if (!name || !targetId) {
     throw createError({ statusCode: 400, statusMessage: 'name and targetId are required' })
   }
-  if (type !== 'files' && type !== 'sqlite' && type !== 'postgres') {
+  if (type !== 'files' && type !== 'sqlite' && type !== 'postgres' && type !== 'mysql') {
     throw createError({ statusCode: 400, statusMessage: 'unsupported job type' })
   }
   if (!store().getTarget(targetId)) {
@@ -125,12 +125,12 @@ export function parseJobInput(body: Record<string, unknown> | null): JobInput {
   let trigger = 'filewatcher'
   let schedule = ''
 
-  if (type === 'postgres') {
+  if (type === 'postgres' || type === 'mysql') {
     pg.container = trimStr(body?.container)
     pg.database = trimStr(body?.database)
     pg.dbUser = trimStr(body?.dbUser)
     schedule = trimStr(body?.schedule)
-    trigger = 'cron' // PostgreSQL is always cron-triggered
+    trigger = 'cron' // container DB dumps are always cron-triggered
     const password = typeof body?.dbPassword === 'string' ? body.dbPassword : ''
     if (!pg.container) {
       throw createError({ statusCode: 400, statusMessage: 'Select a container.' })

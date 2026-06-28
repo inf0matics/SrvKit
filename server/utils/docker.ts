@@ -106,7 +106,7 @@ export function parseDockerFrames(buf: Buffer): { stdout: Buffer; stderr: Buffer
   return { stdout: Buffer.concat(out), stderr: Buffer.concat(err) }
 }
 
-export interface PgDumpOptions {
+export interface DumpOptions {
   container: string
   database: string
   user: string
@@ -114,20 +114,20 @@ export interface PgDumpOptions {
 }
 
 /**
- * Run `pg_dump` inside `container` and return the SQL dump as a Buffer.
- * Throws on a missing container, a non-zero exit, or a socket error.
+ * Run `cmd` inside `container` with `env`, returning stdout as a Buffer. Throws
+ * on a missing container, a non-zero exit (with stderr), or a socket error.
+ * `label` names the tool in error messages.
  */
-export async function pgDump(opts: PgDumpOptions): Promise<Buffer> {
-  // Create the exec instance.
+async function execDump(
+  container: string,
+  cmd: string[],
+  env: string[],
+  label: string,
+): Promise<Buffer> {
   const created = await dockerJson<{ Id: string }>(
     'POST',
-    `/containers/${encodeURIComponent(opts.container)}/exec`,
-    {
-      AttachStdout: true,
-      AttachStderr: true,
-      Cmd: ['pg_dump', '-U', opts.user, opts.database],
-      Env: [`PGPASSWORD=${opts.password}`],
-    },
+    `/containers/${encodeURIComponent(container)}/exec`,
+    { AttachStdout: true, AttachStderr: true, Cmd: cmd, Env: env },
   )
   const execId = created.Id
 
@@ -137,7 +137,7 @@ export async function pgDump(opts: PgDumpOptions): Promise<Buffer> {
     Tty: false,
   })
   if (status < 200 || status >= 300) {
-    throw new Error(`pg_dump exec failed (HTTP ${status})`)
+    throw new Error(`${label} exec failed (HTTP ${status})`)
   }
   const { stdout, stderr } = parseDockerFrames(body)
 
@@ -145,7 +145,30 @@ export async function pgDump(opts: PgDumpOptions): Promise<Buffer> {
   const info = await dockerJson<{ ExitCode: number | null }>('GET', `/exec/${execId}/json`)
   if (info.ExitCode && info.ExitCode !== 0) {
     const detail = stderr.toString('utf8').trim()
-    throw new Error(`pg_dump exited ${info.ExitCode}${detail ? `: ${detail}` : ''}`)
+    throw new Error(`${label} exited ${info.ExitCode}${detail ? `: ${detail}` : ''}`)
   }
   return stdout
+}
+
+/** Run `pg_dump` inside `container` and return the SQL dump (password via env). */
+export function pgDump(opts: DumpOptions): Promise<Buffer> {
+  return execDump(
+    opts.container,
+    ['pg_dump', '-U', opts.user, opts.database],
+    [`PGPASSWORD=${opts.password}`],
+    'pg_dump',
+  )
+}
+
+/**
+ * Run `mysqldump` inside `container`. The password goes via MYSQL_PWD (not
+ * `-p…`) so mysqldump's command-line-password warning doesn't pollute stdout.
+ */
+export function mysqlDump(opts: DumpOptions): Promise<Buffer> {
+  return execDump(
+    opts.container,
+    ['mysqldump', '-u', opts.user, opts.database],
+    [`MYSQL_PWD=${opts.password}`],
+    'mysqldump',
+  )
 }

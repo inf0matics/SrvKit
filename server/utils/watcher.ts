@@ -46,8 +46,13 @@ export function jobState(job: JobRecord): {
 export function registerJob(job: JobRecord) {
   unregisterJob(job.id)
   if (!job.active) return
-  // PostgreSQL and cron-triggered SQLite jobs fire on a schedule, not a watcher.
-  if (job.type === 'postgres' || (job.type === 'sqlite' && job.trigger === 'cron')) return
+  // Container DB dumps + cron-triggered SQLite jobs fire on a schedule.
+  if (
+    job.type === 'postgres' ||
+    job.type === 'mysql' ||
+    (job.type === 'sqlite' && job.trigger === 'cron')
+  )
+    return
 
   // Files: watch each selected path. SQLite: watch the source .db file.
   const sourceAbs = join(sourcesDir(), job.sourcePath)

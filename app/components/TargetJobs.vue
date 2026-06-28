@@ -116,6 +116,7 @@ async function confirmDelete(job: Job) {
 const TYPE_LABELS: Record<string, string> = {
   sqlite: 'SQLite',
   postgres: 'PostgreSQL',
+  mysql: 'MySQL',
   files: 'Files',
 }
 const typeLabel = (job: Job) => TYPE_LABELS[job.type] ?? 'Files'

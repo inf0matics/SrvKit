@@ -9,7 +9,11 @@ const crons = new Map<string, Cron>()
 
 /** Whether a job is cron-triggered rather than filewatcher-triggered. */
 export function usesCron(job: JobRecord): boolean {
-  return job.type === 'postgres' || (job.type === 'sqlite' && job.trigger === 'cron')
+  return (
+    job.type === 'postgres' ||
+    job.type === 'mysql' ||
+    (job.type === 'sqlite' && job.trigger === 'cron')
+  )
 }
 
 /** (Re-)register the cron schedule for an active, cron-triggered job. */
