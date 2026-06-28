@@ -1,0 +1,312 @@
+<script setup lang="ts">
+import type { HostMetric } from '~/composables/useHost'
+
+definePageMeta({ middleware: 'auth', layout: 'shell' })
+usePageTitle('Host monitoring')
+
+const { metrics, missing, refresh, saveMetric } = useHost()
+
+let timer: ReturnType<typeof setInterval> | undefined
+onMounted(() => {
+  refresh()
+  timer = setInterval(refresh, 60_000) // poll interval: 60s
+})
+onBeforeUnmount(() => clearInterval(timer))
+
+// Metrics grouped by category, in a stable order.
+const ORDER = ['CPU', 'Memory', 'Disk', 'Network', 'System']
+const groups = computed(() => {
+  const by = new Map<string, HostMetric[]>()
+  for (const m of metrics.value) {
+    if (!by.has(m.category)) by.set(m.category, [])
+    by.get(m.category)!.push(m)
+  }
+  return [...by.entries()].sort((a, b) => ORDER.indexOf(a[0]) - ORDER.indexOf(b[0]))
+})
+
+const STATUS_LABEL: Record<string, string> = {
+  ok: 'OK',
+  warn: 'WARN',
+  crit: 'CRIT',
+  na: 'not available',
+  info: 'info only',
+  off: 'disabled',
+}
+
+// Inline threshold editor.
+const editingId = ref<string | null>(null)
+const draft = reactive({ warn: 0, crit: 0 })
+function openEditor(m: HostMetric) {
+  editingId.value = m.id
+  draft.warn = m.warn ?? 0
+  draft.crit = m.crit ?? 0
+}
+async function saveThresholds(m: HostMetric) {
+  await saveMetric(m.id, { warn: Number(draft.warn), crit: Number(draft.crit) })
+  editingId.value = null
+}
+async function toggle(m: HostMetric) {
+  m.enabled = !m.enabled // optimistic so the switch reflects the click immediately
+  await saveMetric(m.id, { enabled: m.enabled })
+}
+</script>
+
+<template>
+  <div class="page" data-testid="host">
+    <header class="page-head">
+      <h1>Host monitoring</h1>
+    </header>
+
+    <section v-if="missing.length" class="warn-box" data-testid="missing-mounts">
+      <strong>⚠️ Missing volume mounts.</strong>
+      Host metrics need these mounted read-only into SrvKit. Add to your
+      <code>docker-compose.yml</code>:
+      <pre>volumes:
+<template v-for="m in missing" :key="m.path">  {{ m.compose }}
+</template></pre>
+    </section>
+
+    <section v-for="[cat, rows] in groups" :key="cat" class="card">
+      <h2>{{ cat }}</h2>
+      <div v-for="m in rows" :key="m.id" class="metric" :data-testid="`metric-${m.id}`">
+        <div class="metric-row">
+          <span class="m-name">{{ m.name }}</span>
+          <span class="m-value" :data-testid="`value-${m.id}`">{{ m.display }}</span>
+
+          <span v-if="!m.informational && m.warn !== null" class="m-thresholds tsp-muted">
+            <span class="thr-warn">WARN &gt;{{ m.warn }}{{ m.unit }}</span>
+            <span class="thr-crit">CRIT &gt;{{ m.crit }}{{ m.unit }}</span>
+          </span>
+          <span v-else class="m-thresholds" />
+
+          <button
+            v-if="!m.informational"
+            class="tsp-btn tsp-btn-sm tsp-btn-icon"
+            :aria-label="`Edit ${m.name} thresholds`"
+            :data-testid="`edit-${m.id}`"
+            @click="editingId === m.id ? (editingId = null) : openEditor(m)"
+          >
+            <AppIcon name="pencil" />
+          </button>
+
+          <span class="badge" :class="`st-${m.status}`" :data-testid="`status-${m.id}`">
+            {{ STATUS_LABEL[m.status] }}
+            <template v-if="m.note"> · {{ m.note }}</template>
+          </span>
+
+          <label
+            v-if="!m.informational"
+            class="switch"
+            :title="m.enabled ? 'Enabled' : 'Disabled'"
+            :data-testid="`toggle-${m.id}`"
+          >
+            <input
+              type="checkbox"
+              :checked="m.enabled"
+              :aria-label="`Enable ${m.name}`"
+              @change="toggle(m)"
+            >
+            <span class="track"><span class="thumb" /></span>
+          </label>
+          <span v-else class="switch-spacer" />
+        </div>
+
+        <div v-if="editingId === m.id" class="editor" :data-testid="`editor-${m.id}`">
+          <label>WARN &gt; <input v-model.number="draft.warn" type="number" class="tsp-input num"> {{ m.unit }}</label>
+          <label>CRIT &gt; <input v-model.number="draft.crit" type="number" class="tsp-input num"> {{ m.unit }}</label>
+          <button class="tsp-btn tsp-btn-sm tsp-btn-primary" @click="saveThresholds(m)">Save</button>
+          <button class="tsp-btn tsp-btn-sm" @click="editingId = null">Cancel</button>
+        </div>
+      </div>
+    </section>
+  </div>
+</template>
+
+<style scoped>
+.page {
+  max-width: 820px;
+  margin: 0 auto;
+  padding: 40px 24px 64px;
+}
+
+.page-head h1 {
+  margin: 0 0 8px;
+  font-size: 1.6rem;
+}
+
+.warn-box {
+  border: 1px solid var(--tsp-primary);
+  border-radius: var(--tsp-radius);
+  background: var(--tsp-surface);
+  padding: 14px 16px;
+  margin: 16px 0;
+  font-size: 0.9rem;
+}
+
+.warn-box pre,
+.warn-box code {
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 0.8rem;
+}
+
+.warn-box pre {
+  margin: 8px 0 0;
+  white-space: pre-wrap;
+}
+
+.card {
+  border: 1px solid var(--tsp-border);
+  border-radius: var(--tsp-radius);
+  background: var(--tsp-surface);
+  padding: 14px 18px;
+  margin-top: 16px;
+}
+
+.card h2 {
+  margin: 0 0 8px;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--tsp-text-muted);
+}
+
+.metric {
+  border-top: 1px solid var(--tsp-border);
+  padding: 8px 0;
+}
+
+.metric:first-of-type {
+  border-top: none;
+}
+
+.metric-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.m-name {
+  font-weight: 600;
+  min-width: 11rem;
+}
+
+.m-value {
+  min-width: 5rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.m-thresholds {
+  flex: 1;
+  display: flex;
+  gap: 12px;
+  font-size: 0.8rem;
+}
+
+.thr-warn {
+  color: var(--tsp-warn, #d9a514);
+}
+
+.thr-crit {
+  color: var(--tsp-danger);
+}
+
+.badge {
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.st-ok {
+  background: rgba(63, 185, 80, 0.15);
+  color: var(--tsp-success, #3fb950);
+}
+
+.st-warn {
+  background: rgba(217, 165, 20, 0.18);
+  color: var(--tsp-warn, #d9a514);
+}
+
+.st-crit {
+  background: rgba(255, 99, 71, 0.18);
+  color: var(--tsp-danger);
+}
+
+.st-na,
+.st-info,
+.st-off {
+  background: var(--tsp-bg);
+  color: var(--tsp-text-muted);
+  font-weight: 600;
+}
+
+.editor {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0 4px 11rem;
+  font-size: 0.85rem;
+}
+
+.editor label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--tsp-text-muted);
+}
+
+.num {
+  width: 5rem;
+}
+
+/* On/off switch */
+.switch {
+  position: relative;
+  display: inline-flex;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.switch input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.track {
+  width: 38px;
+  height: 22px;
+  border-radius: 999px;
+  background: var(--tsp-border);
+  display: inline-flex;
+  align-items: center;
+  padding: 2px;
+  transition: background 0.15s ease;
+}
+
+.thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--tsp-surface);
+  transition: transform 0.15s ease;
+}
+
+.switch input:checked + .track {
+  background: var(--tsp-primary);
+}
+
+.switch input:checked + .track .thumb {
+  transform: translateX(16px);
+}
+
+.switch-spacer {
+  width: 38px;
+  flex-shrink: 0;
+}
+</style>

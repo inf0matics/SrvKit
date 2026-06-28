@@ -24,6 +24,15 @@ onMounted(() => {
 })
 onBeforeUnmount(() => clearInterval(mutedTimer))
 
+// Aggregated host status badge on the Host monitoring nav entry.
+const { status: hostStatus, available: hostAvailable, refresh: refreshHost } = useHost()
+let hostTimer: ReturnType<typeof setInterval> | undefined
+onMounted(() => {
+  refreshHost()
+  hostTimer = setInterval(refreshHost, 60_000)
+})
+onBeforeUnmount(() => clearInterval(hostTimer))
+
 /* ---- Logout ---- */
 async function logout() {
   await $fetch('/api/auth/logout', { method: 'POST' })
@@ -100,6 +109,20 @@ onBeforeUnmount(() => {
           <span class="gutter" />
           <AppIcon name="bell" />
           <span>Alerts</span>
+        </NuxtLink>
+
+        <NuxtLink to="/app/host" class="nav-item" active-class="active">
+          <span class="gutter" />
+          <AppIcon name="server" />
+          <span>Host monitoring</span>
+          <span
+            v-if="hostAvailable"
+            class="host-badge"
+            :class="`hb-${hostStatus}`"
+            data-testid="host-badge"
+          >
+            {{ hostStatus.toUpperCase() }}
+          </span>
         </NuxtLink>
       </nav>
 
@@ -241,6 +264,30 @@ onBeforeUnmount(() => {
 .nav-item.active {
   background: var(--tsp-primary);
   color: var(--tsp-on-primary);
+}
+
+.host-badge {
+  margin-left: auto;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 999px;
+  letter-spacing: 0.03em;
+}
+
+.hb-ok {
+  background: rgba(63, 185, 80, 0.2);
+  color: var(--tsp-success, #3fb950);
+}
+
+.hb-warn {
+  background: rgba(217, 165, 20, 0.22);
+  color: var(--tsp-warn, #d9a514);
+}
+
+.hb-crit {
+  background: rgba(255, 99, 71, 0.22);
+  color: var(--tsp-danger);
 }
 
 /* Leading gutter so Dashboard/Backups icons align and the chevron has room. */

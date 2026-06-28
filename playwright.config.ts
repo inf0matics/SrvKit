@@ -25,6 +25,9 @@ export default defineConfig({
       // No Docker in CI — point at a missing socket so PostgreSQL jobs report
       // the "not mounted" state deterministically.
       DOCKER_SOCKET: '/tmp/srvkit-e2e-no-docker.sock',
+      // Host monitoring reads from a committed fixture /proc + /sys.
+      HOST_PROC: './tests/fixtures/host/proc',
+      HOST_SYS: './tests/fixtures/host/sys',
     },
     reuseExistingServer: false,
     timeout: 120_000,

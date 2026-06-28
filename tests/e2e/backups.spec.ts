@@ -392,4 +392,34 @@ test.describe.serial('backups', () => {
     await expect(page.getByTestId('all-clear')).toContainText('All systems OK')
     await expect(page.getByTestId('incidents')).toHaveCount(0)
   })
+
+  test('host: metrics render with statuses and a sidebar badge', async () => {
+    await page.getByRole('link', { name: 'Host monitoring' }).click()
+    await expect(page).toHaveURL(/\/app\/host$/)
+    await expect(page.getByTestId('host')).toBeVisible()
+
+    // Fixture RAM is 85% → WARN; kernel is informational.
+    await expect(page.getByTestId('value-ram_usage')).toHaveText('85%')
+    await expect(page.getByTestId('status-ram_usage')).toHaveText('WARN')
+    await expect(page.getByTestId('status-kernel')).toContainText('info only')
+    // No thermal zone in the fixture.
+    await expect(page.getByTestId('status-cpu_temp')).toContainText('not available')
+    // Aggregated badge in the sidebar.
+    await expect(page.getByTestId('host-badge')).toBeVisible()
+  })
+
+  test('host: editing a threshold updates the status live', async () => {
+    await page.getByTestId('edit-ram_usage').click()
+    const editor = page.getByTestId('editor-ram_usage')
+    await expect(editor).toBeVisible()
+    await editor.locator('input').first().fill('90') // WARN
+    await editor.locator('input').nth(1).fill('95') // CRIT
+    await editor.getByRole('button', { name: 'Save' }).click()
+    await expect(page.getByTestId('status-ram_usage')).toHaveText('OK') // 85 < 90
+  })
+
+  test('host: toggling a metric off disables it', async () => {
+    await page.getByTestId('toggle-ram_usage').click()
+    await expect(page.getByTestId('status-ram_usage')).toHaveText('disabled')
+  })
 })
