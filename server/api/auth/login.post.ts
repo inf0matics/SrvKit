@@ -12,7 +12,12 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 404, statusMessage: 'Not found' })
   }
 
-  const ip = getRequestIP(event, { xForwardedFor: true }) || 'unknown'
+  // Key on the raw socket address, NOT the X-Forwarded-For header: h3 trusts the
+  // leftmost XFF value unconditionally, so a client could rotate it per request
+  // to dodge the limit. Behind Traefik the socket IP is the proxy's (a global
+  // cap, fine for a single-admin app); for per-client limits behind a trusted
+  // proxy, set Traefik forwardedHeaders.trustedIPs and key on XFF there.
+  const ip = getRequestIP(event) || 'unknown'
   const limit = loginRateLimiter.check(ip)
   if (!limit.allowed) {
     setResponseHeader(event, 'Retry-After', limit.retryAfter)

@@ -9,6 +9,38 @@ export default defineNuxtConfig({
   modules: ['@nuxt/eslint'],
   devtools: { enabled: true },
   css: ['~/assets/css/tokens.css'],
+
+  // Don't ship server source maps in the production image (avoids leaking the
+  // full TypeScript source if a .map were ever served).
+  nitro: {
+    sourceMap: false,
+  },
+
+  // Baseline HTTP security headers on every response. The CSP allows Nuxt's
+  // inline hydration script/styles and the Google Fonts the design system uses;
+  // everything else is same-origin only.
+  routeRules: {
+    '/**': {
+      headers: {
+        'X-Content-Type-Options': 'nosniff',
+        'X-Frame-Options': 'SAMEORIGIN',
+        'Referrer-Policy': 'strict-origin-when-cross-origin',
+        'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
+        'Content-Security-Policy': [
+          "default-src 'self'",
+          "script-src 'self' 'unsafe-inline'",
+          "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+          "font-src 'self' https://fonts.gstatic.com",
+          "img-src 'self' data:",
+          "connect-src 'self'",
+          "frame-ancestors 'self'",
+          "base-uri 'self'",
+          "form-action 'self'",
+        ].join('; '),
+      },
+    },
+  },
+
   // App version, read from package.json at build time, surfaced in the footer.
   runtimeConfig: {
     public: {

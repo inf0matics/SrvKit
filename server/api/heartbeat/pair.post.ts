@@ -1,9 +1,16 @@
 import { pairPeer } from '../../utils/peers.ts'
 import { getServerName } from '../../utils/alerts.ts'
+import { pairRateLimiter } from '../../utils/srvkit.ts'
 
 // A connecting peer submits the pairing key it copied from this instance.
 // On success we register it and hand back the bearer token for its pings.
 export default defineEventHandler(async (event) => {
+  const limit = pairRateLimiter.check(getRequestIP(event) || 'unknown')
+  if (!limit.allowed) {
+    setResponseHeader(event, 'Retry-After', limit.retryAfter)
+    throw createError({ statusCode: 429, statusMessage: 'Too many attempts' })
+  }
+
   const body = await readBody<{ domain?: unknown; key?: unknown }>(event)
   if (typeof body?.key !== 'string' || !body.key.trim()) {
     throw createError({ statusCode: 400, statusMessage: 'key required' })

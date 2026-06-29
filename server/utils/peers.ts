@@ -1,3 +1,4 @@
+import { timingSafeEqual } from 'node:crypto'
 import { store } from './srvkit.ts'
 import { dispatch, messagePrefix, getServerName } from './alerts.ts'
 import { encryptPassword, decryptPassword } from './backups.ts'
@@ -72,11 +73,18 @@ export function pairPeer(label: string, key: string, ip: string, now = Date.now(
   return raw
 }
 
+/** Constant-time string compare (length check leaks length only, which is fixed). */
+function safeEqual(a: string, b: string): boolean {
+  const ab = Buffer.from(a)
+  const bb = Buffer.from(b)
+  return ab.length === bb.length && timingSafeEqual(ab, bb)
+}
+
 /** Find a peer by the plaintext token it presented (tokens are encrypted at rest). */
 function findPeerByToken(raw: string): PeerRecord | null {
   for (const p of store().listPeers()) {
     try {
-      if (decryptPassword(p.token) === raw) return p
+      if (safeEqual(decryptPassword(p.token), raw)) return p
     } catch {
       /* legacy/un-decryptable token — skip */
     }

@@ -1,4 +1,4 @@
-import { join, resolve, sep } from 'node:path'
+import { join, resolve, sep, isAbsolute, normalize } from 'node:path'
 import { createError } from 'h3'
 import { encrypt, decrypt } from '../../lib/crypto.ts'
 import {
@@ -118,7 +118,9 @@ export function parseJobInput(body: Record<string, unknown> | null): JobInput {
   const dateSuffix = body?.dateSuffix === true
   const timeSuffix = body?.timeSuffix === true
   const includes = Array.isArray(body?.includes)
-    ? (body.includes as unknown[]).filter((e): e is string => typeof e === 'string')
+    ? (body.includes as unknown[])
+        .filter((e): e is string => typeof e === 'string')
+        .filter(isSafeInclude) // drop ../ escapes and absolute paths
     : []
 
   const pg = { ...emptyPgFields }
@@ -196,6 +198,17 @@ export function parseJobInput(body: Record<string, unknown> | null): JobInput {
 
 export function trimStr(v: unknown): string {
   return typeof v === 'string' ? v.trim() : ''
+}
+
+/**
+ * A job `include` must stay inside the source dir — reject absolute paths and
+ * any that normalize to an escape (`../…`), so a job can't archive host files
+ * outside its configured source via tar's relative cwd.
+ */
+export function isSafeInclude(p: string): boolean {
+  if (!p || isAbsolute(p)) return false
+  const norm = normalize(p)
+  return norm !== '..' && !norm.startsWith('../')
 }
 
 export function isValidHost(host: string): boolean {

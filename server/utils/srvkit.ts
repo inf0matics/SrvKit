@@ -25,6 +25,12 @@ export function sessionTtlSeconds(): number {
  */
 export const loginRateLimiter = createRateLimiter(10, 60_000)
 
+/**
+ * Pairing rate limit: max 20 attempts per 10 minutes per IP. The unauthenticated
+ * /api/heartbeat/pair endpoint validates a one-time key; this caps brute force.
+ */
+export const pairRateLimiter = createRateLimiter(20, 10 * 60_000)
+
 export interface AuthSessionData {
   authenticated?: boolean
 }
