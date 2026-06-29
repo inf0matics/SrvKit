@@ -1,6 +1,18 @@
 # Changelog
 
 
+## v1.0.2
+
+[compare changes](https://github.com/inf0matics/SrvKit/compare/v1.0.1...v1.0.2)
+
+### 🩹 Fixes
+
+- Fall back to /host/proc/mounts for disk discovery (no mtab mount needed) ([07cef6a](https://github.com/inf0matics/SrvKit/commit/07cef6a))
+
+### ❤️ Contributors
+
+- Inf0matics <fil@thespielplatz.com>
+
 ## v1.0.1
 
 [compare changes](https://github.com/inf0matics/SrvKit/compare/v1.0.0...v1.0.1)
