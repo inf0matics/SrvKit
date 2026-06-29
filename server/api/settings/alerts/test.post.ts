@@ -3,7 +3,7 @@ import {
   getChatId,
   sendTestAlert,
   getTalkUrl,
-  getTalkBotToken,
+  getTalkSecret,
   getTalkConversation,
   sendTalkTest,
 } from '../../../utils/alerts.ts'
@@ -19,7 +19,7 @@ export default defineEventHandler(async (event) => {
       const talk = (body.talk ?? {}) as Record<string, unknown>
       await sendTalkTest(
         str(talk.url) || getTalkUrl(),
-        str(talk.botToken) || getTalkBotToken(),
+        str(talk.secret) || getTalkSecret(),
         str(talk.conversation) || getTalkConversation(),
       )
     } else {

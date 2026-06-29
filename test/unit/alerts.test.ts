@@ -1,5 +1,6 @@
 import { test, before, beforeEach, after } from 'node:test'
 import assert from 'node:assert/strict'
+import { createHmac } from 'node:crypto'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -199,28 +200,32 @@ test('message prefix uses the server name when set', () => {
   store().setConfig('server_name', '') // reset for other tests
 })
 
-test('Talk settings round-trip; bot token is write-only and never returned', () => {
+test('Talk settings round-trip; bot secret is write-only and never returned', () => {
   saveTalkSettings({
     url: 'https://cloud.example.com/',
     conversation: 'room1',
-    botToken: 'NC-BOT',
+    secret: 'NC-SECRET',
     enabled: true,
   })
   const s = getTalkSettings()
   assert.equal(s.url, 'https://cloud.example.com') // trailing slash stripped
   assert.equal(s.conversation, 'room1')
   assert.equal(s.enabled, true)
-  assert.equal(s.hasToken, true)
-  assert.equal('botToken' in s, false)
+  assert.equal(s.hasSecret, true)
+  assert.equal('secret' in s, false)
   saveTalkSettings({ enabled: false })
 })
 
-test('sendNextcloudTalk posts to the bot API with Bearer + OCS header + referenceId', async () => {
-  await sendNextcloudTalk('https://cloud.example.com/', 'NC-BOT', 'room1', 'hello world')
+test('sendNextcloudTalk signs the request with HMAC-SHA256 over random + message', async () => {
+  await sendNextcloudTalk('https://cloud.example.com/', 'NC-SECRET', 'room1', 'hello world')
   assert.equal(calls.length, 1)
   assert.match(calls[0]!.url, /\/ocs\/v2\.php\/apps\/spreed\/api\/v1\/bot\/room1\/message$/)
-  assert.equal(calls[0]!.headers.authorization, 'Bearer NC-BOT')
+  assert.equal(calls[0]!.headers.authorization, undefined) // NOT bearer
   assert.equal(calls[0]!.headers['OCS-APIRequest'], 'true')
+  const random = calls[0]!.headers['X-Nextcloud-Talk-Bot-Random']!
+  assert.ok(random.length >= 32)
+  const expected = createHmac('sha256', 'NC-SECRET').update(random + 'hello world').digest('hex')
+  assert.equal(calls[0]!.headers['X-Nextcloud-Talk-Bot-Signature'], expected)
   assert.equal(calls[0]!.body.message, 'hello world')
   assert.match(String(calls[0]!.body.referenceId), /^[0-9a-f-]{36}$/) // random UUID dedupe
 })
@@ -229,7 +234,7 @@ test('both channels fire independently when both are enabled', async () => {
   saveTalkSettings({
     url: 'https://cloud.example.com',
     conversation: 'room1',
-    botToken: 'NC-BOT',
+    secret: 'NC-SECRET',
     enabled: true,
   })
   await handleRunResult(jobId, run('failed', 'boom'))
@@ -245,7 +250,7 @@ test('a disabled Talk channel is skipped — Telegram only', async () => {
   saveTalkSettings({
     url: 'https://cloud.example.com',
     conversation: 'room1',
-    botToken: 'NC-BOT',
+    secret: 'NC-SECRET',
     enabled: false,
   })
   await handleRunResult(jobId, run('failed', 'boom'))

@@ -12,14 +12,14 @@ interface TalkSettings {
   url: string
   conversation: string
   enabled: boolean
-  hasToken: boolean
+  hasSecret: boolean
 }
 type Result = { ok: boolean; error?: string } | null
 
 const tg = reactive({ token: '', chatId: '', enabled: false, recovery: true })
 const tgHasToken = ref(false)
-const talk = reactive({ url: '', conversation: '', botToken: '', enabled: false })
-const talkHasToken = ref(false)
+const talk = reactive({ url: '', conversation: '', secret: '', enabled: false })
+const talkHasSecret = ref(false)
 
 const status = reactive({
   tg: { saving: false, saved: false, error: '', testing: false, test: null as Result },
@@ -42,8 +42,8 @@ async function load() {
   talk.url = t.url
   talk.conversation = t.conversation
   talk.enabled = t.enabled
-  talkHasToken.value = t.hasToken
-  talk.botToken = ''
+  talkHasSecret.value = t.hasSecret
+  talk.secret = ''
 }
 onMounted(load)
 
@@ -79,13 +79,13 @@ async function saveTalk() {
         talk: {
           url: talk.url,
           conversation: talk.conversation,
-          botToken: talk.botToken,
+          secret: talk.secret,
           enabled: talk.enabled,
         },
       },
     })
-    talkHasToken.value = t.hasToken
-    talk.botToken = ''
+    talkHasSecret.value = t.hasSecret
+    talk.secret = ''
     st.saved = true
   } catch (e) {
     st.error = errMsg(e)
@@ -119,7 +119,7 @@ async function testTalk() {
       method: 'POST',
       body: {
         channel: 'talk',
-        talk: { url: talk.url, conversation: talk.conversation, botToken: talk.botToken },
+        talk: { url: talk.url, conversation: talk.conversation, secret: talk.secret },
       },
     })
   } catch (e) {
@@ -227,13 +227,13 @@ async function testTalk() {
         >
       </label>
       <label class="field">
-        <span>Bot token</span>
+        <span>Bot secret</span>
         <input
-          v-model="talk.botToken"
+          v-model="talk.secret"
           class="tsp-input"
           type="password"
           autocomplete="off"
-          :placeholder="talkHasToken ? '•••••••• (configured — leave blank to keep)' : 'Bot token'"
+          :placeholder="talkHasSecret ? '•••••••• (configured — leave blank to keep)' : 'Bot secret'"
         >
       </label>
       <label class="field">
@@ -268,9 +268,25 @@ async function testTalk() {
 
       <div class="info-box">
         <strong>ℹ️ Setting up the bot</strong>
-        To create a bot token, go to <strong>Nextcloud Admin → Talk → Bots</strong>, register a new
-        bot, and copy the token. The conversation token is the last part of the Talk room URL:
-        <code>https://cloud.example.com/call/{conversation-token}</code>. Requires Nextcloud 27+.
+        <p>
+          Register a Talk bot with <code>occ talk:bot:install</code> (Nextcloud 27+). The
+          <strong>secret</strong> you pass must match the <em>Bot secret</em> above. The conversation
+          token is the last part of the room URL: <code>https://cloud.example.com/call/{token}</code>.
+        </p>
+        <p class="variant">Nextcloud AIO (Docker):</p>
+        <pre>docker exec nextcloud-aio-nextcloud php occ talk:bot:install \
+  "SrvKit" \
+  "&lt;your-secret&gt;" \
+  "https://srvkit.example.com/api/talk-webhook" \
+  "SrvKit Alerts" \
+  --feature webhook --feature response</pre>
+        <p class="variant">Standard Nextcloud:</p>
+        <pre>sudo -u www-data php /var/www/html/occ talk:bot:install \
+  "SrvKit" \
+  "&lt;your-secret&gt;" \
+  "https://srvkit.example.com/api/talk-webhook" \
+  "SrvKit Alerts" \
+  --feature webhook --feature response</pre>
       </div>
     </section>
   </div>
@@ -418,8 +434,30 @@ async function testTalk() {
   color: var(--tsp-text-muted);
 }
 
+.info-box p {
+  margin: 6px 0;
+}
+
 .info-box code {
   font-family: ui-monospace, Menlo, Consolas, monospace;
   font-size: 0.76rem;
+}
+
+.info-box .variant {
+  margin: 10px 0 4px;
+  font-weight: 600;
+  color: var(--tsp-text);
+}
+
+.info-box pre {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: var(--tsp-radius-sm, 6px);
+  background: var(--tsp-surface);
+  border: 1px solid var(--tsp-border);
+  overflow-x: auto;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 0.74rem;
+  line-height: 1.4;
 }
 </style>

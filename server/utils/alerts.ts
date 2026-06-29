@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+import { randomUUID, randomBytes, createHmac } from 'node:crypto'
 import { store } from './srvkit.ts'
 import { encryptPassword, decryptPassword } from './backups.ts'
 import type { RunResult } from '../../lib/store.ts'
@@ -10,7 +10,7 @@ const K_ENABLED = 'alerts_tg_enabled'
 const K_RECOVERY = 'alerts_recovery'
 // Nextcloud Talk channel
 const K_NC_URL = 'alerts_nctalk_url'
-const K_NC_BOT = 'alerts_nctalk_bot'
+const K_NC_SECRET = 'alerts_nctalk_secret'
 const K_NC_CONV = 'alerts_nctalk_conv'
 const K_NC_ENABLED = 'alerts_nctalk_enabled'
 
@@ -92,8 +92,8 @@ export function getTalkUrl(): string {
 export function getTalkConversation(): string {
   return (store().getConfig(K_NC_CONV) ?? '').trim()
 }
-export function getTalkBotToken(): string {
-  const stored = store().getConfig(K_NC_BOT)
+export function getTalkSecret(): string {
+  const stored = store().getConfig(K_NC_SECRET)
   if (!stored) return ''
   try {
     return decryptPassword(stored)
@@ -109,8 +109,8 @@ export interface TalkSettings {
   url: string
   conversation: string
   enabled: boolean
-  /** Whether a bot token is configured (never returns the token itself). */
-  hasToken: boolean
+  /** Whether a bot secret is configured (never returns the secret itself). */
+  hasSecret: boolean
 }
 
 export function getTalkSettings(): TalkSettings {
@@ -118,11 +118,11 @@ export function getTalkSettings(): TalkSettings {
     url: getTalkUrl(),
     conversation: getTalkConversation(),
     enabled: talkEnabled(),
-    hasToken: getTalkBotToken().length > 0,
+    hasSecret: getTalkSecret().length > 0,
   }
 }
 
-/** Persist Talk settings. Bot token only written when a non-empty value is given. */
+/** Persist Talk settings. Bot secret only written when a non-empty value is given. */
 export function saveTalkSettings(input: Record<string, unknown>): void {
   if (typeof input.url === 'string') {
     store().setConfig(K_NC_URL, input.url.trim().replace(/\/+$/, ''))
@@ -130,8 +130,8 @@ export function saveTalkSettings(input: Record<string, unknown>): void {
   if (typeof input.conversation === 'string') {
     store().setConfig(K_NC_CONV, input.conversation.trim())
   }
-  if (typeof input.botToken === 'string' && input.botToken.trim()) {
-    store().setConfig(K_NC_BOT, encryptPassword(input.botToken.trim()))
+  if (typeof input.secret === 'string' && input.secret.trim()) {
+    store().setConfig(K_NC_SECRET, encryptPassword(input.secret.trim()))
   }
   if (typeof input.enabled === 'boolean') {
     store().setConfig(K_NC_ENABLED, input.enabled ? '1' : '0')
@@ -176,20 +176,25 @@ export async function sendTestAlert(token: string, chatId: string): Promise<void
 
 /**
  * Post a message to a Nextcloud Talk conversation via the Bot API (NC 27+).
- * A random referenceId dedupes delivery on retry. Throws with detail on failure.
+ * Talk bots authenticate per-request with an HMAC-SHA256 signature over
+ * `random + message` keyed by the shared bot secret — not a bearer token. A
+ * random referenceId dedupes delivery on retry. Throws with detail on failure.
  */
 export async function sendNextcloudTalk(
   url: string,
-  botToken: string,
+  secret: string,
   conversation: string,
   text: string,
 ): Promise<void> {
   const base = url.replace(/\/+$/, '')
   const endpoint = `${base}/ocs/v2.php/apps/spreed/api/v1/bot/${encodeURIComponent(conversation)}/message`
+  const random = randomBytes(32).toString('hex') // ≥32 chars, per the API
+  const signature = createHmac('sha256', secret).update(random + text).digest('hex')
   const res = await fetch(endpoint, {
     method: 'POST',
     headers: {
-      authorization: `Bearer ${botToken}`,
+      'X-Nextcloud-Talk-Bot-Random': random,
+      'X-Nextcloud-Talk-Bot-Signature': signature,
       'OCS-APIRequest': 'true',
       'content-type': 'application/json',
       accept: 'application/json',
@@ -204,14 +209,14 @@ export async function sendNextcloudTalk(
 /** Send a test message to the Talk conversation. Throws on failure. */
 export async function sendTalkTest(
   url: string,
-  botToken: string,
+  secret: string,
   conversation: string,
 ): Promise<void> {
-  if (!url || !botToken || !conversation) {
-    throw new Error('Nextcloud URL, bot token and conversation token are all required.')
+  if (!url || !secret || !conversation) {
+    throw new Error('Nextcloud URL, bot secret and conversation token are all required.')
   }
   const text = `✅ ${messagePrefix()}: Test alert — Nextcloud Talk is configured correctly.`
-  await sendNextcloudTalk(url, botToken, conversation, text)
+  await sendNextcloudTalk(url, secret, conversation, text)
 }
 
 export function buildFailedMessage(prefix: string, name: string, run: RunResult): string {
@@ -235,11 +240,11 @@ async function dispatchTelegram(text: string): Promise<void> {
 
 async function dispatchTalk(text: string): Promise<void> {
   const url = getTalkUrl()
-  const botToken = getTalkBotToken()
+  const secret = getTalkSecret()
   const conversation = getTalkConversation()
-  if (!talkEnabled() || !url || !botToken || !conversation) return
+  if (!talkEnabled() || !url || !secret || !conversation) return
   try {
-    await sendNextcloudTalk(url, botToken, conversation, text)
+    await sendNextcloudTalk(url, secret, conversation, text)
   } catch (e) {
     console.error('[alerts] Nextcloud Talk delivery failed:', (e as Error).message)
   }
