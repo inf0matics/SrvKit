@@ -137,6 +137,23 @@ async function saveGrace(c: DockerContainer) {
           </div>
         </div>
       </section>
+
+      <section class="info-box" data-testid="docker-info">
+        <strong>ℹ️ How outage detection works</strong>
+        <p>
+          SrvKit polls every 10&nbsp;seconds and only sees containers that still exist. A
+          monitored container that is <strong>stopped or crashes</strong> (state
+          <code>exited</code> or <code>dead</code>) starts its grace period and then alerts
+          <code>CRIT</code>. Recovery to <code>running</code> clears the alert silently.
+        </p>
+        <p>
+          A container that is <strong>removed</strong> — e.g.
+          <code>docker compose down</code> or <code>docker rm</code> — disappears from this list
+          entirely and does <strong>not</strong> alert: a deliberate teardown can't be told apart
+          from "gone". Per-container settings are remembered by name, so a recreated container is
+          monitored again automatically.
+        </p>
+      </section>
     </template>
   </div>
 </template>
@@ -177,6 +194,26 @@ async function saveGrace(c: DockerContainer) {
   display: flex;
   gap: 8px;
   margin: 16px 0 0;
+}
+
+.info-box {
+  border: 1px solid var(--tsp-border);
+  border-radius: var(--tsp-radius);
+  background: var(--tsp-surface);
+  padding: 14px 16px;
+  margin-top: 16px;
+  font-size: 0.85rem;
+  color: var(--tsp-text-muted);
+}
+
+.info-box p {
+  margin: 8px 0 0;
+  line-height: 1.5;
+}
+
+.info-box code {
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 0.78rem;
 }
 
 .card {
