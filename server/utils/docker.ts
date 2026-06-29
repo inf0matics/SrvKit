@@ -104,6 +104,21 @@ export async function listAllContainers(): Promise<DockerContainerState[]> {
 }
 
 /**
+ * Inspect one container for its current state + last-exit timestamp. `FinishedAt`
+ * drives the grace clock (so it survives SrvKit restarts), formatted as RFC3339
+ * or "0001-01-01T00:00:00Z" when the container has never stopped.
+ */
+export async function inspectContainer(
+  id: string,
+): Promise<{ state: string; finishedAt: string | null }> {
+  const j = await dockerJson<{ State?: { Status?: string; FinishedAt?: string } }>(
+    'GET',
+    `/containers/${encodeURIComponent(id)}/json`,
+  )
+  return { state: j.State?.Status ?? '', finishedAt: j.State?.FinishedAt ?? null }
+}
+
+/**
  * Demultiplex a Docker attach stream (Tty=false). Each frame is an 8-byte
  * header [streamType, 0,0,0, size(uint32 BE)] followed by `size` payload bytes.
  * streamType 2 = stderr, anything else (0/1) = stdout.

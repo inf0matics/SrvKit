@@ -4,7 +4,8 @@ import type { DockerContainer } from '~/composables/useDocker'
 definePageMeta({ middleware: 'auth', layout: 'shell' })
 usePageTitle('Docker')
 
-const { containers, available, refresh, save, setAll } = useDocker()
+const { containers, available, counts, countEnabled, refresh, save, setAll, setCount, remove } =
+  useDocker()
 
 let timer: ReturnType<typeof setInterval> | undefined
 onMounted(() => {
@@ -30,6 +31,10 @@ function timing(c: DockerContainer): string {
 async function toggle(c: DockerContainer) {
   c.enabled = !c.enabled // optimistic
   await save(c.name, { enabled: c.enabled })
+}
+
+async function toggleCount() {
+  await setCount(!countEnabled.value)
 }
 
 // Inline grace-period editor.
@@ -60,6 +65,29 @@ async function saveGrace(c: DockerContainer) {
     </section>
 
     <template v-else>
+      <section class="card summary" data-testid="count-summary">
+        <span class="c-name">Containers</span>
+        <span class="counts">
+          <span data-testid="count-running">running {{ counts.running }}</span>
+          <span data-testid="count-exited">exited {{ counts.exited }}</span>
+          <span>paused {{ counts.paused }}</span>
+          <span>dead {{ counts.dead }}</span>
+        </span>
+        <label
+          class="switch"
+          :title="countEnabled ? 'Count-change alerts on' : 'Count-change alerts off'"
+          data-testid="count-toggle"
+        >
+          <input
+            type="checkbox"
+            :checked="countEnabled"
+            aria-label="Alert on container count change"
+            @change="toggleCount"
+          >
+          <span class="track"><span class="thumb" /></span>
+        </label>
+      </section>
+
       <div class="toolbar">
         <button class="tsp-btn tsp-btn-sm" data-testid="enable-all" @click="setAll(true)">
           Enable All
@@ -81,6 +109,7 @@ async function saveGrace(c: DockerContainer) {
         >
           <div class="metric-row" :class="{ disabled: !c.enabled }">
             <label
+              v-if="!c.removed"
               class="switch"
               :title="c.enabled ? 'Monitored' : 'Not monitored'"
               :data-testid="`toggle-${c.name}`"
@@ -93,6 +122,7 @@ async function saveGrace(c: DockerContainer) {
               >
               <span class="track"><span class="thumb" /></span>
             </label>
+            <span v-else class="switch-spacer" />
 
             <span class="c-name">{{ c.name }}</span>
 
@@ -114,9 +144,19 @@ async function saveGrace(c: DockerContainer) {
             </span>
 
             <span class="c-state" :data-testid="`state-${c.name}`">{{ c.state }}</span>
-            <span class="c-timing">{{ timing(c) }}</span>
+            <span class="c-timing">{{ c.removed ? 'removed from Docker' : timing(c) }}</span>
 
             <button
+              v-if="c.removed"
+              class="tsp-btn tsp-btn-sm tsp-btn-icon"
+              :aria-label="`Remove ${c.name} from the list`"
+              :data-testid="`remove-${c.name}`"
+              @click="remove(c.name)"
+            >
+              <AppIcon name="trash" />
+            </button>
+            <button
+              v-else
               class="tsp-btn tsp-btn-sm tsp-btn-icon"
               :aria-label="`Edit ${c.name} grace period`"
               :data-testid="`edit-${c.name}`"
@@ -126,7 +166,11 @@ async function saveGrace(c: DockerContainer) {
             </button>
           </div>
 
-          <div v-if="editingName === c.name" class="editor" :data-testid="`editor-${c.name}`">
+          <div
+            v-if="!c.removed && editingName === c.name"
+            class="editor"
+            :data-testid="`editor-${c.name}`"
+          >
             <label>
               Grace period
               <input v-model.number="draftGrace" type="number" min="10" class="tsp-input num">
@@ -144,14 +188,16 @@ async function saveGrace(c: DockerContainer) {
           SrvKit polls every 10&nbsp;seconds and only sees containers that still exist. A
           monitored container that is <strong>stopped or crashes</strong> (state
           <code>exited</code> or <code>dead</code>) starts its grace period and then alerts
-          <code>CRIT</code>. Recovery to <code>running</code> clears the alert silently.
+          <code>CRIT</code>. Recovery to <code>running</code> clears the alert silently. The grace
+          clock is read from Docker's exit time, so it survives a SrvKit restart.
         </p>
         <p>
-          A container that is <strong>removed</strong> — e.g.
-          <code>docker compose down</code> or <code>docker rm</code> — disappears from this list
-          entirely and does <strong>not</strong> alert: a deliberate teardown can't be told apart
-          from "gone". Per-container settings are remembered by name, so a recreated container is
-          monitored again automatically.
+          A <strong>monitored</strong> container that is <strong>removed</strong> — e.g.
+          <code>docker compose down</code> or <code>docker rm</code> — goes <code>CRIT</code>
+          immediately and stays in the list as <code>removed</code> until you clear it with the
+          trash icon. A removed container that wasn't monitored just drops off the list. New
+          containers are discovered automatically (disabled by default), and per-container settings
+          are remembered by name across recreate.
         </p>
       </section>
     </template>
@@ -194,6 +240,27 @@ async function saveGrace(c: DockerContainer) {
   display: flex;
   gap: 8px;
   margin: 16px 0 0;
+}
+
+.summary {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 18px;
+}
+
+.summary .counts {
+  flex: 1;
+  display: flex;
+  gap: 16px;
+  font-size: 0.85rem;
+  color: var(--tsp-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.switch-spacer {
+  width: 38px;
+  flex-shrink: 0;
 }
 
 .info-box {

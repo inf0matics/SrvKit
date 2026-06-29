@@ -17,14 +17,34 @@ delete process.env.TELEGRAM_CHAT_ID
 
 const { store } = await import('../../server/utils/srvkit.ts')
 const { saveAlertSettings } = await import('../../server/utils/alerts.ts')
-const { pollDocker, readContainers, setContainerConfig, setAllEnabled, resetRuntime } =
-  await import('../../server/utils/docker-monitor.ts')
+const {
+  pollDocker,
+  readContainers,
+  setContainerConfig,
+  setAllEnabled,
+  setCountMonitor,
+  removeContainer,
+  resetRuntime,
+} = await import('../../server/utils/docker-monitor.ts')
 
-// Mutable fixture the mock socket serves for /containers/json?all=1.
-let containers: { Id: string; Names: string[]; Image: string; State: string }[] = []
-const set = (name: string, state: string) => {
-  containers = [{ Id: `id-${name}`, Names: [`/${name}`], Image: 'img', State: state }]
+// Mutable fixtures served over the mock socket. `finishedAt` feeds State.FinishedAt.
+interface Fix {
+  name: string
+  state: string
+  finishedAt: string | null
 }
+let fixtures: Fix[] = []
+const ZERO = '0001-01-01T00:00:00Z'
+const NOW = 1_700_000_000_000
+const isoAt = (secAgo: number) => new Date(NOW - secAgo * 1000).toISOString()
+const set = (...f: Fix[]) => {
+  fixtures = f
+}
+const fx = (name: string, state: string, finishedAt: string | null = null): Fix => ({
+  name,
+  state,
+  finishedAt,
+})
 
 let server: Server
 const realFetch = globalThis.fetch
@@ -33,9 +53,19 @@ let sent: string[] = []
 before(async () => {
   server = createServer((req, res) => {
     req.resume()
-    if (req.method === 'GET' && (req.url ?? '').startsWith('/containers/json')) {
+    const url = req.url ?? ''
+    let m: RegExpMatchArray | null
+    if (req.method === 'GET' && url.startsWith('/containers/json')) {
       res.writeHead(200, { 'content-type': 'application/json' })
-      res.end(JSON.stringify(containers))
+      res.end(
+        JSON.stringify(
+          fixtures.map((f) => ({ Id: `id-${f.name}`, Names: [`/${f.name}`], Image: 'img', State: f.state })),
+        ),
+      )
+    } else if (req.method === 'GET' && (m = url.match(/^\/containers\/id-([^/]+)\/json$/))) {
+      const f = fixtures.find((x) => x.name === m![1])
+      res.writeHead(f ? 200 : 404, { 'content-type': 'application/json' })
+      res.end(JSON.stringify(f ? { State: { Status: f.state, FinishedAt: f.finishedAt ?? ZERO } } : {}))
     } else {
       res.writeHead(404)
       res.end('{}')
@@ -46,7 +76,11 @@ before(async () => {
 
 beforeEach(() => {
   sent = []
+  fixtures = []
   resetRuntime()
+  // Fresh per-container + count config each test (the DB persists across tests).
+  store().setConfig('docker_container_cfg', '{}')
+  store().setConfig('docker_count_enabled', '0')
   globalThis.fetch = (async (_url: string, init: { body: string }) => {
     sent.push((JSON.parse(init.body) as { text: string }).text)
     return { ok: true, status: 200, json: async () => ({}) } as Response
@@ -61,87 +95,145 @@ after(async () => {
   rmSync(base, { recursive: true, force: true })
 })
 
-const T0 = 1_000_000_000_000
-const at = (sec: number) => T0 + sec * 1000
+const find = async (name: string) => (await readContainers(NOW)).containers.find((c) => c.name === name)!
 
-test('exited container: pending within grace, CRIT + one alert past grace', async () => {
-  set('app', 'exited')
-  setContainerConfig('app', { enabled: true, grace: 30 })
-
-  await pollDocker(at(0)) // first seen offline → grace clock starts
-  assert.equal(sent.length, 0)
-  let row = (await readContainers(at(1))).containers.find((c) => c.name === 'app')!
-  assert.equal(row.status, 'pending')
-  assert.equal(row.pendingLevel, 'crit')
-
-  await pollDocker(at(40)) // 40s > 30s grace → CRIT, alert fires
-  assert.equal(sent.length, 1)
-  assert.match(sent[0]!, /Container "app" is down \(exited, offline for 40s\)/)
-
-  await pollDocker(at(50)) // still down → no repeat alert
-  assert.equal(sent.length, 1)
-  row = (await readContainers(at(50))).containers.find((c) => c.name === 'app')!
-  assert.equal(row.status, 'crit')
-})
-
-test('recovery clears state silently; a new outage re-alerts', async () => {
-  set('app', 'exited')
-  setContainerConfig('app', { enabled: true, grace: 30 })
-  await pollDocker(at(0))
-  await pollDocker(at(40))
-  assert.equal(sent.length, 1)
-
-  set('app', 'running')
-  await pollDocker(at(50)) // back to OK — no recovery message in v1
-  assert.equal(sent.length, 1)
-
-  set('app', 'exited')
-  await pollDocker(at(60)) // grace clock restarts
-  await pollDocker(at(100)) // 40s later → CRIT again → second alert
-  assert.equal(sent.length, 2)
-})
-
-test('dead is CRIT immediately (no grace)', async () => {
-  set('app', 'dead')
-  setContainerConfig('app', { enabled: true, grace: 30 })
-  await pollDocker(at(0))
-  assert.equal(sent.length, 1)
-  assert.match(sent[0]!, /is down \(dead/)
-})
-
-test('disabled containers never alert and read as off', async () => {
-  set('app', 'dead')
-  setContainerConfig('app', { enabled: false })
-  await pollDocker(at(0))
-  assert.equal(sent.length, 0)
-  const row = (await readContainers(at(0))).containers.find((c) => c.name === 'app')!
-  assert.equal(row.status, 'off')
-  assert.equal(row.enabled, false)
-})
-
-test('readContainers reports the worst enabled status; running is OK', async () => {
-  set('web', 'running')
+test('running container is OK', async () => {
+  set(fx('web', 'running'))
   setContainerConfig('web', { enabled: true })
-  const r = await readContainers(at(0))
-  assert.equal(r.available, true)
+  const r = await readContainers(NOW)
   assert.equal(r.status, 'ok')
   assert.equal(r.containers.find((c) => c.name === 'web')!.status, 'ok')
 })
 
-test('setAllEnabled flips every discovered container', async () => {
-  set('web', 'running')
+test('grace clock comes from FinishedAt: pending within, CRIT past — one alert', async () => {
+  set(fx('app', 'exited', isoAt(5)))
+  setContainerConfig('app', { enabled: true, grace: 30 })
+  let row = await find('app')
+  assert.equal(row.status, 'pending')
+  assert.equal(row.pendingLevel, 'crit')
+  assert.equal(Math.round(row.offlineFor!), 5)
+
+  // Exited 40s ago → already past grace on the very first poll (no in-memory wait).
+  set(fx('app', 'exited', isoAt(40)))
+  await pollDocker(NOW)
+  assert.equal(sent.length, 1)
+  assert.match(sent[0]!, /Container "app" is down \(exited, offline for 40s\)/)
+  await pollDocker(NOW) // still down → no repeat
+  assert.equal(sent.length, 1)
+  row = await find('app')
+  assert.equal(row.status, 'crit')
+})
+
+test('FinishedAt grace survives a restart (resetRuntime)', async () => {
+  set(fx('app', 'exited', isoAt(100)))
+  setContainerConfig('app', { enabled: true, grace: 30 })
+  resetRuntime() // simulate SrvKit restart / dev HMR reload
+  const row = await find('app')
+  assert.equal(row.status, 'crit') // still CRIT — clock is FinishedAt, not in-memory
+  await pollDocker(NOW)
+  assert.equal(sent.length, 1) // re-alerts once after the restart
+})
+
+test('recovery clears silently; a new outage re-alerts', async () => {
+  set(fx('app', 'exited', isoAt(40)))
+  setContainerConfig('app', { enabled: true, grace: 30 })
+  await pollDocker(NOW)
+  assert.equal(sent.length, 1)
+
+  set(fx('app', 'running'))
+  await pollDocker(NOW)
+  assert.equal(sent.length, 1) // no recovery message
+
+  set(fx('app', 'exited', isoAt(40)))
+  await pollDocker(NOW)
+  assert.equal(sent.length, 2)
+})
+
+test('dead is CRIT immediately regardless of FinishedAt', async () => {
+  set(fx('app', 'dead', isoAt(1)))
+  setContainerConfig('app', { enabled: true, grace: 30 })
+  await pollDocker(NOW)
+  assert.equal(sent.length, 1)
+  assert.match(sent[0]!, /is down \(dead/)
+})
+
+test('runtime discovery: a new container is auto-added as disabled', async () => {
+  set(fx('newbie', 'running'))
+  const row = await find('newbie')
+  assert.equal(row.enabled, false)
+  assert.equal(row.status, 'off')
+  // Persisted in the registry.
+  assert.ok('newbie' in JSON.parse(store().getConfig('docker_container_cfg')!))
+})
+
+test('removed while enabled → immediate CRIT row + one alert, kept until cleared', async () => {
+  set(fx('svc', 'running'))
+  setContainerConfig('svc', { enabled: true })
+  await pollDocker(NOW) // baseline: svc known + running
+
+  set() // svc vanishes from Docker
+  await pollDocker(NOW)
+  assert.equal(sent.length, 1)
+  assert.match(sent[0]!, /Container "svc" has been removed\./)
+
+  const row = await find('svc')
+  assert.equal(row.removed, true)
+  assert.equal(row.state, 'removed')
+  assert.equal(row.status, 'crit')
+
+  await pollDocker(NOW) // no duplicate alert
+  assert.equal(sent.length, 1)
+
+  removeContainer('svc') // user clears the row
+  assert.equal((await readContainers(NOW)).containers.find((c) => c.name === 'svc'), undefined)
+})
+
+test('removed while disabled → silently dropped, no alert', async () => {
+  set(fx('temp', 'exited', isoAt(5)))
+  await readContainers(NOW) // discovered (disabled)
+  set() // vanishes
+  await pollDocker(NOW)
+  assert.equal(sent.length, 0)
+  assert.equal((await readContainers(NOW)).containers.find((c) => c.name === 'temp'), undefined)
+})
+
+test('count summary reports states; change of running count alerts when enabled', async () => {
+  set(fx('a', 'running'), fx('b', 'running'), fx('c', 'exited', isoAt(5)))
+  let r = await readContainers(NOW)
+  assert.deepEqual(r.counts, { running: 2, exited: 1, paused: 0, dead: 0 })
+
+  setCountMonitor(true)
+  await pollDocker(NOW) // baseline running=2, no alert
+  assert.equal(sent.length, 0)
+
+  set(fx('a', 'running'), fx('b', 'exited', isoAt(2)), fx('c', 'exited', isoAt(5)))
+  await pollDocker(NOW) // running 2 → 1
+  assert.equal(sent.length, 1)
+  assert.match(sent[0]!, /count changed — running: 1, exited: 2, paused: 0, dead: 0/)
+
+  r = await readContainers(NOW)
+  assert.equal(r.countEnabled, true)
+})
+
+test('count change does not alert when the monitor is disabled', async () => {
+  set(fx('a', 'running'), fx('b', 'running'))
+  await pollDocker(NOW)
+  set(fx('a', 'running'))
+  await pollDocker(NOW)
+  assert.equal(sent.length, 0)
+})
+
+test('setAllEnabled flips every known container', async () => {
+  set(fx('web', 'running'))
+  await readContainers(NOW) // discover web
   await setAllEnabled(true)
-  assert.equal((await readContainers(at(0))).containers.find((c) => c.name === 'web')!.enabled, true)
+  assert.equal((await find('web')).enabled, true)
   await setAllEnabled(false)
-  assert.equal(
-    (await readContainers(at(0))).containers.find((c) => c.name === 'web')!.enabled,
-    false,
-  )
+  assert.equal((await find('web')).enabled, false)
 })
 
 test('grace below the 10s minimum is clamped', async () => {
-  set('app', 'running')
+  set(fx('app', 'running'))
   setContainerConfig('app', { enabled: true, grace: 2 })
-  const row = (await readContainers(at(0))).containers.find((c) => c.name === 'app')!
-  assert.equal(row.grace, 10)
+  assert.equal((await find('app')).grace, 10)
 })

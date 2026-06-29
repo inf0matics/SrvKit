@@ -9,12 +9,22 @@ export interface DockerContainer {
   grace: number
   offlineFor: number | null
   lastCheckedAgo: number
+  removed: boolean
+}
+
+export interface DockerCounts {
+  running: number
+  exited: number
+  paused: number
+  dead: number
 }
 
 interface DockerData {
   available: boolean
   containers: DockerContainer[]
   status: DockerStatus
+  counts: DockerCounts
+  countEnabled: boolean
 }
 
 /**
@@ -25,11 +35,20 @@ export function useDocker() {
   const containers = useState<DockerContainer[]>('docker-containers', () => [])
   const status = useState<DockerStatus>('docker-status', () => 'ok')
   const available = useState<boolean>('docker-available', () => true)
+  const counts = useState<DockerCounts>('docker-counts', () => ({
+    running: 0,
+    exited: 0,
+    paused: 0,
+    dead: 0,
+  }))
+  const countEnabled = useState<boolean>('docker-count-enabled', () => false)
 
   function apply(d: DockerData) {
     containers.value = d.containers
     status.value = d.status
     available.value = d.available
+    counts.value = d.counts
+    countEnabled.value = d.countEnabled
   }
 
   async function refresh() {
@@ -49,5 +68,17 @@ export function useDocker() {
     apply(await $fetch<DockerData>('/api/docker/monitor/bulk', { method: 'POST', body: { enabled } }))
   }
 
-  return { containers, status, available, refresh, save, setAll }
+  async function setCount(enabled: boolean) {
+    apply(await $fetch<DockerData>('/api/docker/monitor/count', { method: 'POST', body: { enabled } }))
+  }
+
+  async function remove(name: string) {
+    apply(
+      await $fetch<DockerData>(`/api/docker/monitor/${encodeURIComponent(name)}`, {
+        method: 'DELETE',
+      }),
+    )
+  }
+
+  return { containers, status, available, counts, countEnabled, refresh, save, setAll, setCount, remove }
 }
