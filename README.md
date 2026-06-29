@@ -6,19 +6,43 @@ Lightweight DevOps companion for self-hosted servers — host monitoring, Docker
 
 ## Features
 
-**Host Monitoring** — CPU, memory, disk, load average, network error rates, and more. Configurable WARN/CRIT thresholds per metric, consecutive-poll smoothing to avoid false alerts.
+**Host Monitoring** — Know when your server is struggling before users do. CPU spikes, memory pressure, disk filling up, high load — SrvKit watches all of it with configurable WARN/CRIT thresholds and consecutive-poll smoothing so a brief spike doesn't wake you up at 3am.
 
 ![Host Monitoring](docs/screenshots/host-monitoring.png)
 
-**Docker Service Monitoring** — tracks running containers via the Docker socket. Alerts when a container stays down beyond its grace period.
+**Docker Service Monitoring** — If a container crashes and stays down, you'll know. SrvKit tracks all your containers via the Docker socket and alerts when one stays offline beyond its grace period — long enough to survive a normal restart, short enough to catch a crash loop.
 
 ![Docker Monitoring](docs/screenshots/docker-monitoring.png)
 
-**Backups** — watch files, SQLite databases, PostgreSQL, or MySQL containers and push compressed archives to a Nextcloud target on schedule or on change.
+**Backups** — Mount your data directories, point SrvKit at a Nextcloud share, and your backups run automatically. Watch files for changes, back up live SQLite databases safely, or schedule `pg_dump` / `mysqldump` from running containers — all without installing anything on the host.
 
 ![Backup Jobs](docs/screenshots/backup-jobs.png)
 
-**Alerting** — Telegram notifications for incidents and recoveries, with a configurable server name prefix.
+**Example 1 — Config files via Filewatcher**
+
+Mount your config directories read-only and let SrvKit watch them for changes. The moment a file is modified, a `tar.gz` is uploaded to Nextcloud automatically (10s debounce). No cron required.
+
+```yaml
+volumes:
+  - /etc:/backups/etc:ro
+  - /root:/backups/root:ro
+  - /home/deploy/.config:/backups/deploy-config:ro
+```
+
+![Filewatcher Job](docs/screenshots/backup-job-filewatcher.png)
+
+**Example 2 — PostgreSQL via Cron**
+
+SrvKit runs `pg_dump` directly inside your database container via the Docker socket — no `postgresql-client` needed in the image. Schedule it nightly and the dump streams straight into a compressed archive on Nextcloud.
+
+```yaml
+volumes:
+  - /var/run/docker.sock:/var/run/docker.sock
+```
+
+![PostgreSQL Job](docs/screenshots/backup-job-postgresql.png)
+
+**Alerting** — Telegram notifications land the moment something goes wrong, and again when it recovers. Each message is prefixed with your server name so you always know which machine is reporting.
 
 ## Quick start
 

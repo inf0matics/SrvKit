@@ -461,4 +461,26 @@ test.describe.serial('backups', () => {
     await expect(editor).toHaveCount(0)
     await expect(page.getByTestId('metric-ram_usage')).toContainText('WARN >90%') // unchanged
   })
+
+  // The shared e2e server runs without a Docker socket (the backups DB-job tests
+  // need it absent), so these cover the not-mounted path. The with-socket flows
+  // — discovery, status state machine, grace, enable/disable — are unit-tested
+  // against a mock socket in test/unit/docker-monitor-engine.test.ts.
+  test('docker: the sidebar entry opens /app/docker', async () => {
+    await page.getByRole('link', { name: 'Docker', exact: true }).click()
+    await expect(page).toHaveURL(/\/app\/docker$/)
+    await expect(page.getByTestId('docker')).toBeVisible()
+  })
+
+  test('docker: no socket shows the mount warning and no container list', async () => {
+    await page.goto('/app/docker')
+    const warning = page.getByTestId('docker-missing')
+    await expect(warning).toBeVisible()
+    await expect(warning).toContainText('Docker socket not mounted')
+    await expect(warning).toContainText('- /var/run/docker.sock:/var/run/docker.sock')
+    // No list / bulk controls while the socket is missing.
+    await expect(page.getByTestId('enable-all')).toHaveCount(0)
+    // The sidebar Docker badge is hidden when monitoring is unavailable.
+    await expect(page.getByTestId('docker-badge')).toHaveCount(0)
+  })
 })

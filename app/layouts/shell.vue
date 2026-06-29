@@ -18,12 +18,20 @@ onMounted(refreshServerName)
 
 // Aggregated host status badge on the Host monitoring nav entry.
 const { status: hostStatus, available: hostAvailable, refresh: refreshHost } = useHost()
+// Aggregated Docker status badge on the Docker nav entry (10s poll).
+const { status: dockerStatus, available: dockerAvailable, refresh: refreshDocker } = useDocker()
 let hostTimer: ReturnType<typeof setInterval> | undefined
+let dockerTimer: ReturnType<typeof setInterval> | undefined
 onMounted(() => {
   refreshHost()
   hostTimer = setInterval(refreshHost, 60_000)
+  refreshDocker()
+  dockerTimer = setInterval(refreshDocker, 10_000)
 })
-onBeforeUnmount(() => clearInterval(hostTimer))
+onBeforeUnmount(() => {
+  clearInterval(hostTimer)
+  clearInterval(dockerTimer)
+})
 
 /* ---- Logout ---- */
 async function logout() {
@@ -82,6 +90,20 @@ onBeforeUnmount(() => {
             data-testid="host-badge"
           >
             {{ hostStatus.toUpperCase() }}
+          </span>
+        </NuxtLink>
+
+        <NuxtLink to="/app/docker" class="nav-item" active-class="active">
+          <span class="gutter" />
+          <AppIcon name="docker" />
+          <span>Docker</span>
+          <span
+            v-if="dockerAvailable"
+            class="host-badge"
+            :class="`hb-${dockerStatus}`"
+            data-testid="docker-badge"
+          >
+            {{ dockerStatus.toUpperCase() }}
           </span>
         </NuxtLink>
 

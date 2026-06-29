@@ -83,6 +83,26 @@ export async function listRunningContainers(): Promise<DockerContainer[]> {
   }))
 }
 
+export interface DockerContainerState extends DockerContainer {
+  /** Raw Docker state: running | exited | restarting | paused | dead | created. */
+  state: string
+}
+
+interface RawContainerState extends RawContainer {
+  State: string
+}
+
+/** List ALL containers (running + stopped), with their raw state — for monitoring. */
+export async function listAllContainers(): Promise<DockerContainerState[]> {
+  const raw = await dockerJson<RawContainerState[]>('GET', '/containers/json?all=1')
+  return raw.map((c) => ({
+    id: c.Id,
+    name: (c.Names?.[0] ?? c.Id).replace(/^\//, ''),
+    image: c.Image,
+    state: c.State,
+  }))
+}
+
 /**
  * Demultiplex a Docker attach stream (Tty=false). Each frame is an 8-byte
  * header [streamType, 0,0,0, size(uint32 BE)] followed by `size` payload bytes.

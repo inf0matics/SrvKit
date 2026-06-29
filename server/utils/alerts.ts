@@ -123,7 +123,8 @@ export function buildRecoveredMessage(prefix: string, name: string): string {
   return `✅ ${prefix}: Backup "${name}" is back to OK.`
 }
 
-async function dispatch(text: string): Promise<void> {
+/** Send `text` over the shared channel if it's enabled + configured. Never throws. */
+export async function dispatch(text: string): Promise<void> {
   const token = getToken()
   const chatId = getChatId()
   if (!telegramEnabled() || !token || !chatId) return // channel off / unconfigured
