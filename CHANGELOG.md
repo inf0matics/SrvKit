@@ -1,6 +1,24 @@
 # Changelog
 
 
+## v0.0.11
+
+[compare changes](https://github.com/inf0matics/SrvKit/compare/v0.0.10...v0.0.11)
+
+### 🩹 Fixes
+
+- Address security-audit findings H1, M1, M4, L1–L3 (safe set) ([a04e7a3](https://github.com/inf0matics/SrvKit/commit/a04e7a3))
+- SSRF host block (M3) + HKDF key derivation (L4), no re-encryption ([9de53ec](https://github.com/inf0matics/SrvKit/commit/9de53ec))
+
+### 🏡 Chore
+
+- Scrub demo chat ID/token from screenshot seed + image ([acfa33b](https://github.com/inf0matics/SrvKit/commit/acfa33b))
+- Remove the security audit report from the repo ([1d783d8](https://github.com/inf0matics/SrvKit/commit/1d783d8))
+
+### ❤️ Contributors
+
+- Inf0matics <fil@thespielplatz.com>
+
 ## v0.0.10
 
 [compare changes](https://github.com/inf0matics/SrvKit/compare/v0.0.9...v0.0.10)
