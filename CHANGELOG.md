@@ -1,6 +1,25 @@
 # Changelog
 
 
+## v0.0.9
+
+[compare changes](https://github.com/inf0matics/SrvKit/compare/v0.0.8...v0.0.9)
+
+### 🚀 Enhancements
+
+- Encrypt peer tokens at rest + IP allowlist toggle (spec 15.01) ([20af747](https://github.com/inf0matics/SrvKit/commit/20af747))
+
+### 📖 Documentation
+
+- Add a "how peer heartbeat works" info box to the Peers page ([f7fbe29](https://github.com/inf0matics/SrvKit/commit/f7fbe29))
+- Use a ./data bind mount instead of a named volume in compose examples ([f2d0626](https://github.com/inf0matics/SrvKit/commit/f2d0626))
+- Add Docker count, Peer Heartbeat, and Alerting feature sections to the README ([e455500](https://github.com/inf0matics/SrvKit/commit/e455500))
+- Add README screenshots + a reproducible Playwright capture harness ([a54e728](https://github.com/inf0matics/SrvKit/commit/a54e728))
+
+### ❤️ Contributors
+
+- Inf0matics <fil@thespielplatz.com>
+
 ## v0.0.8
 
 [compare changes](https://github.com/inf0matics/SrvKit/compare/v0.0.7...v0.0.8)
