@@ -19,6 +19,10 @@ s.setConfig('alerts_tg_token', encrypt('7654321:AAH-demo-bot-token-not-real'))
 s.setConfig('alerts_tg_chat', '123456789')
 s.setConfig('alerts_tg_enabled', '1')
 s.setConfig('alerts_recovery', '1')
+s.setConfig('alerts_nctalk_url', 'https://cloud.example.com')
+s.setConfig('alerts_nctalk_bot', encrypt('demo-nctalk-bot-secret'))
+s.setConfig('alerts_nctalk_conv', 'tlk9k2x7')
+s.setConfig('alerts_nctalk_enabled', '1')
 
 // --- Backup target + jobs ---
 const target = s.createTarget({

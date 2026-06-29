@@ -1,12 +1,18 @@
+import { randomUUID } from 'node:crypto'
 import { store } from './srvkit.ts'
 import { encryptPassword, decryptPassword } from './backups.ts'
 import type { RunResult } from '../../lib/store.ts'
 
-// --- Config (stored in the `config` kv table; token encrypted at rest) ---
+// --- Config (stored in the `config` kv table; tokens encrypted at rest) ---
 const K_TOKEN = 'alerts_tg_token'
 const K_CHAT = 'alerts_tg_chat'
 const K_ENABLED = 'alerts_tg_enabled'
 const K_RECOVERY = 'alerts_recovery'
+// Nextcloud Talk channel
+const K_NC_URL = 'alerts_nctalk_url'
+const K_NC_BOT = 'alerts_nctalk_bot'
+const K_NC_CONV = 'alerts_nctalk_conv'
+const K_NC_ENABLED = 'alerts_nctalk_enabled'
 
 /** Bot token: decrypted from the DB, or the TELEGRAM_BOT_TOKEN env fallback. */
 export function getToken(): string {
@@ -79,6 +85,59 @@ export function saveAlertSettings(input: Record<string, unknown>): void {
   }
 }
 
+// --- Nextcloud Talk channel ---
+export function getTalkUrl(): string {
+  return (store().getConfig(K_NC_URL) ?? '').trim()
+}
+export function getTalkConversation(): string {
+  return (store().getConfig(K_NC_CONV) ?? '').trim()
+}
+export function getTalkBotToken(): string {
+  const stored = store().getConfig(K_NC_BOT)
+  if (!stored) return ''
+  try {
+    return decryptPassword(stored)
+  } catch {
+    return ''
+  }
+}
+function talkEnabled(): boolean {
+  return store().getConfig(K_NC_ENABLED) === '1'
+}
+
+export interface TalkSettings {
+  url: string
+  conversation: string
+  enabled: boolean
+  /** Whether a bot token is configured (never returns the token itself). */
+  hasToken: boolean
+}
+
+export function getTalkSettings(): TalkSettings {
+  return {
+    url: getTalkUrl(),
+    conversation: getTalkConversation(),
+    enabled: talkEnabled(),
+    hasToken: getTalkBotToken().length > 0,
+  }
+}
+
+/** Persist Talk settings. Bot token only written when a non-empty value is given. */
+export function saveTalkSettings(input: Record<string, unknown>): void {
+  if (typeof input.url === 'string') {
+    store().setConfig(K_NC_URL, input.url.trim().replace(/\/+$/, ''))
+  }
+  if (typeof input.conversation === 'string') {
+    store().setConfig(K_NC_CONV, input.conversation.trim())
+  }
+  if (typeof input.botToken === 'string' && input.botToken.trim()) {
+    store().setConfig(K_NC_BOT, encryptPassword(input.botToken.trim()))
+  }
+  if (typeof input.enabled === 'boolean') {
+    store().setConfig(K_NC_ENABLED, input.enabled ? '1' : '0')
+  }
+}
+
 // --- Delivery ---
 
 /** Send a Telegram message; throws with a useful detail on failure. */
@@ -115,6 +174,46 @@ export async function sendTestAlert(token: string, chatId: string): Promise<void
   await sendTelegram(token, chatId, text)
 }
 
+/**
+ * Post a message to a Nextcloud Talk conversation via the Bot API (NC 27+).
+ * A random referenceId dedupes delivery on retry. Throws with detail on failure.
+ */
+export async function sendNextcloudTalk(
+  url: string,
+  botToken: string,
+  conversation: string,
+  text: string,
+): Promise<void> {
+  const base = url.replace(/\/+$/, '')
+  const endpoint = `${base}/ocs/v2.php/apps/spreed/api/v1/bot/${encodeURIComponent(conversation)}/message`
+  const res = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${botToken}`,
+      'OCS-APIRequest': 'true',
+      'content-type': 'application/json',
+      accept: 'application/json',
+    },
+    body: JSON.stringify({ message: text, referenceId: randomUUID() }),
+  })
+  if (!res.ok) {
+    throw new Error(`Nextcloud Talk returned ${res.status}`)
+  }
+}
+
+/** Send a test message to the Talk conversation. Throws on failure. */
+export async function sendTalkTest(
+  url: string,
+  botToken: string,
+  conversation: string,
+): Promise<void> {
+  if (!url || !botToken || !conversation) {
+    throw new Error('Nextcloud URL, bot token and conversation token are all required.')
+  }
+  const text = `✅ ${messagePrefix()}: Test alert — Nextcloud Talk is configured correctly.`
+  await sendNextcloudTalk(url, botToken, conversation, text)
+}
+
 export function buildFailedMessage(prefix: string, name: string, run: RunResult): string {
   return `❌ ${prefix}: Backup "${name}" failed.\n${run.error ?? 'Unknown error'}\n${run.at}`
 }
@@ -123,17 +222,35 @@ export function buildRecoveredMessage(prefix: string, name: string): string {
   return `✅ ${prefix}: Backup "${name}" is back to OK.`
 }
 
-/** Send `text` over the shared channel if it's enabled + configured. Never throws. */
-export async function dispatch(text: string): Promise<void> {
+async function dispatchTelegram(text: string): Promise<void> {
   const token = getToken()
   const chatId = getChatId()
   if (!telegramEnabled() || !token || !chatId) return // channel off / unconfigured
   try {
     await sendTelegram(token, chatId, text)
   } catch (e) {
-    // Failed delivery is logged; no retry in v1.
     console.error('[alerts] Telegram delivery failed:', (e as Error).message)
   }
+}
+
+async function dispatchTalk(text: string): Promise<void> {
+  const url = getTalkUrl()
+  const botToken = getTalkBotToken()
+  const conversation = getTalkConversation()
+  if (!talkEnabled() || !url || !botToken || !conversation) return
+  try {
+    await sendNextcloudTalk(url, botToken, conversation, text)
+  } catch (e) {
+    console.error('[alerts] Nextcloud Talk delivery failed:', (e as Error).message)
+  }
+}
+
+/**
+ * Fan a message out to every enabled + configured channel. Channels are
+ * independent — one failing (or unconfigured) never blocks the other. Never throws.
+ */
+export async function dispatch(text: string): Promise<void> {
+  await Promise.all([dispatchTelegram(text), dispatchTalk(text)])
 }
 
 /**

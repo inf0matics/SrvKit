@@ -223,14 +223,14 @@ function outgoingStatusText(o: { lastSentAt: number | null; ok: boolean | null }
       </p>
       <p>
         <strong>Monitored peers</strong> are the servers that ping <em>this</em> one — if any stops
-        reporting for more than 5&nbsp;minutes, this instance sends a Telegram alert (and a recovery
+        reporting for more than 5&nbsp;minutes, this instance sends an alert (and a recovery
         message when it returns). <strong>Outgoing heartbeat</strong> is where this server sends its
         own ping, so the peer can alert on <em>your</em> downtime.
       </p>
       <p>
         Pairing sets up <strong>one direction</strong> (the peer watches you). For mutual
-        monitoring, pair the other way too. Alerts use the shared
-        <NuxtLink to="/app/alerts">Telegram channel</NuxtLink>.
+        monitoring, pair the other way too. Alerts go out over your configured
+        <NuxtLink to="/app/alerts">alert channels</NuxtLink>.
       </p>
     </section>
   </div>

@@ -8,78 +8,126 @@ interface TelegramSettings {
   hasToken: boolean
   recovery: boolean
 }
+interface TalkSettings {
+  url: string
+  conversation: string
+  enabled: boolean
+  hasToken: boolean
+}
+type Result = { ok: boolean; error?: string } | null
 
-const form = reactive({ token: '', chatId: '', enabled: false, recovery: true })
-const hasToken = ref(false)
+const tg = reactive({ token: '', chatId: '', enabled: false, recovery: true })
+const tgHasToken = ref(false)
+const talk = reactive({ url: '', conversation: '', botToken: '', enabled: false })
+const talkHasToken = ref(false)
 
-const saving = ref(false)
-const saveError = ref('')
-const saved = ref(false)
+const status = reactive({
+  tg: { saving: false, saved: false, error: '', testing: false, test: null as Result },
+  talk: { saving: false, saved: false, error: '', testing: false, test: null as Result },
+})
 
-const testing = ref(false)
-const testResult = ref<{ ok: boolean; error?: string } | null>(null)
+function errMsg(e: unknown): string {
+  return (e as { statusMessage?: string })?.statusMessage || 'Something went wrong'
+}
 
 async function load() {
-  const { telegram } = await $fetch<{ telegram: TelegramSettings }>('/api/settings/alerts')
-  form.chatId = telegram.chatId
-  form.enabled = telegram.enabled
-  form.recovery = telegram.recovery
-  hasToken.value = telegram.hasToken
-  form.token = ''
+  const { telegram, talk: t } = await $fetch<{ telegram: TelegramSettings; talk: TalkSettings }>(
+    '/api/settings/alerts',
+  )
+  tg.chatId = telegram.chatId
+  tg.enabled = telegram.enabled
+  tg.recovery = telegram.recovery
+  tgHasToken.value = telegram.hasToken
+  tg.token = ''
+  talk.url = t.url
+  talk.conversation = t.conversation
+  talk.enabled = t.enabled
+  talkHasToken.value = t.hasToken
+  talk.botToken = ''
 }
-
 onMounted(load)
 
-async function save() {
-  saving.value = true
-  saveError.value = ''
-  saved.value = false
+async function saveTelegram() {
+  const st = status.tg
+  st.saving = true
+  st.saved = false
+  st.error = ''
   try {
-    const { telegram } = await $fetch<{ telegram: TelegramSettings }>(
-      '/api/settings/alerts',
-      {
-        method: 'PUT',
-        body: {
-          token: form.token, // only applied when non-empty
-          chatId: form.chatId,
-          enabled: form.enabled,
-          recovery: form.recovery,
+    const { telegram } = await $fetch<{ telegram: TelegramSettings }>('/api/settings/alerts', {
+      method: 'PUT',
+      body: { token: tg.token, chatId: tg.chatId, enabled: tg.enabled, recovery: tg.recovery },
+    })
+    tgHasToken.value = telegram.hasToken
+    tg.token = ''
+    st.saved = true
+  } catch (e) {
+    st.error = errMsg(e)
+  } finally {
+    st.saving = false
+  }
+}
+
+async function saveTalk() {
+  const st = status.talk
+  st.saving = true
+  st.saved = false
+  st.error = ''
+  try {
+    const { talk: t } = await $fetch<{ talk: TalkSettings }>('/api/settings/alerts', {
+      method: 'PUT',
+      body: {
+        talk: {
+          url: talk.url,
+          conversation: talk.conversation,
+          botToken: talk.botToken,
+          enabled: talk.enabled,
         },
       },
-    )
-    hasToken.value = telegram.hasToken
-    form.token = ''
-    saved.value = true
-  } catch (e: unknown) {
-    saveError.value = (e as { statusMessage?: string }).statusMessage || 'Could not save'
+    })
+    talkHasToken.value = t.hasToken
+    talk.botToken = ''
+    st.saved = true
+  } catch (e) {
+    st.error = errMsg(e)
   } finally {
-    saving.value = false
+    st.saving = false
   }
 }
 
-// Toggling the channel on/off saves immediately so it takes effect at once.
-async function onToggleEnabled() {
-  await save()
-}
-
-async function test() {
-  testing.value = true
-  testResult.value = null
+async function testTelegram() {
+  const st = status.tg
+  st.testing = true
+  st.test = null
   try {
-    testResult.value = await $fetch<{ ok: boolean; error?: string }>(
-      '/api/settings/alerts/test',
-      { method: 'POST', body: { token: form.token, chatId: form.chatId } },
-    )
-  } catch (e: unknown) {
-    testResult.value = {
-      ok: false,
-      error: (e as { statusMessage?: string }).statusMessage || 'Test failed',
-    }
+    st.test = await $fetch<Result>('/api/settings/alerts/test', {
+      method: 'POST',
+      body: { token: tg.token, chatId: tg.chatId },
+    })
+  } catch (e) {
+    st.test = { ok: false, error: errMsg(e) }
   } finally {
-    testing.value = false
+    st.testing = false
   }
 }
 
+async function testTalk() {
+  const st = status.talk
+  st.testing = true
+  st.test = null
+  try {
+    st.test = await $fetch<Result>('/api/settings/alerts/test', {
+      method: 'POST',
+      body: {
+        channel: 'talk',
+        talk: { url: talk.url, conversation: talk.conversation, botToken: talk.botToken },
+      },
+    })
+  } catch (e) {
+    st.test = { ok: false, error: errMsg(e) }
+  } finally {
+    st.testing = false
+  }
+}
 </script>
 
 <template>
@@ -89,44 +137,44 @@ async function test() {
     </header>
 
     <p class="tsp-muted intro">
-      Backup jobs alert all active channels when a run fails, and again when the
-      next run recovers.
+      Backup jobs and monitors alert every enabled channel when something fails, and again when it
+      recovers.
     </p>
 
-    <section class="card" data-testid="alerts-section">
+    <!-- Telegram -->
+    <section class="card" data-testid="alerts-telegram">
       <div class="card-head">
         <h2>Telegram</h2>
-        <label class="switch" :title="form.enabled ? 'Alerts on' : 'Alerts off'">
+        <label class="switch" :title="tg.enabled ? 'Alerts on' : 'Alerts off'">
           <input
-            v-model="form.enabled"
+            v-model="tg.enabled"
             type="checkbox"
             aria-label="Enable Telegram alerts"
-            @change="onToggleEnabled"
+            @change="saveTelegram"
           >
           <span class="track"><span class="thumb" /></span>
         </label>
       </div>
       <p class="tsp-muted card-sub">
-        {{ form.enabled ? 'Enabled — failures and recoveries are sent.' : 'Disabled — no alerts are sent.' }}
+        {{ tg.enabled ? 'Enabled — failures and recoveries are sent.' : 'Disabled — no alerts are sent.' }}
       </p>
 
       <label class="field">
         <span>Bot token</span>
         <input
-          v-model="form.token"
+          v-model="tg.token"
           class="tsp-input"
           type="password"
           autocomplete="off"
-          :placeholder="hasToken ? '•••••••• (configured — leave blank to keep)' : 'Bot token'"
+          :placeholder="tgHasToken ? '•••••••• (configured — leave blank to keep)' : 'Bot token'"
         >
       </label>
       <label class="field">
         <span>Chat ID</span>
-        <input v-model="form.chatId" class="tsp-input" type="text" autocomplete="off">
+        <input v-model="tg.chatId" class="tsp-input" type="text" autocomplete="off">
       </label>
-
       <label class="field toggle">
-        <input v-model="form.recovery" type="checkbox">
+        <input v-model="tg.recovery" type="checkbox">
         <span>Send recovery notifications</span>
       </label>
 
@@ -134,28 +182,96 @@ async function test() {
         <button
           class="tsp-btn tsp-btn-sm"
           data-testid="test-telegram"
-          :disabled="testing"
-          @click="test"
+          :disabled="status.tg.testing"
+          @click="testTelegram"
         >
           <AppIcon name="plug-connected" /> Test
         </button>
-        <button
-          class="tsp-btn tsp-btn-sm tsp-btn-primary"
-          :disabled="saving"
-          @click="save"
-        >
+        <button class="tsp-btn tsp-btn-sm tsp-btn-primary" :disabled="status.tg.saving" @click="saveTelegram">
           Save
         </button>
       </div>
 
-      <p v-if="testResult?.ok" class="ok" data-testid="test-result">
-        ✓ Test message sent.
+      <p v-if="status.tg.test?.ok" class="ok" data-testid="test-result-telegram">✓ Test message sent.</p>
+      <p v-else-if="status.tg.test" class="err" data-testid="test-result-telegram">✗ {{ status.tg.test.error }}</p>
+      <p v-if="status.tg.saved" class="ok">✓ Saved.</p>
+      <p v-if="status.tg.error" class="err">{{ status.tg.error }}</p>
+    </section>
+
+    <!-- Nextcloud Talk -->
+    <section class="card" data-testid="alerts-talk">
+      <div class="card-head">
+        <h2>Nextcloud Talk</h2>
+        <label class="switch" :title="talk.enabled ? 'Alerts on' : 'Alerts off'">
+          <input
+            v-model="talk.enabled"
+            type="checkbox"
+            aria-label="Enable Nextcloud Talk alerts"
+            @change="saveTalk"
+          >
+          <span class="track"><span class="thumb" /></span>
+        </label>
+      </div>
+      <p class="tsp-muted card-sub">
+        {{ talk.enabled ? 'Enabled — failures and recoveries are sent.' : 'Disabled — no alerts are sent.' }}
       </p>
-      <p v-else-if="testResult" class="err" data-testid="test-result">
-        ✗ {{ testResult.error }}
-      </p>
-      <p v-if="saved" class="ok">✓ Saved.</p>
-      <p v-if="saveError" class="err">{{ saveError }}</p>
+
+      <label class="field">
+        <span>Nextcloud URL</span>
+        <input
+          v-model="talk.url"
+          class="tsp-input"
+          type="text"
+          autocomplete="off"
+          placeholder="https://cloud.example.com"
+        >
+      </label>
+      <label class="field">
+        <span>Bot token</span>
+        <input
+          v-model="talk.botToken"
+          class="tsp-input"
+          type="password"
+          autocomplete="off"
+          :placeholder="talkHasToken ? '•••••••• (configured — leave blank to keep)' : 'Bot token'"
+        >
+      </label>
+      <label class="field">
+        <span>Conversation token</span>
+        <input
+          v-model="talk.conversation"
+          class="tsp-input"
+          type="text"
+          autocomplete="off"
+          placeholder="a1b2c3d4"
+        >
+      </label>
+
+      <div class="actions">
+        <button
+          class="tsp-btn tsp-btn-sm"
+          data-testid="test-talk"
+          :disabled="status.talk.testing"
+          @click="testTalk"
+        >
+          <AppIcon name="plug-connected" /> Test
+        </button>
+        <button class="tsp-btn tsp-btn-sm tsp-btn-primary" :disabled="status.talk.saving" @click="saveTalk">
+          Save
+        </button>
+      </div>
+
+      <p v-if="status.talk.test?.ok" class="ok" data-testid="test-result-talk">✓ Test message sent.</p>
+      <p v-else-if="status.talk.test" class="err" data-testid="test-result-talk">✗ {{ status.talk.test.error }}</p>
+      <p v-if="status.talk.saved" class="ok">✓ Saved.</p>
+      <p v-if="status.talk.error" class="err">{{ status.talk.error }}</p>
+
+      <div class="info-box">
+        <strong>ℹ️ Setting up the bot</strong>
+        To create a bot token, go to <strong>Nextcloud Admin → Talk → Bots</strong>, register a new
+        bot, and copy the token. The conversation token is the last part of the Talk room URL:
+        <code>https://cloud.example.com/call/{conversation-token}</code>. Requires Nextcloud 27+.
+      </div>
     </section>
   </div>
 </template>
@@ -289,5 +405,21 @@ async function test() {
 .err {
   color: var(--tsp-danger);
   font-size: 0.9rem;
+}
+
+.info-box {
+  margin-top: 16px;
+  border: 1px solid var(--tsp-border);
+  border-radius: var(--tsp-radius);
+  background: var(--tsp-bg);
+  padding: 12px 14px;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--tsp-text-muted);
+}
+
+.info-box code {
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 0.76rem;
 }
 </style>

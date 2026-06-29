@@ -261,20 +261,41 @@ test.describe.serial('backups', () => {
   test('alerts: Telegram settings persist and Test validates credentials', async () => {
     await page.getByRole('link', { name: 'Alerts' }).click()
     await expect(page).toHaveURL(/\/app\/alerts$/)
+    const card = page.getByTestId('alerts-telegram')
     // Test with no credentials → inline error, no external call.
-    await expect(page.getByTestId('alerts-section')).toBeVisible()
+    await expect(card).toBeVisible()
     await page.getByTestId('test-telegram').click()
-    await expect(page.getByTestId('test-result')).toContainText('required')
+    await expect(page.getByTestId('test-result-telegram')).toContainText('required')
 
     // The channel on/off switch and chat id persist across a reload.
     await page.getByLabel('Chat ID').fill('99887766')
     await page.getByLabel('Enable Telegram alerts').check()
-    await page.getByRole('button', { name: 'Save' }).click()
-    await expect(page.getByText('✓ Saved.')).toBeVisible()
+    await card.getByRole('button', { name: 'Save' }).click()
+    await expect(card.getByText('✓ Saved.')).toBeVisible()
 
     await page.reload()
     await expect(page.getByLabel('Chat ID')).toHaveValue('99887766')
     await expect(page.getByLabel('Enable Telegram alerts')).toBeChecked()
+  })
+
+  test('alerts: Nextcloud Talk card persists and Test validates config', async () => {
+    const card = page.getByTestId('alerts-talk')
+    await expect(card).toBeVisible()
+    // Test with nothing configured → inline "required" error, no external call.
+    await page.getByTestId('test-talk').click()
+    await expect(page.getByTestId('test-result-talk')).toContainText('required')
+
+    // URL + conversation + enabled persist across a reload.
+    await page.getByLabel('Nextcloud URL').fill('https://cloud.example.com')
+    await page.getByLabel('Conversation token').fill('abcd1234')
+    await page.getByLabel('Enable Nextcloud Talk alerts').check()
+    await card.getByRole('button', { name: 'Save' }).click()
+    await expect(card.getByText('✓ Saved.')).toBeVisible()
+
+    await page.reload()
+    await expect(page.getByLabel('Nextcloud URL')).toHaveValue('https://cloud.example.com')
+    await expect(page.getByLabel('Conversation token')).toHaveValue('abcd1234')
+    await expect(page.getByLabel('Enable Nextcloud Talk alerts')).toBeChecked()
   })
 
   test('settings: server name persists', async () => {

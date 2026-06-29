@@ -22,16 +22,35 @@ const {
   buildRecoveredMessage,
   messagePrefix,
   sendTestAlert,
+  getTalkSettings,
+  saveTalkSettings,
+  sendNextcloudTalk,
 } = await import('../../server/utils/alerts.ts')
 
 let jobId = ''
 const realFetch = globalThis.fetch
-let calls: { url: string; text: string; parseMode: string | undefined }[] = []
+interface Call {
+  url: string
+  text: string
+  parseMode: string | undefined
+  body: Record<string, unknown>
+  headers: Record<string, string>
+}
+let calls: Call[] = []
 
 function mockOk() {
-  globalThis.fetch = (async (url: string, init: { body: string }) => {
-    const body = JSON.parse(init.body)
-    calls.push({ url: String(url), text: body.text, parseMode: body.parse_mode })
+  globalThis.fetch = (async (
+    url: string,
+    init: { body: string; headers?: Record<string, string> },
+  ) => {
+    const body = JSON.parse(init.body) as Record<string, unknown>
+    calls.push({
+      url: String(url),
+      text: (body.text ?? body.message) as string,
+      parseMode: body.parse_mode as string | undefined,
+      body,
+      headers: init.headers ?? {},
+    })
     return { ok: true, status: 200, json: async () => ({}) } as Response
   }) as typeof fetch
 }
@@ -72,8 +91,9 @@ before(() => {
 beforeEach(() => {
   calls = []
   mockOk()
-  // Reset to a known channel + state before each test.
+  // Reset to a known channel + state before each test (Talk off unless a test opts in).
   saveAlertSettings({ token: 'TKN', chatId: '123', enabled: true, recovery: true })
+  saveTalkSettings({ enabled: false })
   store().setJobAlertState(jobId, 'ok')
   store().setIncidentSince(jobId, null)
 })
@@ -177,4 +197,58 @@ test('message prefix uses the server name when set', () => {
   store().setConfig('server_name', 'prod-1')
   assert.equal(messagePrefix(), '[prod-1|SrvKit]')
   store().setConfig('server_name', '') // reset for other tests
+})
+
+test('Talk settings round-trip; bot token is write-only and never returned', () => {
+  saveTalkSettings({
+    url: 'https://cloud.example.com/',
+    conversation: 'room1',
+    botToken: 'NC-BOT',
+    enabled: true,
+  })
+  const s = getTalkSettings()
+  assert.equal(s.url, 'https://cloud.example.com') // trailing slash stripped
+  assert.equal(s.conversation, 'room1')
+  assert.equal(s.enabled, true)
+  assert.equal(s.hasToken, true)
+  assert.equal('botToken' in s, false)
+  saveTalkSettings({ enabled: false })
+})
+
+test('sendNextcloudTalk posts to the bot API with Bearer + OCS header + referenceId', async () => {
+  await sendNextcloudTalk('https://cloud.example.com/', 'NC-BOT', 'room1', 'hello world')
+  assert.equal(calls.length, 1)
+  assert.match(calls[0]!.url, /\/ocs\/v2\.php\/apps\/spreed\/api\/v1\/bot\/room1\/message$/)
+  assert.equal(calls[0]!.headers.authorization, 'Bearer NC-BOT')
+  assert.equal(calls[0]!.headers['OCS-APIRequest'], 'true')
+  assert.equal(calls[0]!.body.message, 'hello world')
+  assert.match(String(calls[0]!.body.referenceId), /^[0-9a-f-]{36}$/) // random UUID dedupe
+})
+
+test('both channels fire independently when both are enabled', async () => {
+  saveTalkSettings({
+    url: 'https://cloud.example.com',
+    conversation: 'room1',
+    botToken: 'NC-BOT',
+    enabled: true,
+  })
+  await handleRunResult(jobId, run('failed', 'boom'))
+  assert.equal(calls.length, 2)
+  const tg = calls.find((c) => c.url.includes('api.telegram.org'))!
+  const talk = calls.find((c) => c.url.includes('/spreed/'))!
+  assert.match(tg.text, /Backup "App DB" failed/)
+  assert.match(talk.text, /Backup "App DB" failed/)
+  saveTalkSettings({ enabled: false })
+})
+
+test('a disabled Talk channel is skipped — Telegram only', async () => {
+  saveTalkSettings({
+    url: 'https://cloud.example.com',
+    conversation: 'room1',
+    botToken: 'NC-BOT',
+    enabled: false,
+  })
+  await handleRunResult(jobId, run('failed', 'boom'))
+  assert.equal(calls.length, 1)
+  assert.match(calls[0]!.url, /api\.telegram\.org/)
 })

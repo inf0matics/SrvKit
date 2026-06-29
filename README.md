@@ -42,13 +42,13 @@ volumes:
 
 ![PostgreSQL Job](docs/screenshots/backup-job-postgresql.png)
 
-**Peer Heartbeat** — SrvKit instances watch each other. If one server goes silent, the other sends a Telegram alert — even if the silent server is completely down. Setup is a simple one-time key exchange: enter the peer's domain, copy the key shown on the other side, done.
+**Peer Heartbeat** — SrvKit instances watch each other. If one server goes silent, the other sends an alert — even if the silent server is completely down. Setup is a simple one-time key exchange: enter the peer's domain, copy the key shown on the other side, done.
 
 ![Peer Heartbeat](docs/screenshots/peer-heartbeat.png)
 
-**Alerting** — Telegram notifications land the moment something goes wrong, and again when it recovers. Each message is prefixed with your server name so you always know which machine is reporting. Support for additional channels (email, Nextcloud Talk) is planned.
+**Alerting** — Notifications land the moment something goes wrong, and again when it recovers, over **Telegram** and **Nextcloud Talk** (enable either or both). Each message is prefixed with your server name so you always know which machine is reporting.
 
-![Telegram Alert](docs/screenshots/alerting-telegram.png)
+![Alerting](docs/screenshots/alerting-telegram.png)
 
 ## Quick start
 
