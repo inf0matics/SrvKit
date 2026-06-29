@@ -32,7 +32,7 @@ services:
       # TIP_JAR_URL: "https://thespielplatz.com/tip-jar"
       # COOKIE_SECURE: leave UNSET behind TLS (Secure cookies are the default).
     volumes:
-      - srvkit-data:/data                   # password hash + targets/jobs DB
+      - ./data:/data                        # password hash + targets/jobs DB
       # Mount anything you want to back up read-only under /backups/<name>.
       # Each sub-directory shows up as a source in the backup-job wizard:
       - /root:/backups/root:ro
@@ -44,9 +44,6 @@ services:
       - "traefik.http.routers.srvkit.entrypoints=websecure"
       - "traefik.http.routers.srvkit.tls.certresolver=letsencrypt"
       - "traefik.http.services.srvkit.loadbalancer.server.port=3000"
-
-volumes:
-  srvkit-data:
 
 networks:
   traefik:
@@ -112,4 +109,4 @@ All active sessions are logged out immediately.
 docker compose pull && docker compose up -d
 ```
 
-Data in the `srvkit-data` volume is preserved across updates.
+Data in the `./data` directory is preserved across updates.

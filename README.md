@@ -54,7 +54,7 @@ services:
     environment:
       ENCRYPTION_KEY: "change-me-to-a-long-random-secret"
     volumes:
-      - srvkit-data:/data
+      - ./data:/data
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
       - /etc/mtab:/host/etc/mtab:ro
@@ -68,9 +68,6 @@ services:
       - "traefik.http.routers.srvkit.entrypoints=websecure"
       - "traefik.http.routers.srvkit.tls.certresolver=letsencrypt"
       - "traefik.http.services.srvkit.loadbalancer.server.port=3000"
-
-volumes:
-  srvkit-data:
 
 networks:
   traefik:
@@ -91,7 +88,7 @@ Full setup guide: **[docs/setup.md](docs/setup.md)**
 
 | Mount | Purpose | Required |
 |---|---|---|
-| `srvkit-data:/data` | Database and state | Yes |
+| `./data:/data` | Database and state | Yes |
 | `/proc:/host/proc:ro` | Host metrics (CPU, memory, load) | Host monitoring |
 | `/sys:/host/sys:ro` | Host metrics (temperature, I/O) | Host monitoring |
 | `/etc/mtab:/host/etc/mtab:ro` | Partition discovery | Host monitoring |
