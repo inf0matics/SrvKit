@@ -11,20 +11,21 @@
 
 ## Remediation status (2026-06-29)
 
-**Fixed** in this pass: **H1** (login limiter now keys on the unspoofable socket
-IP), **M1** (`nitro.sourceMap: false` — build emits 0 server `.map` files),
-**M4** (security headers + tuned CSP via `routeRules`, fonts allow-listed),
-**L1** (`isSafeInclude` drops `../`/absolute job includes), **L2**
-(`/api/heartbeat/pair` rate-limited 20/10 min), **L3** (peer token compare via
-`timingSafeEqual`). **L5** verified — the direct `esbuild` is the patched
-`0.28.1`; the remaining transitive `0.27.7` is Vite-internal (dev-only) and
-never ships in the runtime image.
+**Fixed:** **H1** (login limiter keys on the unspoofable socket IP), **M1**
+(`nitro.sourceMap: false` — 0 server `.map` files), **M3** (`isValidHost` now
+blocks loopback/RFC-1918/link-local; `ALLOW_PRIVATE_WEBDAV=1` opts out for LAN
+Nextcloud — the audit's SSRF range), **M4** (security headers + tuned CSP via
+`routeRules`), **L1** (`isSafeInclude` drops `../`/absolute includes), **L2**
+(`/api/heartbeat/pair` rate-limited 20/10 min), **L3** (`timingSafeEqual` for
+peer tokens), **L4** (key derivation now **HKDF-SHA256**; new ciphertext is
+written `v2:…` while legacy 3-part blobs still decrypt with the old SHA-256 key
+— no re-encryption migration, secrets upgrade to v2 on next save). **L5**
+verified (direct `esbuild` is the patched `0.28.1`; transitive `0.27.7` is
+Vite dev-only and never ships).
 
-**Deferred** (touch the live deploy or need a migration — to be scheduled):
-**M2** (non-root container — existing `/data` volume is root-owned; needs a
-chown/entrypoint step), **M3** (block private/loopback WebDAV hosts — would
-break LAN Nextcloud targets, needs an opt-out), **L4** (HKDF key derivation —
-invalidates all existing ciphertext, needs a re-encrypt migration).
+**Deferred:** **M2** (non-root container) — for the `./data` bind mount this
+needs an entrypoint that chowns `/data` and drops privileges via `gosu`, or a
+host-side chown with a pinned UID; held for a separate Dockerfile change.
 
 ---
 

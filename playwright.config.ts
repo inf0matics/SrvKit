@@ -22,6 +22,8 @@ export default defineConfig({
       COOKIE_SECURE: 'false', // plain http in e2e
       ENCRYPTION_KEY: 'e2e-encryption-key',
       BACKUP_SOURCES_DIR: './tests/fixtures/sources',
+      // Backup targets in e2e point at 127.0.0.1 — allow private hosts (see M3).
+      ALLOW_PRIVATE_WEBDAV: '1',
       // No Docker in CI — point at a missing socket so PostgreSQL jobs report
       // the "not mounted" state deterministically.
       DOCKER_SOCKET: '/tmp/srvkit-e2e-no-docker.sock',

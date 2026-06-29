@@ -211,8 +211,40 @@ export function isSafeInclude(p: string): boolean {
   return norm !== '..' && !norm.startsWith('../')
 }
 
+/** True for loopback / RFC-1918 / link-local literals — the SSRF-prone ranges. */
+function isPrivateIp(ip: string): boolean {
+  if (/^127\./.test(ip) || ip === '0.0.0.0') return true
+  if (/^10\./.test(ip)) return true
+  if (/^172\.(1[6-9]|2\d|3[01])\./.test(ip)) return true
+  if (/^192\.168\./.test(ip)) return true
+  if (/^169\.254\./.test(ip)) return true // link-local incl. cloud metadata
+  const v6 = ip.toLowerCase()
+  if (v6 === '::1' || v6 === '::') return true
+  if (/^f[cd][0-9a-f]{2}:/.test(v6)) return true // fc00::/7 unique-local
+  if (/^fe[89ab][0-9a-f]:/.test(v6)) return true // fe80::/10 link-local
+  if (/^::ffff:(127|10|169\.254|192\.168|172\.(1[6-9]|2\d|3[01]))\./.test(v6)) return true
+  return false
+}
+
+/**
+ * A backup-target host must be an http(s) URL. By default we also reject
+ * loopback / private / link-local addresses so an authenticated user can't
+ * point the server at internal services or cloud metadata (SSRF). Set
+ * ALLOW_PRIVATE_WEBDAV=1 to permit them (LAN / homelab Nextcloud, dev/e2e).
+ */
 export function isValidHost(host: string): boolean {
-  return /^https?:\/\/.+/.test(host)
+  let u: URL
+  try {
+    u = new URL(host)
+  } catch {
+    return false
+  }
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') return false
+  if (process.env.ALLOW_PRIVATE_WEBDAV === '1') return true
+  const h = u.hostname.toLowerCase().replace(/^\[|\]$/g, '') // strip IPv6 brackets
+  if (h === 'localhost' || h.endsWith('.localhost')) return false
+  if (isPrivateIp(h)) return false
+  return true
 }
 
 /** Trim whitespace and strip leading/trailing slashes for clean path joins. */
