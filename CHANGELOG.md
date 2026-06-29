@@ -1,6 +1,35 @@
 # Changelog
 
 
+## v0.0.8
+
+[compare changes](https://github.com/inf0matics/SrvKit/compare/v0.0.7...v0.0.8)
+
+### 🚀 Enhancements
+
+- Filter the DB container dropdown by image (spec 11.03) ([3b46802](https://github.com/inf0matics/SrvKit/commit/3b46802))
+- Replace per-job mute with an enable/disable toggle (spec 07.01) ([a277524](https://github.com/inf0matics/SrvKit/commit/a277524))
+- Require N consecutive over-threshold polls before host WARN/CRIT (spec 12.02) ([cbd3abb](https://github.com/inf0matics/SrvKit/commit/cbd3abb))
+- Docker service monitoring with per-container grace periods (spec 14) ([de3cc7f](https://github.com/inf0matics/SrvKit/commit/de3cc7f))
+- Docker runtime discovery, count summary + removed→CRIT (spec 14.01) ([111497f](https://github.com/inf0matics/SrvKit/commit/111497f))
+- Sidebar status badges + Docker count-alert info (spec 02.04) ([6e8a618](https://github.com/inf0matics/SrvKit/commit/6e8a618))
+- Peer heartbeat monitoring (spec 15) ([59c9a7f](https://github.com/inf0matics/SrvKit/commit/59c9a7f))
+
+### 📖 Documentation
+
+- Explain outage detection on the Docker page (info box) ([47137b6](https://github.com/inf0matics/SrvKit/commit/47137b6))
+
+### 🎨 Styles
+
+- Render the optional disk-mount notice as a standard warning box ([1997852](https://github.com/inf0matics/SrvKit/commit/1997852))
+- Use the info icon on required missing-mount notices too ([f8daf24](https://github.com/inf0matics/SrvKit/commit/f8daf24))
+- Italicize non-running counts + info icon on the Docker count hint ([a4af910](https://github.com/inf0matics/SrvKit/commit/a4af910))
+- Move Peers below Backups in the sidebar ([45c0f04](https://github.com/inf0matics/SrvKit/commit/45c0f04))
+
+### ❤️ Contributors
+
+- Inf0matics <fil@thespielplatz.com>
+
 ## v0.0.7
 
 [compare changes](https://github.com/inf0matics/SrvKit/compare/v0.0.6...v0.0.7)
