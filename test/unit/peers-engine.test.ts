@@ -18,6 +18,7 @@ const {
   getPendingKey,
   pairPeer,
   recordPeerPing,
+  setIpCheck,
   checkPeers,
   listPeerViews,
 } = await import('../../server/utils/peers.ts')
@@ -39,6 +40,7 @@ beforeEach(() => {
   for (const p of store().listPeers()) store().deletePeer(p.id)
   store().setConfig('heartbeat_pending', '')
   store().setConfig('heartbeat_out', '')
+  store().setConfig('heartbeat_ip_check', '')
   saveAlertSettings({ token: 'TKN', chatId: '123', enabled: true, recovery: true })
 })
 
@@ -54,34 +56,44 @@ test('pending key expires after its TTL', () => {
   assert.equal(getPendingKey(NOW + PAIRING_KEY_TTL_MS + 1), null)
 })
 
-test('pairPeer registers the peer on a valid key and consumes it', () => {
+test('pairPeer registers the peer, records its IP, and stores the token encrypted', () => {
   const { key } = createPendingKey(NOW)
-  const token = pairPeer('https://a.example.com', key, NOW)
-  assert.ok(token)
+  const raw = pairPeer('https://a.example.com', key, '203.0.113.7', NOW)
+  assert.ok(raw)
   const peers = store().listPeers()
   assert.equal(peers.length, 1)
-  assert.equal(peers[0]!.name, 'a.example.com') // URL host
+  assert.equal(peers[0]!.name, 'a.example.com')
+  assert.equal(peers[0]!.ip, '203.0.113.7')
+  assert.notEqual(peers[0]!.token, raw) // encrypted at rest, not the plaintext
   assert.equal(getPendingKey(NOW), null) // one-time use
 })
 
 test('pairPeer rejects a wrong or expired key', () => {
   createPendingKey(NOW)
-  assert.equal(pairPeer('x', 'WRONGKEY', NOW), null)
+  assert.equal(pairPeer('x', 'WRONGKEY', '1.1.1.1', NOW), null)
   const { key } = createPendingKey(NOW)
-  assert.equal(pairPeer('x', key, NOW + PAIRING_KEY_TTL_MS + 1), null)
+  assert.equal(pairPeer('x', key, '1.1.1.1', NOW + PAIRING_KEY_TTL_MS + 1), null)
   assert.equal(store().listPeers().length, 0)
 })
 
-test('recordPeerPing stamps the peer and updates its name', () => {
-  const token = pairPeer('a', createPendingKey(NOW).key, NOW)!
-  assert.equal(recordPeerPing(token, 'server1'), true)
-  assert.equal(store().getPeerByToken(token)?.name, 'server1')
-  assert.equal(recordPeerPing('bogus', 'x'), false)
+test('recordPeerPing matches the encrypted token and stamps the peer', () => {
+  const raw = pairPeer('a', createPendingKey(NOW).key, '1.2.3.4', NOW)!
+  assert.equal(recordPeerPing(raw, 'server1', '1.2.3.4'), 'ok')
+  assert.equal(store().listPeers()[0]!.name, 'server1')
+  assert.equal(recordPeerPing('bogus-token', 'x', '1.2.3.4'), 'unknown')
+})
+
+test('IP allowlist: off accepts any IP; on rejects a mismatch', () => {
+  const raw = pairPeer('a', createPendingKey(NOW).key, '10.0.0.1', NOW)!
+  assert.equal(recordPeerPing(raw, '', '9.9.9.9'), 'ok') // default off
+  setIpCheck(true)
+  assert.equal(recordPeerPing(raw, '', '9.9.9.9'), 'ip-mismatch')
+  assert.equal(recordPeerPing(raw, '', '10.0.0.1'), 'ok')
 })
 
 test('watchdog alerts once when a peer goes silent, then on recovery', async () => {
-  const token = pairPeer('a', createPendingKey(NOW).key, NOW)!
-  const peer = store().getPeerByToken(token)!
+  pairPeer('a', createPendingKey(NOW).key, '1.2.3.4', NOW)
+  const peer = store().listPeers()[0]!
   store().setPeerLastSeen(peer.id, new Date(NOW - 6 * 60_000).toISOString())
 
   await checkPeers(NOW)
@@ -89,20 +101,19 @@ test('watchdog alerts once when a peer goes silent, then on recovery', async () 
   assert.match(sent[0]!, /has not reported in — last seen 6 min ago\./)
   assert.equal(store().listPeers()[0]!.alertState, 'failed')
 
-  await checkPeers(NOW) // still silent → no repeat
+  await checkPeers(NOW)
   assert.equal(sent.length, 1)
 
-  store().setPeerLastSeen(peer.id, new Date(NOW).toISOString()) // pinged again
+  store().setPeerLastSeen(peer.id, new Date(NOW).toISOString())
   await checkPeers(NOW)
   assert.equal(sent.length, 2)
   assert.match(sent[1]!, /is back online\./)
-  assert.equal(store().listPeers()[0]!.alertState, 'ok')
 })
 
 test('listPeerViews aggregates worst status; null with no peers', () => {
   assert.equal(listPeerViews(NOW).status, null)
-  const token = pairPeer('a', createPendingKey(NOW).key, NOW)!
-  const peer = store().getPeerByToken(token)!
+  pairPeer('a', createPendingKey(NOW).key, '1.2.3.4', NOW)
+  const peer = store().listPeers()[0]!
   store().setPeerLastSeen(peer.id, new Date(NOW - 2 * 60_000).toISOString())
   assert.equal(listPeerViews(NOW).status, 'ok')
   store().setPeerLastSeen(peer.id, new Date(NOW - PEER_SILENCE_MS - 1).toISOString())

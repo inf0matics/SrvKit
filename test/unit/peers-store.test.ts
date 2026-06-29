@@ -8,33 +8,33 @@ test('peers start empty', () => {
   s.close()
 })
 
-test('createPeer returns a full record; lookup by token', () => {
+test('createPeer stores name, token, ip and a full record', () => {
   const s = openStore(':memory:')
-  const p = s.createPeer('server1', 'tok-abc')
+  const p = s.createPeer('server1', 'enc-token', '203.0.113.7')
   assert.ok(p.id)
   assert.equal(p.name, 'server1')
+  assert.equal(p.token, 'enc-token')
+  assert.equal(p.ip, '203.0.113.7')
   assert.equal(p.alertState, 'ok')
   assert.ok(p.lastSeen)
-  assert.equal(s.getPeerByToken('tok-abc')?.id, p.id)
-  assert.equal(s.getPeerByToken('nope'), null)
+  assert.equal(s.listPeers()[0]!.ip, '203.0.113.7')
   s.close()
 })
 
-test('recordPing updates last_seen + name; unknown token is a no-op', () => {
+test('markPeerSeen updates last_seen + name by id', () => {
   const s = openStore(':memory:')
-  const p = s.createPeer('old', 'tok')
+  const p = s.createPeer('old', 'tok', '')
   s.setPeerLastSeen(p.id, '2020-01-01T00:00:00Z')
-  assert.equal(s.recordPing('tok', 'server1'), true)
-  const got = s.getPeerByToken('tok')!
+  s.markPeerSeen(p.id, 'server1')
+  const got = s.listPeers()[0]!
   assert.equal(got.name, 'server1')
   assert.notEqual(got.lastSeen, '2020-01-01T00:00:00Z')
-  assert.equal(s.recordPing('unknown', 'x'), false)
   s.close()
 })
 
 test('alert state + delete', () => {
   const s = openStore(':memory:')
-  const p = s.createPeer('s', 'tok')
+  const p = s.createPeer('s', 'tok', '')
   s.setPeerAlertState(p.id, 'failed')
   assert.equal(s.listPeers()[0]!.alertState, 'failed')
   assert.equal(s.deletePeer(p.id), true)

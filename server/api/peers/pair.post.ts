@@ -30,7 +30,7 @@ export default defineEventHandler(async (event) => {
   const token = ((await res.json()) as { token?: string }).token
   if (!token) throw createError({ statusCode: 502, statusMessage: 'Peer did not return a token' })
 
-  setOutgoing({ domain, token })
+  setOutgoing(domain, token)
   await sendPing() // first heartbeat right away so the peer learns our name
   return { ok: true }
 })

@@ -523,6 +523,16 @@ test.describe.serial('backups', () => {
     await expect(page.getByTestId('peer-error')).toContainText('Pairing failed')
   })
 
+  test('peers: the IP allowlist toggle persists', async () => {
+    const input = page.getByTestId('ip-allowlist-toggle').locator('input')
+    await expect(input).not.toBeChecked() // default off
+    await page.getByTestId('ip-allowlist-toggle').click()
+    await expect(input).toBeChecked()
+    await page.reload()
+    await expect(page.getByTestId('ip-allowlist-toggle').locator('input')).toBeChecked()
+    await page.getByTestId('ip-allowlist-toggle').click() // reset
+  })
+
   test('peers: remove the peer', async () => {
     await page.locator('[data-testid^="remove-peer-"]').first().click()
     await expect(page.getByTestId('no-peers')).toBeVisible()

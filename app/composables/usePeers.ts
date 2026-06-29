@@ -24,6 +24,7 @@ interface PeersData {
   status: PeerStatus | null
   pending: PendingKey | null
   outgoing: OutgoingView | null
+  ipAllowlist: boolean
 }
 
 /**
@@ -35,12 +36,14 @@ export function usePeers() {
   const status = useState<PeerStatus | null>('peers-status', () => null)
   const pending = useState<PendingKey | null>('peers-pending', () => null)
   const outgoing = useState<OutgoingView | null>('peers-outgoing', () => null)
+  const ipAllowlist = useState<boolean>('peers-ip-allowlist', () => false)
 
   function apply(d: PeersData) {
     peers.value = d.peers
     status.value = d.status
     pending.value = d.pending
     outgoing.value = d.outgoing
+    ipAllowlist.value = d.ipAllowlist
   }
 
   async function refresh() {
@@ -73,5 +76,25 @@ export function usePeers() {
     await refresh()
   }
 
-  return { peers, status, pending, outgoing, refresh, connect, pair, removePeer, removeOutgoing }
+  async function setSecurity(enabled: boolean) {
+    const r = await $fetch<{ ipAllowlist: boolean }>('/api/peers/security', {
+      method: 'POST',
+      body: { ipAllowlist: enabled },
+    })
+    ipAllowlist.value = r.ipAllowlist
+  }
+
+  return {
+    peers,
+    status,
+    pending,
+    outgoing,
+    ipAllowlist,
+    refresh,
+    connect,
+    pair,
+    removePeer,
+    removeOutgoing,
+    setSecurity,
+  }
 }

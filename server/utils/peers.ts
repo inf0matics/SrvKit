@@ -1,5 +1,7 @@
 import { store } from './srvkit.ts'
 import { dispatch, messagePrefix, getServerName } from './alerts.ts'
+import { encryptPassword, decryptPassword } from './backups.ts'
+import type { PeerRecord } from '../../lib/store.ts'
 import {
   generatePairingKey,
   generatePeerToken,
@@ -15,6 +17,13 @@ import {
 // `config` table. Registered peers live in the `peers` table.
 const PENDING_KEY = 'heartbeat_pending'
 const OUT_KEY = 'heartbeat_out'
+const IP_CHECK_KEY = 'heartbeat_ip_check'
+
+/** Whether incoming pings must come from the IP recorded at pairing. Default off. */
+export const ipCheckEnabled = (): boolean => store().getConfig(IP_CHECK_KEY) === '1'
+export function setIpCheck(enabled: boolean): void {
+  store().setConfig(IP_CHECK_KEY, enabled ? '1' : '0')
+}
 
 // --- Pending pairing key (receiver B) ---
 interface Pending {
@@ -43,14 +52,15 @@ function clearPendingKey(): void {
 }
 
 /**
- * Validate a pairing key and register the requester as a peer, returning the
- * bearer token it should use for pings. Null if the key is wrong or expired.
+ * Validate a pairing key and register the requester as a peer, recording its IP
+ * for the optional allowlist. Returns the (plaintext) bearer token it should use
+ * for pings — stored encrypted at rest. Null if the key is wrong or expired.
  */
-export function pairPeer(label: string, key: string, now = Date.now()): string | null {
+export function pairPeer(label: string, key: string, ip: string, now = Date.now()): string | null {
   const pending = getPendingKey(now)
   if (!pending || normalizeKey(key) !== normalizeKey(pending.key)) return null
   clearPendingKey()
-  const token = generatePeerToken()
+  const raw = generatePeerToken()
   // Initial display name: a URL host if `label` is one, else the raw label.
   let name = label || 'SrvKit'
   try {
@@ -58,34 +68,51 @@ export function pairPeer(label: string, key: string, now = Date.now()): string |
   } catch {
     /* not a URL — keep the label */
   }
-  store().createPeer(name, token)
-  return token
+  store().createPeer(name, encryptPassword(raw), ip)
+  return raw
 }
 
-/** Record a ping by bearer token; false if the token is unknown. */
-export function recordPeerPing(token: string, name: string): boolean {
-  const peer = store().getPeerByToken(token)
-  if (!peer) return false
-  return store().recordPing(token, name || peer.name)
+/** Find a peer by the plaintext token it presented (tokens are encrypted at rest). */
+function findPeerByToken(raw: string): PeerRecord | null {
+  for (const p of store().listPeers()) {
+    try {
+      if (decryptPassword(p.token) === raw) return p
+    } catch {
+      /* legacy/un-decryptable token — skip */
+    }
+  }
+  return null
+}
+
+export type PingResult = 'ok' | 'unknown' | 'ip-mismatch'
+
+/** Record a ping by bearer token, enforcing the IP allowlist when enabled. */
+export function recordPeerPing(token: string, name: string, ip: string): PingResult {
+  const peer = findPeerByToken(token)
+  if (!peer) return 'unknown'
+  if (ipCheckEnabled() && peer.ip && peer.ip !== ip) return 'ip-mismatch'
+  store().markPeerSeen(peer.id, name || peer.name)
+  return 'ok'
 }
 
 // --- Outgoing target (sender A) ---
-export interface OutgoingConfig {
+// Stored as { domain, token } with the token encrypted at rest.
+interface StoredOutgoing {
   domain: string
   token: string
 }
 let lastSentAt: number | null = null
 let lastSendOk: boolean | null = null
 
-export function getOutgoing(): OutgoingConfig | null {
+function getStoredOutgoing(): StoredOutgoing | null {
   try {
-    return JSON.parse(store().getConfig(OUT_KEY) || 'null') as OutgoingConfig | null
+    return JSON.parse(store().getConfig(OUT_KEY) || 'null') as StoredOutgoing | null
   } catch {
     return null
   }
 }
-export function setOutgoing(c: OutgoingConfig): void {
-  store().setConfig(OUT_KEY, JSON.stringify(c))
+export function setOutgoing(domain: string, rawToken: string): void {
+  store().setConfig(OUT_KEY, JSON.stringify({ domain, token: encryptPassword(rawToken) }))
 }
 export function clearOutgoing(): void {
   store().setConfig(OUT_KEY, '')
@@ -101,12 +128,20 @@ export function resetPeerRuntime(): void {
 
 /** Send one heartbeat to the configured outgoing target. Never throws. */
 export async function sendPing(now = Date.now()): Promise<void> {
-  const out = getOutgoing()
+  const out = getStoredOutgoing()
   if (!out) return
+  let token: string
+  try {
+    token = decryptPassword(out.token)
+  } catch {
+    lastSendOk = false // token unreadable (e.g. key rotated) — re-pair needed
+    lastSentAt = now
+    return
+  }
   try {
     const res = await fetch(`${out.domain}/api/heartbeat/ping`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${out.token}` },
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
       body: JSON.stringify({ name: getServerName() || 'SrvKit' }),
       signal: AbortSignal.timeout(8000),
     })
@@ -169,6 +204,6 @@ export function pendingView(now = Date.now()): { key: string; expiresAt: number 
 }
 
 export function outgoingView(): { domain: string; lastSentAt: number | null; ok: boolean | null } | null {
-  const out = getOutgoing()
+  const out = getStoredOutgoing()
   return out ? { domain: out.domain, lastSentAt, ok: lastSendOk } : null
 }

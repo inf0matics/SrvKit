@@ -2,7 +2,8 @@
 definePageMeta({ middleware: 'auth', layout: 'shell' })
 usePageTitle('Peers')
 
-const { peers, pending, outgoing, refresh, connect, pair, removePeer, removeOutgoing } = usePeers()
+const { peers, pending, outgoing, ipAllowlist, refresh, connect, pair, removePeer, removeOutgoing, setSecurity } =
+  usePeers()
 
 let timer: ReturnType<typeof setInterval> | undefined
 onMounted(() => {
@@ -169,6 +170,28 @@ function outgoingStatusText(o: { lastSentAt: number | null; ok: boolean | null }
         >
           <AppIcon name="trash" />
         </button>
+      </div>
+    </section>
+
+    <section class="card" data-testid="security">
+      <h2>Security</h2>
+      <div class="sec-row">
+        <label class="switch" data-testid="ip-allowlist-toggle">
+          <input
+            type="checkbox"
+            :checked="ipAllowlist"
+            aria-label="Restrict pings to known peer IPs"
+            @change="setSecurity(!ipAllowlist)"
+          >
+          <span class="track"><span class="thumb" /></span>
+        </label>
+        <span class="sec-text">
+          <strong>Restrict pings to known peer IPs</strong>
+          <span class="muted">
+            Only accept pings from the IP address recorded during pairing. If a peer's IP changes
+            (dynamic IP / NAT), remove and re-pair it.
+          </span>
+        </span>
       </div>
     </section>
 
@@ -342,6 +365,65 @@ function outgoingStatusText(o: { lastSentAt: number | null; ok: boolean | null }
 
 .out-row code {
   font-family: ui-monospace, Menlo, Consolas, monospace;
+}
+
+.sec-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.sec-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.9rem;
+}
+
+/* On/off switch */
+.switch {
+  position: relative;
+  display: inline-flex;
+  cursor: pointer;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.switch input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.track {
+  width: 38px;
+  height: 22px;
+  border-radius: 999px;
+  background: var(--tsp-border);
+  display: inline-flex;
+  align-items: center;
+  padding: 2px;
+  transition: background 0.15s ease;
+}
+
+.thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--tsp-surface);
+  transition: transform 0.15s ease;
+}
+
+.switch input:checked + .track {
+  background: var(--tsp-primary);
+}
+
+.switch input:checked + .track .thumb {
+  transform: translateX(16px);
 }
 
 .info-box {

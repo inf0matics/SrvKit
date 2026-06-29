@@ -107,8 +107,10 @@ export interface PeerRecord {
   id: string
   /** Peer's reported server name (from its pings); falls back to its domain. */
   name: string
-  /** Bearer token this instance issued; the peer presents it on every ping. */
+  /** Encrypted bearer token (ENCRYPTION_KEY); the peer presents the plaintext on each ping. */
   token: string
+  /** IP recorded at pairing time, for the optional allowlist check. */
+  ip: string
   /** ISO timestamp of the most recent ping received. */
   lastSeen: string
   alertState: 'ok' | 'failed'
@@ -137,9 +139,8 @@ export interface Store {
   deleteJob(id: string): boolean
   recordRun(id: string, run: RunResult): void
   listPeers(): PeerRecord[]
-  getPeerByToken(token: string): PeerRecord | null
-  createPeer(name: string, token: string): PeerRecord
-  recordPing(token: string, name: string): boolean
+  createPeer(name: string, token: string, ip: string): PeerRecord
+  markPeerSeen(id: string, name: string): void
   setPeerLastSeen(id: string, iso: string): void
   setPeerAlertState(id: string, state: 'ok' | 'failed'): void
   deletePeer(id: string): boolean
@@ -291,11 +292,18 @@ export function openStore(path: string): Store {
        id TEXT PRIMARY KEY,
        name TEXT NOT NULL,
        token TEXT NOT NULL,
+       ip TEXT NOT NULL DEFAULT '',
        last_seen TEXT NOT NULL,
        alert_state TEXT NOT NULL DEFAULT 'ok',
        created_at TEXT NOT NULL
      )`,
   )
+  const peerColNames = (
+    db.prepare('PRAGMA table_info(peers)').all() as { name: string }[]
+  ).map((c) => c.name)
+  if (!peerColNames.includes('ip')) {
+    db.exec("ALTER TABLE peers ADD COLUMN ip TEXT NOT NULL DEFAULT ''")
+  }
 
   const getStmt = db.prepare('SELECT value FROM config WHERE key = ?')
   const setStmt = db.prepare(
@@ -377,16 +385,15 @@ export function openStore(path: string): Store {
   )
 
   // --- Peers ---
-  const peerCols = `id, name, token, last_seen AS lastSeen,
+  const peerCols = `id, name, token, ip, last_seen AS lastSeen,
                     alert_state AS alertState, created_at AS createdAt`
   const listPeersStmt = db.prepare(`SELECT ${peerCols} FROM peers ORDER BY created_at`)
-  const getPeerByTokenStmt = db.prepare(`SELECT ${peerCols} FROM peers WHERE token = ?`)
   const insertPeerStmt = db.prepare(
-    `INSERT INTO peers (id, name, token, last_seen, alert_state, created_at)
-     VALUES (?, ?, ?, ?, 'ok', ?)`,
+    `INSERT INTO peers (id, name, token, ip, last_seen, alert_state, created_at)
+     VALUES (?, ?, ?, ?, ?, 'ok', ?)`,
   )
-  const recordPingStmt = db.prepare(
-    'UPDATE peers SET last_seen = ?, name = ? WHERE token = ?',
+  const markPeerSeenStmt = db.prepare(
+    'UPDATE peers SET last_seen = ?, name = ? WHERE id = ?',
   )
   const setPeerLastSeenStmt = db.prepare('UPDATE peers SET last_seen = ? WHERE id = ?')
   const setPeerAlertStateStmt = db.prepare('UPDATE peers SET alert_state = ? WHERE id = ?')
@@ -545,18 +552,16 @@ export function openStore(path: string): Store {
 
     listPeers: () => listPeersStmt.all() as unknown as PeerRecord[],
 
-    getPeerByToken: (token: string) =>
-      (getPeerByTokenStmt.get(token) as unknown as PeerRecord | undefined) ?? null,
-
-    createPeer(name: string, token: string): PeerRecord {
+    createPeer(name: string, token: string, ip: string): PeerRecord {
       const id = randomUUID()
       const now = new Date().toISOString()
-      insertPeerStmt.run(id, name, token, now, now)
-      return { id, name, token, lastSeen: now, alertState: 'ok', createdAt: now }
+      insertPeerStmt.run(id, name, token, ip, now, now)
+      return { id, name, token, ip, lastSeen: now, alertState: 'ok', createdAt: now }
     },
 
-    recordPing: (token: string, name: string) =>
-      recordPingStmt.run(new Date().toISOString(), name, token).changes > 0,
+    markPeerSeen(id: string, name: string) {
+      markPeerSeenStmt.run(new Date().toISOString(), name, id)
+    },
 
     setPeerLastSeen(id: string, iso: string) {
       setPeerLastSeenStmt.run(iso, id)
