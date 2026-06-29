@@ -1,6 +1,23 @@
 # Changelog
 
 
+## v0.0.10
+
+[compare changes](https://github.com/inf0matics/SrvKit/compare/v0.0.9...v0.0.10)
+
+### 🚀 Enhancements
+
+- Add Nextcloud Talk as a second alert channel (spec 16) ([6d792b6](https://github.com/inf0matics/SrvKit/commit/6d792b6))
+- Talk bot setup — placeholder URL + generate-secret button ([92b5703](https://github.com/inf0matics/SrvKit/commit/92b5703))
+
+### 🩹 Fixes
+
+- Sign Nextcloud Talk requests with HMAC-SHA256, not Bearer (spec 16.01) ([f16dcf8](https://github.com/inf0matics/SrvKit/commit/f16dcf8))
+
+### ❤️ Contributors
+
+- Inf0matics <fil@thespielplatz.com>
+
 ## v0.0.9
 
 [compare changes](https://github.com/inf0matics/SrvKit/compare/v0.0.8...v0.0.9)
