@@ -12,6 +12,9 @@ export default defineEventHandler(async (event) => {
   if (!job.active) {
     throw createError({ statusCode: 409, statusMessage: 'Configure and save the job first' })
   }
+  if (!job.enabled) {
+    throw createError({ statusCode: 409, statusMessage: 'Job is disabled' })
+  }
   await runBackup(id)
   return publicJob(store().getJob(id)!)
 })

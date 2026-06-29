@@ -15,14 +15,6 @@ const backupsOpen = ref(true)
 const { refresh: refreshServerName } = useServerName()
 onMounted(refreshServerName)
 
-// Muted-jobs badge in the topbar; poll so it reflects mutes made elsewhere.
-const { count: mutedCount, refresh: refreshMuted } = useMutedJobs()
-let mutedTimer: ReturnType<typeof setInterval> | undefined
-onMounted(() => {
-  refreshMuted()
-  mutedTimer = setInterval(refreshMuted, 5000)
-})
-onBeforeUnmount(() => clearInterval(mutedTimer))
 
 // Aggregated host status badge on the Host monitoring nav entry.
 const { status: hostStatus, available: hostAvailable, refresh: refreshHost } = useHost()
@@ -123,15 +115,6 @@ onBeforeUnmount(() => {
           <span class="gutter" />
           <AppIcon name="bell" />
           <span>Alerts</span>
-          <span
-            v-if="mutedCount > 0"
-            class="muted-badge"
-            data-testid="mute-indicator"
-            :title="`${mutedCount} ${mutedCount === 1 ? 'job' : 'jobs'} muted`"
-          >
-            <AppIcon name="bell-off" />
-            <span data-testid="mute-count">{{ mutedCount }}</span>
-          </span>
         </NuxtLink>
       </nav>
 
@@ -397,22 +380,4 @@ onBeforeUnmount(() => {
   background: var(--tsp-bg);
 }
 
-/* Muted-jobs indicator on the Alerts nav entry. */
-.muted-badge {
-  margin-left: auto;
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  padding: 1px 7px 1px 5px;
-  border-radius: 999px;
-  background: var(--tsp-primary);
-  color: var(--tsp-on-primary);
-  font-size: 11px;
-  font-weight: 700;
-}
-
-.muted-badge .app-icon {
-  width: 12px;
-  height: 12px;
-}
 </style>

@@ -17,7 +17,6 @@ defineProps<{
     | 'edit'
     | 'plug-connected'
     | 'play'
-    | 'bell-off'
     | 'bell'
     | 'settings'
     | 'alert-triangle'
@@ -99,11 +98,6 @@ defineProps<{
       <path d="M16 5l3 3" />
     </template>
     <path v-else-if="name === 'play'" d="M7 4v16l13 -8z" />
-    <template v-else-if="name === 'bell-off'">
-      <path d="M9 17v1a3 3 0 0 0 6 0v-1" />
-      <path d="M17.451 17.5h-13.451l1.595 -1.633a4.5 4.5 0 0 0 1.305 -3.167v-1.7c0 -.823 .124 -1.62 .355 -2.369m1.595 -2.575a4.5 4.5 0 0 1 7.245 3.544c0 1.502 .544 2.95 1.524 4.073" />
-      <path d="M3 3l18 18" />
-    </template>
     <template v-else-if="name === 'bell'">
       <path d="M10 5a2 2 0 0 1 4 0a7 7 0 0 1 4 6v3a4 4 0 0 0 2 3h-16a4 4 0 0 0 2 -3v-3a7 7 0 0 1 4 -6" />
       <path d="M9 17v1a3 3 0 0 0 6 0v-1" />

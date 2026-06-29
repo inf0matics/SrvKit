@@ -19,7 +19,7 @@ export function usesCron(job: JobRecord): boolean {
 /** (Re-)register the cron schedule for an active, cron-triggered job. */
 export function registerCron(job: JobRecord) {
   unregisterCron(job.id)
-  if (!job.active || !usesCron(job) || !job.schedule.trim()) return
+  if (!job.active || !job.enabled || !usesCron(job) || !job.schedule.trim()) return
   try {
     crons.set(
       job.id,
@@ -43,6 +43,6 @@ export function unregisterCron(id: string) {
 /** Re-register cron schedules for every active cron-triggered job (startup). */
 export function registerAllCrons() {
   for (const job of store().listJobs()) {
-    if (job.active && usesCron(job)) registerCron(job)
+    if (job.active && job.enabled && usesCron(job)) registerCron(job)
   }
 }

@@ -45,7 +45,7 @@ export function jobState(job: JobRecord): {
 /** (Re-)register the filewatcher for an active, filewatcher-triggered job. */
 export function registerJob(job: JobRecord) {
   unregisterJob(job.id)
-  if (!job.active) return
+  if (!job.active || !job.enabled) return
   // Container DB dumps + cron-triggered SQLite jobs fire on a schedule.
   if (
     job.type === 'postgres' ||
@@ -85,5 +85,5 @@ export function unregisterJob(id: string) {
 
 /** Re-register watchers for every active job (called on server startup). */
 export function registerAllJobs() {
-  for (const job of store().listJobs()) if (job.active) registerJob(job)
+  for (const job of store().listJobs()) if (job.active && job.enabled) registerJob(job)
 }

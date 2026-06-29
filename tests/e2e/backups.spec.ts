@@ -244,27 +244,22 @@ test.describe.serial('backups', () => {
     )
   })
 
-  test('alerts: muting a job surfaces the topbar badge and the Alerts page', async () => {
-    // Only the App DB job exists here, so the Mute control is unambiguous.
-    await page.getByRole('button', { name: 'Mute job' }).click()
-    await expect(page.getByTestId('mute-indicator')).toBeVisible()
-    await expect(page.getByTestId('mute-count')).toHaveText('1')
+  test('detail: disabling a job greys the row and blocks Run Now', async () => {
+    // Only the App DB job exists here, so the toggle is unambiguous.
+    await expect(page.getByRole('button', { name: 'Run job now' })).toBeEnabled()
+    await page.getByTestId('enable-toggle').click() // disable
+    await expect(page.locator('.job-row.disabled')).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Run job now' })).toBeDisabled()
 
-    // The indicator links to the Alerts page, which lists the muted job.
-    await page.getByTestId('mute-indicator').click()
-    await expect(page).toHaveURL(/\/app\/alerts$/)
-    await expect(page.getByTestId('muted-row')).toContainText('App DB')
-    await expect(page.getByTestId('muted-row')).toContainText('My Nextcloud')
-
-    // Unmute → list empties and the badge disappears.
-    await page.getByTestId('muted-row').getByRole('button', { name: 'Unmute' }).click()
-    await expect(page.getByText('No jobs are muted.')).toBeVisible()
-    await expect(page.getByTestId('mute-indicator')).toHaveCount(0)
+    await page.getByTestId('enable-toggle').click() // re-enable
+    await expect(page.locator('.job-row.disabled')).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Run job now' })).toBeEnabled()
   })
 
   test('alerts: Telegram settings persist and Test validates credentials', async () => {
-    // Continuing on /app/alerts. Test with no credentials → inline error, no
-    // external call.
+    await page.getByRole('link', { name: 'Alerts' }).click()
+    await expect(page).toHaveURL(/\/app\/alerts$/)
+    // Test with no credentials → inline error, no external call.
     await expect(page.getByTestId('alerts-section')).toBeVisible()
     await page.getByTestId('test-telegram').click()
     await expect(page.getByTestId('test-result')).toContainText('required')

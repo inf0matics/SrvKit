@@ -13,7 +13,7 @@ interface Job {
   includes: string[]
   dateSuffix: boolean
   active: boolean
-  muted: boolean
+  enabled: boolean
   lastRunAt: string | null
   lastStatus: 'success' | 'failed' | null
   lastError: string | null
@@ -55,14 +55,14 @@ async function runNow(job: Job) {
   }
 }
 
-/* ---- mute / unmute (suppress alerts without disabling the job) ---- */
-const { refresh: refreshMuted } = useMutedJobs()
-async function toggleMute(job: Job) {
-  await $fetch(`/api/backups/jobs/${job.id}/mute`, {
+/* ---- enable / disable (a disabled job doesn't run — no watcher, cron, alerts) ---- */
+async function toggleEnabled(job: Job) {
+  job.enabled = !job.enabled // optimistic
+  await $fetch(`/api/backups/jobs/${job.id}/enabled`, {
     method: 'POST',
-    body: { muted: !job.muted },
+    body: { enabled: job.enabled },
   })
-  await Promise.all([refreshJobs(), refreshMuted()])
+  await refreshJobs()
 }
 
 // Cron/last-run times render in the server timezone (where jobs run).
@@ -135,7 +135,7 @@ function destPath(job: Job): string {
 <template>
   <div class="jobs">
     <div v-for="job in jobs" :key="job.id" class="job">
-      <div class="job-row">
+      <div class="job-row" :class="{ disabled: !job.enabled }">
       <template v-if="confirmingDelete === job.id">
         <div class="job-info">
           <div class="job-name">{{ job.name }}</div>
@@ -147,6 +147,19 @@ function destPath(job: Job): string {
         </button>
       </template>
       <template v-else>
+        <label
+          class="switch"
+          data-testid="enable-toggle"
+          :title="job.enabled ? 'Enabled — click to disable' : 'Disabled — click to enable'"
+        >
+          <input
+            type="checkbox"
+            :checked="job.enabled"
+            :aria-label="job.enabled ? 'Disable job' : 'Enable job'"
+            @change="toggleEnabled(job)"
+          >
+          <span class="track"><span class="thumb" /></span>
+        </label>
         <div class="job-info">
           <div class="job-head">
             <span class="job-name">{{ job.name }}</span>
@@ -177,17 +190,8 @@ function destPath(job: Job): string {
         </span>
         <button
           class="tsp-btn tsp-btn-sm tsp-btn-icon"
-          :class="{ muted: job.muted }"
-          :aria-label="job.muted ? 'Unmute job' : 'Mute job'"
-          :title="job.muted ? 'Alerts muted — click to unmute' : 'Mute alerts for this job'"
-          @click="toggleMute(job)"
-        >
-          <AppIcon name="bell-off" />
-        </button>
-        <button
-          class="tsp-btn tsp-btn-sm tsp-btn-icon"
           aria-label="Run job now"
-          :disabled="!job.active || isBusy(job)"
+          :disabled="!job.active || !job.enabled || isBusy(job)"
           :title="!job.active ? 'Configure and save the job first' : ''"
           @click="runNow(job)"
         >
@@ -324,10 +328,56 @@ function destPath(job: Job): string {
   font-variant-numeric: tabular-nums;
 }
 
-/* Muted mute-button: orange to signal alerts are suppressed for this job. */
-.tsp-btn-icon.muted {
-  color: var(--tsp-primary);
-  border-color: var(--tsp-primary);
+/* Disabled job: grey the content (the toggle + actions stay usable). */
+.job-row.disabled .job-info,
+.job-row.disabled .job-status,
+.job-row.disabled .job-next {
+  opacity: 0.45;
+}
+
+/* Enable/disable switch (leftmost in the row). */
+.switch {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.switch input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.switch .track {
+  width: 34px;
+  height: 20px;
+  border-radius: 999px;
+  background: var(--tsp-border);
+  display: inline-flex;
+  align-items: center;
+  padding: 2px;
+  transition: background 0.15s ease;
+}
+
+.switch .thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--tsp-surface);
+  transition: transform 0.15s ease;
+}
+
+.switch input:checked + .track {
+  background: var(--tsp-primary);
+}
+
+.switch input:checked + .track .thumb {
+  transform: translateX(14px);
 }
 
 .spinner {

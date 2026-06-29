@@ -76,7 +76,6 @@ beforeEach(() => {
   saveAlertSettings({ token: 'TKN', chatId: '123', enabled: true, recovery: true })
   store().setJobAlertState(jobId, 'ok')
   store().setIncidentSince(jobId, null)
-  store().setJobMuted(jobId, false)
 })
 
 after(() => {
@@ -136,13 +135,6 @@ test('FAILED → OK sends a recovery alert', async () => {
   assert.equal(calls.length, 1)
   assert.match(calls[0]!.text, /back to OK/)
   assert.equal(store().getJob(jobId)?.alertState, 'ok')
-})
-
-test('a muted job advances state but sends nothing', async () => {
-  store().setJobMuted(jobId, true)
-  await handleRunResult(jobId, run('failed', 'boom'))
-  assert.equal(calls.length, 0)
-  assert.equal(store().getJob(jobId)?.alertState, 'failed')
 })
 
 test('recovery disabled: state recovers without a message', async () => {

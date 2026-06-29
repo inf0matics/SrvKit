@@ -9,8 +9,6 @@ interface TelegramSettings {
   recovery: boolean
 }
 
-const { jobs: mutedJobs, refresh: refreshMuted } = useMutedJobs()
-
 const form = reactive({ token: '', chatId: '', enabled: false, recovery: true })
 const hasToken = ref(false)
 
@@ -30,10 +28,7 @@ async function load() {
   form.token = ''
 }
 
-onMounted(() => {
-  load()
-  refreshMuted()
-})
+onMounted(load)
 
 async function save() {
   saving.value = true
@@ -85,10 +80,6 @@ async function test() {
   }
 }
 
-async function unmute(id: string) {
-  await $fetch(`/api/backups/jobs/${id}/mute`, { method: 'POST', body: { muted: false } })
-  await refreshMuted()
-}
 </script>
 
 <template>
@@ -165,21 +156,6 @@ async function unmute(id: string) {
       </p>
       <p v-if="saved" class="ok">✓ Saved.</p>
       <p v-if="saveError" class="err">{{ saveError }}</p>
-    </section>
-
-    <section class="card" data-testid="muted-section">
-      <h2>Muted jobs</h2>
-      <p v-if="!mutedJobs.length" class="tsp-muted">No jobs are muted.</p>
-      <div v-else class="muted-list">
-        <div v-for="j in mutedJobs" :key="j.id" class="muted-row" data-testid="muted-row">
-          <AppIcon :name="j.type === 'sqlite' ? 'database-export' : 'folder'" />
-          <div class="muted-meta">
-            <span class="muted-name">{{ j.name }}</span>
-            <span class="muted-target tsp-muted">{{ j.targetName }}</span>
-          </div>
-          <button class="tsp-btn tsp-btn-sm" @click="unmute(j.id)">Unmute</button>
-        </div>
-      </div>
     </section>
   </div>
 </template>
@@ -313,35 +289,5 @@ async function unmute(id: string) {
 .err {
   color: var(--tsp-danger);
   font-size: 0.9rem;
-}
-
-.muted-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.muted-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  border: 1px solid var(--tsp-border);
-  border-radius: var(--tsp-radius-sm);
-  padding: 10px 12px;
-}
-
-.muted-meta {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-width: 0;
-}
-
-.muted-name {
-  font-weight: 600;
-}
-
-.muted-target {
-  font-size: 0.82rem;
 }
 </style>
