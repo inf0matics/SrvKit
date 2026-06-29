@@ -4,18 +4,22 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-// Setup where the host mount table is only reachable via /host/proc/mounts
+// Setup where the host mount table is only reachable via /host/proc/1/mounts
 // (no /host/etc/mtab mounted) — the common compose with just /proc + /:/host/root.
 const base = mkdtempSync(join(tmpdir(), 'srvkit-diskfb-'))
 const proc = join(base, 'proc')
 const root = join(base, 'root')
-mkdirSync(proc, { recursive: true })
-mkdirSync(root, { recursive: true })
+mkdirSync(join(proc, '1'), { recursive: true })
+mkdirSync(join(root, 'boot'), { recursive: true })
+// Mirrors a real VPS /proc/1/mounts (host init): real partitions + Docker/runtime noise.
 writeFileSync(
-  join(proc, 'mounts'),
+  join(proc, '1', 'mounts'),
   [
-    '/dev/sda1 / ext4 rw 0 0',
-    'overlay /var/lib/docker/overlay2/x overlay rw 0 0',
+    '/dev/vda4 / ext4 rw,relatime 0 0',
+    '/dev/vda3 /boot ext4 rw,relatime 0 0',
+    'overlay /var/lib/docker/rootfs/overlayfs/abc overlay rw 0 0',
+    'systemd-1 /proc/sys/fs/binfmt_misc autofs rw 0 0',
+    'nsfs /run/docker/netns/x nsfs rw 0 0',
     'tmpfs /run tmpfs rw 0 0',
   ].join('\n') + '\n',
 )
@@ -36,10 +40,12 @@ after(() => {
   rmSync(base, { recursive: true, force: true })
 })
 
-test('disk discovery falls back to /host/proc/mounts when mtab is absent', () => {
+test('disk discovery reads the host table from /host/proc/1/mounts', () => {
   const ids = host.readMetrics().metrics.map((m) => m.id)
-  assert.ok(ids.includes('disk_root'), 'disk_root present via the proc/mounts fallback')
+  // Real host partitions show…
+  assert.ok(ids.includes('disk_root'), 'disk_root present')
   assert.ok(ids.includes('inode_root'))
-  // overlay + tmpfs noise stays filtered out
-  assert.ok(!ids.some((id) => id.includes('overlay') || id === 'disk_run'))
+  assert.ok(ids.includes('disk_boot'), 'disk_boot present')
+  // …while overlay / autofs-under-/proc / nsfs-under-/run/docker / tmpfs are dropped.
+  assert.ok(!ids.some((id) => id.includes('overlay') || id.includes('binfmt') || id === 'disk_run'))
 })

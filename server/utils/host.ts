@@ -335,11 +335,13 @@ export function readMetrics(tick = false): { metrics: Metric[]; status: MetricSt
   const elapsed = prevIo ? (cur.time - prevIo.time) / 1000 : 0
 
   if (existsSync(hostRoot())) {
-    // Source the partition list from the host mount table. Prefer /host/etc/mtab
-    // if mounted, else fall back to the host's /host/proc/mounts (available via
-    // the /proc mount). Both are the HOST's view — never the container's own
-    // /proc/mounts; the filters in parseMtab strip overlay/runtime noise either way.
-    const table = readFile(hostMtab()) ?? readFile(join(hostProc(), 'mounts')) ?? ''
+    // Source the partition list from the host mount table. PID 1 is the host's
+    // init, so /host/proc/1/mounts is the HOST's real mounts — whereas
+    // /host/proc/mounts (== /proc/self/mounts) resolves to THIS container's
+    // mounts, and /etc/mtab is usually a symlink to the same. Fall back to a
+    // statically-mounted /host/etc/mtab if PID 1 isn't readable. parseMtab strips
+    // the overlay/runtime noise either way.
+    const table = readFile(join(hostProc(), '1/mounts')) ?? readFile(hostMtab()) ?? ''
     for (const m of H.parseMtab(table)) {
       const target = join(hostRoot(), m.mountpoint)
       try {
