@@ -29,9 +29,12 @@ const {
 const dockerHasEnabled = computed(() => dockerContainers.value.some((c) => c.enabled))
 // Aggregate backup status badge on the Backups nav entry.
 const { status: backupsStatus, refresh: refreshBackups } = useBackupsStatus()
+// Peer heartbeat badge (crit if any peer is silent; no badge with no peers).
+const { status: peersStatus, refresh: refreshPeers } = usePeers()
 let hostTimer: ReturnType<typeof setInterval> | undefined
 let dockerTimer: ReturnType<typeof setInterval> | undefined
 let backupsTimer: ReturnType<typeof setInterval> | undefined
+let peersTimer: ReturnType<typeof setInterval> | undefined
 onMounted(() => {
   refreshHost()
   hostTimer = setInterval(refreshHost, 60_000)
@@ -39,11 +42,14 @@ onMounted(() => {
   dockerTimer = setInterval(refreshDocker, 10_000)
   refreshBackups()
   backupsTimer = setInterval(refreshBackups, 30_000)
+  refreshPeers()
+  peersTimer = setInterval(refreshPeers, 30_000)
 })
 onBeforeUnmount(() => {
   clearInterval(hostTimer)
   clearInterval(dockerTimer)
   clearInterval(backupsTimer)
+  clearInterval(peersTimer)
 })
 
 /* ---- Logout ---- */
@@ -117,6 +123,20 @@ onBeforeUnmount(() => {
             data-testid="docker-badge"
           >
             {{ dockerStatus.toUpperCase() }}
+          </span>
+        </NuxtLink>
+
+        <NuxtLink to="/app/peers" class="nav-item" active-class="active">
+          <span class="gutter" />
+          <AppIcon name="heartbeat" />
+          <span>Peers</span>
+          <span
+            v-if="peersStatus"
+            class="host-badge"
+            :class="`hb-${peersStatus}`"
+            data-testid="peers-badge"
+          >
+            {{ peersStatus.toUpperCase() }}
           </span>
         </NuxtLink>
 

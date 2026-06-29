@@ -24,6 +24,7 @@ defineProps<{
     | 'server'
     | 'pencil'
     | 'docker'
+    | 'heartbeat'
 }>()
 </script>
 
@@ -121,6 +122,10 @@ defineProps<{
     <template v-else-if="name === 'pencil'">
       <path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" />
       <path d="M13.5 6.5l4 4" />
+    </template>
+    <template v-else-if="name === 'heartbeat'">
+      <path d="M19.5 12.572l-7.5 7.428l-7.5 -7.428a5 5 0 1 1 7.5 -6.566a5 5 0 1 1 7.5 6.572" />
+      <path d="M3 12.5h3l1.5 -3l2.5 5.5l1.5 -3.5h3.5" />
     </template>
     <template v-else-if="name === 'docker'">
       <path d="M22 12.54c-1.7 -.36 -3.5 -.3 -5 .2c.4 -2.16 -.84 -4.41 -2.27 -5.74c-1.5 1.4 -1.93 4.24 -.43 6c-1 .42 -2.1 .6 -3.3 .6h-8.93c-.5 4.84 2.18 9.4 7 9.4c5.7 0 9.9 -2.68 11.95 -8.5c1.5 .1 3 -.38 3.5 -1.9c-.78 -.5 -1.83 -.66 -2.52 -.4z" />

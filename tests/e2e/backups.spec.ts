@@ -485,4 +485,47 @@ test.describe.serial('backups', () => {
     // The sidebar Docker badge is hidden when monitoring is unavailable.
     await expect(page.getByTestId('docker-badge')).toHaveCount(0)
   })
+
+  // The pairing flow needs two SrvKits; here we pair the instance with itself
+  // (A and B are the same server, reachable at its own origin).
+  test('peers: probe + key + confirm pairs the instance with itself', async () => {
+    const origin = new URL(page.url()).origin
+    await page.getByRole('link', { name: 'Peers', exact: true }).click()
+    await expect(page).toHaveURL(/\/app\/peers$/)
+    await expect(page.getByTestId('no-peers')).toBeVisible()
+
+    // Step 1 — Connect: probe our own origin → succeeds → key entry appears.
+    await page.getByTestId('peer-domain').fill(origin)
+    await page.getByTestId('connect').click()
+    await expect(page.getByTestId('peer-key')).toBeVisible()
+
+    // Step 2 — the probe generated a pending key; read it from the box.
+    const shown = (await page.getByTestId('pending-key').textContent())!.trim()
+    expect(shown).toMatch(/^[A-Z2-9]{4}-[A-Z2-9]{4}$/)
+
+    // Step 3 — enter the key + Confirm → pairing completes.
+    await page.getByTestId('peer-key').fill(shown)
+    await page.getByTestId('confirm').click()
+
+    // Both sides now present: a registered peer (OK) + the outgoing target.
+    await expect(page.locator('[data-testid^="peer-status-"]')).toHaveText('OK')
+    await expect(page.getByTestId('outgoing')).toContainText(origin)
+    // Sidebar badge now shows (a peer is registered + healthy).
+    await expect(page.getByTestId('peers-badge')).toHaveText('OK')
+  })
+
+  test('peers: a bad key is rejected', async () => {
+    await page.getByTestId('remove-outgoing').click() // reset to the connect form
+    await page.getByTestId('peer-domain').fill(new URL(page.url()).origin)
+    await page.getByTestId('connect').click()
+    await page.getByTestId('peer-key').fill('ZZZZ-ZZZZ')
+    await page.getByTestId('confirm').click()
+    await expect(page.getByTestId('peer-error')).toContainText('Pairing failed')
+  })
+
+  test('peers: remove the peer', async () => {
+    await page.locator('[data-testid^="remove-peer-"]').first().click()
+    await expect(page.getByTestId('no-peers')).toBeVisible()
+    await expect(page.getByTestId('peers-badge')).toHaveCount(0)
+  })
 })

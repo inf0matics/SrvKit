@@ -102,6 +102,19 @@ export interface RunResult {
   error: string | null
 }
 
+/** A registered incoming peer (this instance watches it for heartbeats). */
+export interface PeerRecord {
+  id: string
+  /** Peer's reported server name (from its pings); falls back to its domain. */
+  name: string
+  /** Bearer token this instance issued; the peer presents it on every ping. */
+  token: string
+  /** ISO timestamp of the most recent ping received. */
+  lastSeen: string
+  alertState: 'ok' | 'failed'
+  createdAt: string
+}
+
 export interface Store {
   isInitialized(): boolean
   getPasswordHash(): string | null
@@ -123,6 +136,13 @@ export interface Store {
   listIncidents(): Incident[]
   deleteJob(id: string): boolean
   recordRun(id: string, run: RunResult): void
+  listPeers(): PeerRecord[]
+  getPeerByToken(token: string): PeerRecord | null
+  createPeer(name: string, token: string): PeerRecord
+  recordPing(token: string, name: string): boolean
+  setPeerLastSeen(id: string, iso: string): void
+  setPeerAlertState(id: string, state: 'ok' | 'failed'): void
+  deletePeer(id: string): boolean
   getConfig(key: string): string | null
   setConfig(key: string, value: string): void
   close(): void
@@ -266,6 +286,17 @@ export function openStore(path: string): Store {
     db.exec(`ALTER TABLE jobs ADD COLUMN "trigger" TEXT NOT NULL DEFAULT 'filewatcher'`)
   }
 
+  db.exec(
+    `CREATE TABLE IF NOT EXISTS peers (
+       id TEXT PRIMARY KEY,
+       name TEXT NOT NULL,
+       token TEXT NOT NULL,
+       last_seen TEXT NOT NULL,
+       alert_state TEXT NOT NULL DEFAULT 'ok',
+       created_at TEXT NOT NULL
+     )`,
+  )
+
   const getStmt = db.prepare('SELECT value FROM config WHERE key = ?')
   const setStmt = db.prepare(
     `INSERT INTO config (key, value) VALUES (?, ?)
@@ -344,6 +375,22 @@ export function openStore(path: string): Store {
   const recordRunStmt = db.prepare(
     'UPDATE jobs SET last_run_at = ?, last_status = ?, last_error = ? WHERE id = ?',
   )
+
+  // --- Peers ---
+  const peerCols = `id, name, token, last_seen AS lastSeen,
+                    alert_state AS alertState, created_at AS createdAt`
+  const listPeersStmt = db.prepare(`SELECT ${peerCols} FROM peers ORDER BY created_at`)
+  const getPeerByTokenStmt = db.prepare(`SELECT ${peerCols} FROM peers WHERE token = ?`)
+  const insertPeerStmt = db.prepare(
+    `INSERT INTO peers (id, name, token, last_seen, alert_state, created_at)
+     VALUES (?, ?, ?, ?, 'ok', ?)`,
+  )
+  const recordPingStmt = db.prepare(
+    'UPDATE peers SET last_seen = ?, name = ? WHERE token = ?',
+  )
+  const setPeerLastSeenStmt = db.prepare('UPDATE peers SET last_seen = ? WHERE id = ?')
+  const setPeerAlertStateStmt = db.prepare('UPDATE peers SET alert_state = ? WHERE id = ?')
+  const deletePeerStmt = db.prepare('DELETE FROM peers WHERE id = ?')
 
   return {
     isInitialized: () => get('password_hash') !== null,
@@ -495,6 +542,31 @@ export function openStore(path: string): Store {
     recordRun(id: string, run: RunResult) {
       recordRunStmt.run(run.at, run.status, run.error, id)
     },
+
+    listPeers: () => listPeersStmt.all() as unknown as PeerRecord[],
+
+    getPeerByToken: (token: string) =>
+      (getPeerByTokenStmt.get(token) as unknown as PeerRecord | undefined) ?? null,
+
+    createPeer(name: string, token: string): PeerRecord {
+      const id = randomUUID()
+      const now = new Date().toISOString()
+      insertPeerStmt.run(id, name, token, now, now)
+      return { id, name, token, lastSeen: now, alertState: 'ok', createdAt: now }
+    },
+
+    recordPing: (token: string, name: string) =>
+      recordPingStmt.run(new Date().toISOString(), name, token).changes > 0,
+
+    setPeerLastSeen(id: string, iso: string) {
+      setPeerLastSeenStmt.run(iso, id)
+    },
+
+    setPeerAlertState(id: string, state: 'ok' | 'failed') {
+      setPeerAlertStateStmt.run(state, id)
+    },
+
+    deletePeer: (id: string) => deletePeerStmt.run(id).changes > 0,
 
     getConfig: (key: string) => get(key),
     setConfig: (key: string, value: string) => set(key, value),
