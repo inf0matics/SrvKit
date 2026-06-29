@@ -74,7 +74,7 @@ const cmp = (m: HostMetric) => (m.dir === 'low' ? '<' : '>')
         <strong v-if="s.optionalOnly">
           ℹ️ {{ s.cat }} metrics are optional.
         </strong>
-        <strong v-else>⚠️ {{ s.cat }} metrics need a volume mount.</strong>
+        <strong v-else>ℹ️ {{ s.cat }} metrics need a volume mount.</strong>
         {{
           s.optionalOnly
             ? 'They need the host filesystem mounted (broad, read-only access — only add it if you want these). In your'
