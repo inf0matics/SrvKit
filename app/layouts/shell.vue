@@ -18,19 +18,32 @@ onMounted(refreshServerName)
 
 // Aggregated host status badge on the Host monitoring nav entry.
 const { status: hostStatus, available: hostAvailable, refresh: refreshHost } = useHost()
-// Aggregated Docker status badge on the Docker nav entry (10s poll).
-const { status: dockerStatus, available: dockerAvailable, refresh: refreshDocker } = useDocker()
+// Aggregated Docker status badge on the Docker nav entry (10s poll). The badge
+// only shows when at least one container is enabled for monitoring.
+const {
+  status: dockerStatus,
+  available: dockerAvailable,
+  containers: dockerContainers,
+  refresh: refreshDocker,
+} = useDocker()
+const dockerHasEnabled = computed(() => dockerContainers.value.some((c) => c.enabled))
+// Aggregate backup status badge on the Backups nav entry.
+const { status: backupsStatus, refresh: refreshBackups } = useBackupsStatus()
 let hostTimer: ReturnType<typeof setInterval> | undefined
 let dockerTimer: ReturnType<typeof setInterval> | undefined
+let backupsTimer: ReturnType<typeof setInterval> | undefined
 onMounted(() => {
   refreshHost()
   hostTimer = setInterval(refreshHost, 60_000)
   refreshDocker()
   dockerTimer = setInterval(refreshDocker, 10_000)
+  refreshBackups()
+  backupsTimer = setInterval(refreshBackups, 30_000)
 })
 onBeforeUnmount(() => {
   clearInterval(hostTimer)
   clearInterval(dockerTimer)
+  clearInterval(backupsTimer)
 })
 
 /* ---- Logout ---- */
@@ -98,7 +111,7 @@ onBeforeUnmount(() => {
           <AppIcon name="docker" />
           <span>Docker</span>
           <span
-            v-if="dockerAvailable"
+            v-if="dockerAvailable && dockerHasEnabled"
             class="host-badge"
             :class="`hb-${dockerStatus}`"
             data-testid="docker-badge"
@@ -118,6 +131,14 @@ onBeforeUnmount(() => {
             </button>
             <AppIcon name="database-export" />
             <span>Backups</span>
+            <span
+              v-if="backupsStatus"
+              class="host-badge"
+              :class="backupsStatus === 'error' ? 'hb-crit' : 'hb-ok'"
+              data-testid="backups-badge"
+            >
+              {{ backupsStatus === 'error' ? 'ERROR' : 'OK' }}
+            </span>
           </NuxtLink>
           <div v-if="backupsOpen" class="subnav">
             <NuxtLink

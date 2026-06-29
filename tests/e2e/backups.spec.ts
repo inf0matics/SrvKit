@@ -170,6 +170,8 @@ test.describe.serial('backups', () => {
 
   test('dashboard: the failed job opens an incident that links to the job', async () => {
     await page.goto('/app/dashboard')
+    // Full reload re-mounts the sidebar → the Backups badge reflects the failed run.
+    await expect(page.getByTestId('backups-badge')).toHaveText('ERROR')
     await expect(page.getByTestId('metric-jobs')).toContainText('1')
     const incident = page.getByTestId('incident-row')
     await expect(incident).toContainText('Root configs')

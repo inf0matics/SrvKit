@@ -66,26 +66,34 @@ async function saveGrace(c: DockerContainer) {
 
     <template v-else>
       <section class="card summary" data-testid="count-summary">
-        <span class="c-name">Containers</span>
-        <span class="counts">
-          <span data-testid="count-running">running {{ counts.running }}</span>
-          <span data-testid="count-exited">exited {{ counts.exited }}</span>
-          <span>paused {{ counts.paused }}</span>
-          <span>dead {{ counts.dead }}</span>
-        </span>
-        <label
-          class="switch"
-          :title="countEnabled ? 'Count-change alerts on' : 'Count-change alerts off'"
-          data-testid="count-toggle"
-        >
-          <input
-            type="checkbox"
-            :checked="countEnabled"
-            aria-label="Alert on container count change"
-            @change="toggleCount"
+        <div class="summary-row">
+          <span class="c-name">Containers</span>
+          <span class="counts">
+            <span data-testid="count-running">running {{ counts.running }}</span>
+            <span data-testid="count-exited">exited {{ counts.exited }}</span>
+            <span>paused {{ counts.paused }}</span>
+            <span>dead {{ counts.dead }}</span>
+          </span>
+          <label
+            class="switch"
+            :title="countEnabled ? 'Count-change alerts on' : 'Count-change alerts off'"
+            data-testid="count-toggle"
           >
-          <span class="track"><span class="thumb" /></span>
-        </label>
+            <input
+              type="checkbox"
+              :checked="countEnabled"
+              aria-label="Alert on container count change"
+              @change="toggleCount"
+            >
+            <span class="track"><span class="thumb" /></span>
+          </label>
+        </div>
+        <p class="summary-hint">
+          When enabled, sends an alert whenever the number of <strong>running</strong> containers
+          changes — any container starting, stopping, or crashing on the host, whether or not it's
+          individually monitored below. The message lists the current
+          running/exited/paused/dead counts.
+        </p>
       </section>
 
       <div class="toolbar">
@@ -243,10 +251,20 @@ async function saveGrace(c: DockerContainer) {
 }
 
 .summary {
+  padding: 12px 18px;
+}
+
+.summary-row {
   display: flex;
   align-items: center;
   gap: 16px;
-  padding: 12px 18px;
+}
+
+.summary-hint {
+  margin: 8px 0 0;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--tsp-text-muted);
 }
 
 .summary .counts {
