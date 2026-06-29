@@ -10,7 +10,7 @@ Lightweight DevOps companion for self-hosted servers — host monitoring, Docker
 
 ![Host Monitoring](docs/screenshots/host-monitoring.png)
 
-**Docker Service Monitoring** — If a container crashes and stays down, you'll know. SrvKit tracks all your containers via the Docker socket and alerts when one stays offline beyond its grace period — long enough to survive a normal restart, short enough to catch a crash loop.
+**Docker Service Monitoring** — If a container crashes and stays down, you'll know. SrvKit tracks all your containers via the Docker socket and alerts when one stays offline beyond its grace period — long enough to survive a normal restart, short enough to catch a crash loop. It also watches the total container count and alerts on any change, so a silently removed container never goes unnoticed.
 
 ![Docker Monitoring](docs/screenshots/docker-monitoring.png)
 
@@ -42,7 +42,13 @@ volumes:
 
 ![PostgreSQL Job](docs/screenshots/backup-job-postgresql.png)
 
-**Alerting** — Telegram notifications land the moment something goes wrong, and again when it recovers. Each message is prefixed with your server name so you always know which machine is reporting.
+**Peer Heartbeat** — SrvKit instances watch each other. If one server goes silent, the other sends a Telegram alert — even if the silent server is completely down. Setup is a simple one-time key exchange: enter the peer's domain, copy the key shown on the other side, done.
+
+![Peer Heartbeat](docs/screenshots/peer-heartbeat.png)
+
+**Alerting** — Telegram notifications land the moment something goes wrong, and again when it recovers. Each message is prefixed with your server name so you always know which machine is reporting. Support for additional channels (email, Nextcloud Talk) is planned.
+
+![Telegram Alert](docs/screenshots/alerting-telegram.png)
 
 ## Quick start
 
