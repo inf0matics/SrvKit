@@ -184,6 +184,32 @@ function outgoingStatusText(o: { lastSentAt: number | null; ok: boolean | null }
         </button>
       </div>
     </section>
+
+    <section class="info-box" data-testid="peers-info">
+      <strong>ℹ️ How peer heartbeat works</strong>
+      <p>
+        Two SrvKit instances watch each other by exchanging periodic pings. Because the
+        <em>receiver</em> detects the silence, an alert still fires even when the other server is
+        completely down.
+      </p>
+      <p>
+        <strong>Pairing.</strong> Enter the other SrvKit's domain and hit Connect — it shows a
+        one-time key (valid 10&nbsp;minutes). Copy that key back here and Confirm. From then on this
+        instance sends a heartbeat to that server every 5&nbsp;minutes; the key is discarded and
+        pings use a permanent token.
+      </p>
+      <p>
+        <strong>Monitored peers</strong> are the servers that ping <em>this</em> one — if any stops
+        reporting for more than 5&nbsp;minutes, this instance sends a Telegram alert (and a recovery
+        message when it returns). <strong>Outgoing heartbeat</strong> is where this server sends its
+        own ping, so the peer can alert on <em>your</em> downtime.
+      </p>
+      <p>
+        Pairing sets up <strong>one direction</strong> (the peer watches you). For mutual
+        monitoring, pair the other way too. Alerts use the shared
+        <NuxtLink to="/app/alerts">Telegram channel</NuxtLink>.
+      </p>
+    </section>
   </div>
 </template>
 
@@ -316,5 +342,24 @@ function outgoingStatusText(o: { lastSentAt: number | null; ok: boolean | null }
 
 .out-row code {
   font-family: ui-monospace, Menlo, Consolas, monospace;
+}
+
+.info-box {
+  border: 1px solid var(--tsp-border);
+  border-radius: var(--tsp-radius);
+  background: var(--tsp-surface);
+  padding: 14px 18px;
+  margin-top: 16px;
+  font-size: 0.82rem;
+  color: var(--tsp-text-muted);
+}
+
+.info-box p {
+  margin: 8px 0 0;
+  line-height: 1.5;
+}
+
+.info-box a {
+  color: var(--tsp-primary);
 }
 </style>
