@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { matchesDbImage, dbTypeLabel } from '~/utils/containers'
+
 definePageMeta({ middleware: 'auth', layout: 'shell' })
 
 interface Job {
@@ -110,7 +112,7 @@ watch(
   },
 )
 
-// Running Docker containers for the PostgreSQL container picker.
+// Running Docker containers for the PostgreSQL/MySQL container picker.
 const dockerAvailable = ref(true)
 const containers = ref<DockerContainer[]>([])
 onMounted(async () => {
@@ -124,6 +126,14 @@ onMounted(async () => {
     dockerAvailable.value = false
   }
 })
+
+// Filter the dropdown to DB containers by image (unless "show all" is checked).
+const showAllContainers = ref(false)
+const filteredContainers = computed(() =>
+  showAllContainers.value
+    ? containers.value
+    : containers.value.filter((c) => matchesDbImage(c.image, form.type)),
+)
 
 // Full destination: {host}/{root}/{subdirectory}/{name}[_date][_time].tar.gz
 const archive = computed(() => {
@@ -253,18 +263,33 @@ async function save() {
           <code>/var/run/docker.sock</code> into SrvKit to run database backups.
         </p>
 
-        <label class="field">
-          <span>Container</span>
+        <div class="field">
+          <span class="label">Container</span>
           <select v-model="form.container" class="tsp-input" data-testid="pg-container">
             <option value="" disabled>Select a container…</option>
-            <option v-if="form.container && !containers.some((c) => c.name === form.container)" :value="form.container">
-              {{ form.container }} (not running)
+            <option
+              v-if="form.container && !filteredContainers.some((c) => c.name === form.container)"
+              :value="form.container"
+            >
+              {{ form.container }} (not in list)
             </option>
-            <option v-for="c in containers" :key="c.id" :value="c.name">
+            <option v-for="c in filteredContainers" :key="c.id" :value="c.name">
               {{ c.name }} ({{ c.image }})
             </option>
           </select>
-        </label>
+          <p
+            v-if="dockerAvailable && !showAllContainers && !filteredContainers.length"
+            class="hint tsp-muted"
+            data-testid="no-containers"
+          >
+            No {{ dbTypeLabel(form.type) }} containers found. Check
+            “Show all containers” to select from the full list.
+          </p>
+          <label class="field toggle show-all">
+            <input v-model="showAllContainers" type="checkbox" data-testid="show-all-containers">
+            <span>Show all containers</span>
+          </label>
+        </div>
 
         <label class="field">
           <span>Database</span>
@@ -376,6 +401,12 @@ async function save() {
 .hint {
   margin: 0;
   font-size: 0.9rem;
+}
+
+.show-all {
+  margin-top: 6px;
+  margin-bottom: 0;
+  font-weight: 400;
 }
 
 .warn-box {
