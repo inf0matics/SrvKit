@@ -1,4 +1,4 @@
-export type HostStatus = 'ok' | 'warn' | 'crit' | 'na' | 'info' | 'off'
+export type HostStatus = 'ok' | 'warn' | 'crit' | 'na' | 'info' | 'off' | 'pending'
 
 export interface HostMetric {
   id: string
@@ -11,6 +11,9 @@ export interface HostMetric {
   crit: number | null
   dir: 'high' | 'low'
   status: HostStatus
+  polls: number
+  pollCount: number
+  pendingLevel: 'warn' | 'crit' | null
   enabled: boolean
   informational: boolean
   note?: string
@@ -29,6 +32,7 @@ interface HostData {
   available: boolean
   metrics: HostMetric[]
   status: HostStatus
+  pollIntervalSeconds: number
 }
 
 /**
@@ -40,6 +44,7 @@ export function useHost() {
   const mounts = useState<HostMount[]>('host-mounts', () => [])
   const status = useState<HostStatus>('host-status', () => 'ok')
   const available = useState<boolean>('host-available', () => true)
+  const pollIntervalSeconds = useState<number>('host-poll-interval', () => 60)
   const missing = computed(() => mounts.value.filter((m) => !m.present))
 
   function apply(d: HostData) {
@@ -47,6 +52,7 @@ export function useHost() {
     mounts.value = d.mounts
     status.value = d.status
     available.value = d.available
+    pollIntervalSeconds.value = d.pollIntervalSeconds
   }
 
   async function refresh() {
@@ -55,10 +61,19 @@ export function useHost() {
 
   async function saveMetric(
     id: string,
-    patch: { enabled?: boolean; warn?: number; crit?: number },
+    patch: { enabled?: boolean; warn?: number; crit?: number; polls?: number },
   ) {
     apply(await $fetch<HostData>(`/api/host/metrics/${id}`, { method: 'PUT', body: patch }))
   }
 
-  return { metrics, mounts, missing, status, available, refresh, saveMetric }
+  return {
+    metrics,
+    mounts,
+    missing,
+    status,
+    available,
+    pollIntervalSeconds,
+    refresh,
+    saveMetric,
+  }
 }

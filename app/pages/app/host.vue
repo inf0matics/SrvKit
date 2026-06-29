@@ -4,7 +4,7 @@ import type { HostMetric } from '~/composables/useHost'
 definePageMeta({ middleware: 'auth', layout: 'shell' })
 usePageTitle('Host monitoring')
 
-const { metrics, mounts, refresh, saveMetric } = useHost()
+const { metrics, mounts, pollIntervalSeconds, refresh, saveMetric } = useHost()
 
 let timer: ReturnType<typeof setInterval> | undefined
 onMounted(() => {
@@ -40,14 +40,19 @@ const STATUS_LABEL: Record<string, string> = {
 
 // Inline threshold editor.
 const editingId = ref<string | null>(null)
-const draft = reactive({ warn: 0, crit: 0 })
+const draft = reactive({ warn: 0, crit: 0, polls: 3 })
 function openEditor(m: HostMetric) {
   editingId.value = m.id
   draft.warn = m.warn ?? 0
   draft.crit = m.crit ?? 0
+  draft.polls = m.polls || 3
 }
 async function saveThresholds(m: HostMetric) {
-  await saveMetric(m.id, { warn: Number(draft.warn), crit: Number(draft.crit) })
+  await saveMetric(m.id, {
+    warn: Number(draft.warn),
+    crit: Number(draft.crit),
+    polls: Number(draft.polls),
+  })
   editingId.value = null
 }
 async function toggle(m: HostMetric) {
@@ -57,6 +62,12 @@ async function toggle(m: HostMetric) {
 
 // Comparator shown for thresholds: '>' for higher-is-worse, '<' for lower (inodes).
 const cmp = (m: HostMetric) => (m.dir === 'low' ? '<' : '>')
+
+// "N consecutive polls" as a duration (minutes, or seconds under a minute).
+function durationLabel(polls: number): string {
+  const secs = Math.max(1, polls) * pollIntervalSeconds.value
+  return secs >= 60 ? `${secs / 60} min` : `${secs} sec`
+}
 </script>
 
 <template>
@@ -109,7 +120,15 @@ const cmp = (m: HostMetric) => (m.dir === 'low' ? '<' : '>')
             <AppIcon name="pencil" />
           </button>
 
-          <span class="badge" :class="`st-${m.status}`" :data-testid="`status-${m.id}`">
+          <span
+            v-if="m.status === 'pending'"
+            class="badge pending"
+            :class="`st-${m.pendingLevel}`"
+            :data-testid="`status-${m.id}`"
+          >
+            {{ m.pendingLevel?.toUpperCase() }} {{ m.pollCount }}/{{ m.polls }}
+          </span>
+          <span v-else class="badge" :class="`st-${m.status}`" :data-testid="`status-${m.id}`">
             {{ STATUS_LABEL[m.status] }}
             <template v-if="m.note"> · {{ m.note }}</template>
           </span>
@@ -134,6 +153,11 @@ const cmp = (m: HostMetric) => (m.dir === 'low' ? '<' : '>')
         <div v-if="editingId === m.id" class="editor" :data-testid="`editor-${m.id}`">
           <label>WARN {{ cmp(m) }} <input v-model.number="draft.warn" type="number" class="tsp-input num"> {{ m.unit }}</label>
           <label>CRIT {{ cmp(m) }} <input v-model.number="draft.crit" type="number" class="tsp-input num"> {{ m.unit }}</label>
+          <label class="alert-after">
+            Alert after <input v-model.number="draft.polls" type="number" min="1" class="tsp-input num">
+            consecutive polls
+            <span class="dur tsp-muted" data-testid="poll-duration">(= {{ durationLabel(draft.polls) }})</span>
+          </label>
           <button class="tsp-btn tsp-btn-sm tsp-btn-primary" @click="saveThresholds(m)">Save</button>
           <button class="tsp-btn tsp-btn-sm" @click="editingId = null">Cancel</button>
         </div>
@@ -262,12 +286,24 @@ const cmp = (m: HostMetric) => (m.dir === 'low' ? '<' : '>')
   font-weight: 600;
 }
 
+/* Pending: over threshold but the consecutive count hasn't reached N — outlined. */
+.badge.pending {
+  background: transparent;
+  border: 1px solid currentColor;
+  font-variant-numeric: tabular-nums;
+}
+
 .editor {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 12px;
   padding: 10px 0 4px 11rem;
   font-size: 0.85rem;
+}
+
+.editor .dur {
+  font-variant-numeric: tabular-nums;
 }
 
 .editor label {

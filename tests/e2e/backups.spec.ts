@@ -403,7 +403,7 @@ test.describe.serial('backups', () => {
     await expect(warning).toContainText('- /:/host/root:ro')
   })
 
-  test('host: all metric groups render with row details', async () => {
+  test('host: all groups render; RAM shows the pending badge', async () => {
     for (const group of ['CPU', 'Memory', 'Disk', 'Network', 'System']) {
       await expect(page.getByRole('heading', { name: group, exact: true })).toBeVisible()
     }
@@ -412,25 +412,42 @@ test.describe.serial('backups', () => {
     await expect(row).toContainText('RAM usage')
     await expect(page.getByTestId('value-ram_usage')).toHaveText('85%')
     await expect(row).toContainText('WARN >80%')
-    await expect(page.getByTestId('status-ram_usage')).toHaveText('WARN')
+    // Over threshold but only 1 of 3 consecutive polls → pending, not WARN yet.
+    await expect(page.getByTestId('status-ram_usage')).toHaveText('WARN 1/3')
     await expect(page.getByTestId('toggle-ram_usage')).toBeVisible()
-    // Informational rows have no threshold/toggle; loopback is excluded.
     await expect(page.getByTestId('status-kernel')).toContainText('info only')
     await expect(page.getByTestId('metric-net_err_lo')).toHaveCount(0)
+    // Pending isn't an alert, so the aggregate badge stays OK.
+    await expect(page.getByTestId('host-badge')).toHaveText('OK')
+  })
+
+  test('host: lowering the consecutive-polls threshold fires the alert', async () => {
+    await page.getByTestId('edit-ram_usage').click()
+    const editor = page.getByTestId('editor-ram_usage')
+    // The duration hint = N × poll interval (60s), updating live as N changes.
+    await expect(editor.getByTestId('poll-duration')).toHaveText('(= 3 min)')
+    const pollsInput = editor.locator('input').nth(2)
+    await pollsInput.fill('2')
+    await expect(editor.getByTestId('poll-duration')).toHaveText('(= 2 min)')
+
+    // N=1 → the single over-threshold poll already satisfies it → WARN fires.
+    await pollsInput.fill('1')
+    await editor.getByRole('button', { name: 'Save' }).click()
+    await expect(page.getByTestId('status-ram_usage')).toHaveText('WARN')
+    await expect(page.getByTestId('host-badge')).toHaveText('WARN')
   })
 
   test('host: toggle disables then re-enables a metric', async () => {
     await page.getByTestId('toggle-ram_usage').click()
     await expect(page.getByTestId('status-ram_usage')).toHaveText('disabled')
     await page.getByTestId('toggle-ram_usage').click()
-    await expect(page.getByTestId('status-ram_usage')).toHaveText('WARN')
+    await expect(page.getByTestId('status-ram_usage')).toHaveText('WARN') // N=1
   })
 
   test('host: inline threshold editor saves and cancels', async () => {
-    // Save: raising WARN above the current 85% flips RAM to OK.
+    // Save: raising WARN above the current 85% flips RAM to OK immediately.
     await page.getByTestId('edit-ram_usage').click()
     const editor = page.getByTestId('editor-ram_usage')
-    await expect(editor).toBeVisible()
     await editor.locator('input').first().fill('90')
     await editor.getByRole('button', { name: 'Save' }).click()
     await expect(editor).toHaveCount(0) // collapses on save
@@ -443,16 +460,5 @@ test.describe.serial('backups', () => {
     await editor.getByRole('button', { name: 'Cancel' }).click()
     await expect(editor).toHaveCount(0)
     await expect(page.getByTestId('metric-ram_usage')).toContainText('WARN >90%') // unchanged
-  })
-
-  test('host: sidebar badge tracks the aggregate status', async () => {
-    // After the editor test RAM is OK (warn 90) and nothing else is failing.
-    await expect(page.getByTestId('host-badge')).toHaveText('OK')
-    // Drop RAM's WARN back below 85% → RAM WARN → aggregate WARN.
-    await page.getByTestId('edit-ram_usage').click()
-    const editor = page.getByTestId('editor-ram_usage')
-    await editor.locator('input').first().fill('80')
-    await editor.getByRole('button', { name: 'Save' }).click()
-    await expect(page.getByTestId('host-badge')).toHaveText('WARN')
   })
 })

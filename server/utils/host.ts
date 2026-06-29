@@ -60,7 +60,13 @@ interface Override {
   enabled?: boolean
   warn?: number
   crit?: number
+  /** Consecutive over-threshold polls required before WARN/CRIT fires. */
+  polls?: number
 }
+
+/** Metrics poll interval (seconds). Also drives the editor's duration hint. */
+export const POLL_INTERVAL_SECONDS = 60
+const DEFAULT_POLLS = 3
 
 function loadConfig(): Record<string, Override> {
   try {
@@ -77,7 +83,8 @@ export function setMetricConfig(id: string, patch: Override): void {
 }
 
 // --- Metric output ---
-export type MetricStatus = 'ok' | 'warn' | 'crit' | 'na' | 'info' | 'off'
+// 'pending' = over threshold but the consecutive-poll count hasn't reached N yet.
+export type MetricStatus = 'ok' | 'warn' | 'crit' | 'na' | 'info' | 'off' | 'pending'
 
 export interface Metric {
   id: string
@@ -91,9 +98,23 @@ export interface Metric {
   /** 'high' = higher is worse (default); 'low' = lower is worse (e.g. inodes). */
   dir: 'high' | 'low'
   status: MetricStatus
+  /** Consecutive over-threshold polls required before WARN/CRIT. */
+  polls: number
+  /** Current consecutive over-threshold poll count (for the pending badge). */
+  pollCount: number
+  /** The would-be level while pending: 'warn' | 'crit'. */
+  pendingLevel: 'warn' | 'crit' | null
   enabled: boolean
   informational: boolean
   note?: string
+}
+
+// Consecutive over-threshold poll counts, per metric (in-memory; resets on restart).
+const counters = new Map<string, number>()
+
+/** Test helper: clear the in-memory consecutive-poll counters. */
+export function resetCounters(): void {
+  counters.clear()
 }
 
 // Rolling samples for rate/delta metrics (CPU, disk I/O, net throughput).
@@ -113,12 +134,6 @@ function sampleIo(): IoSample {
   return { time: Date.now(), diskBytes: H.diskstatsBytes(ds), net }
 }
 
-/** Take initial samples so the first read can already report rates. */
-export function primeHost(): void {
-  const stat = readFile(join(hostProc(), 'stat'))
-  if (stat) prevCpu = H.parseStat(stat)
-  prevIo = sampleIo()
-}
 
 function cpuTemp(): number | null {
   const dir = join(hostSys(), 'class/thermal')
@@ -142,8 +157,12 @@ function slug(mountpoint: string): string {
   return mountpoint.replace(/^\//, '').replace(/[^a-z0-9]+/gi, '_') || 'root'
 }
 
-/** Read all host metrics + the worst-of aggregate status. */
-export function readMetrics(): { metrics: Metric[]; status: MetricStatus } {
+/**
+ * Read all host metrics + the worst-of aggregate status. When `tick` is true
+ * (the background poll), the consecutive over-threshold counters advance; reads
+ * for the UI pass false so they only reflect the current counters.
+ */
+export function readMetrics(tick = false): { metrics: Metric[]; status: MetricStatus } {
   const cfg = loadConfig()
 
   function threshold(o: {
@@ -162,15 +181,37 @@ export function readMetrics(): { metrics: Metric[]; status: MetricStatus } {
     const enabled = ov.enabled !== false
     const warn = ov.warn ?? o.defWarn
     const crit = ov.crit ?? o.defCrit
+    const polls = Math.max(1, ov.polls ?? DEFAULT_POLLS)
     const dir = o.dir ?? 'high'
-    let status: MetricStatus
-    if (!enabled) status = 'off'
-    else if (o.value === null) status = o.note ? 'ok' : 'na'
-    else
-      status =
-        dir === 'low'
+
+    // Raw level from the current value, before the consecutive-poll smoothing.
+    const raw: MetricStatus =
+      o.value === null
+        ? o.note
+          ? 'ok'
+          : 'na'
+        : dir === 'low'
           ? H.thresholdStatusLow(o.value, warn, crit)
           : H.thresholdStatus(o.value, warn, crit)
+
+    const over = enabled && (raw === 'warn' || raw === 'crit')
+    let count = counters.get(o.id) ?? 0
+    if (tick) {
+      count = over ? Math.min(polls, count + 1) : 0 // reset immediately when back under
+      counters.set(o.id, count)
+    }
+
+    let status: MetricStatus
+    let pendingLevel: 'warn' | 'crit' | null = null
+    if (!enabled) status = 'off'
+    else if (o.value === null) status = o.note ? 'ok' : 'na'
+    else if (!over) status = 'ok'
+    else if (count >= polls) status = raw // WARN/CRIT — the alert "fires"
+    else {
+      status = 'pending'
+      pendingLevel = raw as 'warn' | 'crit'
+    }
+
     return {
       id: o.id,
       name: o.name,
@@ -182,6 +223,9 @@ export function readMetrics(): { metrics: Metric[]; status: MetricStatus } {
       crit,
       dir,
       status,
+      polls,
+      pollCount: count,
+      pendingLevel,
       enabled,
       informational: false,
       note: o.note,
@@ -199,6 +243,9 @@ export function readMetrics(): { metrics: Metric[]; status: MetricStatus } {
     crit: null,
     dir: 'high',
     status: 'info',
+    polls: 0,
+    pollCount: 0,
+    pendingLevel: null,
     enabled: true,
     informational: true,
   })
@@ -213,7 +260,7 @@ export function readMetrics(): { metrics: Metric[]; status: MetricStatus } {
   if (statContent) {
     const cur = H.parseStat(statContent)
     if (prevCpu) cpuPct = H.cpuUsagePct(prevCpu, cur)
-    prevCpu = cur
+    if (tick || !prevCpu) prevCpu = cur // advance the baseline only on a poll tick
   }
   out.push(
     threshold({
@@ -361,7 +408,7 @@ export function readMetrics(): { metrics: Metric[]; status: MetricStatus } {
       ),
     )
   }
-  prevIo = cur
+  if (tick || !prevIo) prevIo = cur // advance the baseline only on a poll tick
 
   // --- System info ---
   const uptime = readFile(join(hostProc(), 'uptime'))

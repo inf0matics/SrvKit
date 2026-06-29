@@ -42,6 +42,10 @@ const host = await import('../../server/utils/host.ts')
 const { store } = await import('../../server/utils/srvkit.ts')
 
 const find = (id: string) => host.readMetrics().metrics.find((m) => m.id === id)!
+// Advance the consecutive-poll counters n times (a "poll").
+const poll = (n = 1) => {
+  for (let i = 0; i < n; i++) host.readMetrics(true)
+}
 
 after(() => {
   store().close()
@@ -52,13 +56,40 @@ test('mounts are detected as present', () => {
   assert.ok(host.mounts().every((m) => m.present))
 })
 
-test('RAM at 85% is WARN; aggregate reflects the worst metric', () => {
-  assert.equal(find('ram_usage').display, '85%')
+test('RAM over threshold is PENDING until N consecutive polls, then WARN', () => {
+  host.resetCounters()
+  poll(1)
+  const pending = find('ram_usage')
+  assert.equal(pending.display, '85%')
+  assert.equal(pending.status, 'pending')
+  assert.equal(pending.pendingLevel, 'warn')
+  assert.equal(pending.pollCount, 1)
+  assert.equal(pending.polls, 3) // default
+
+  poll(2) // reach 3 consecutive
   assert.equal(find('ram_usage').status, 'warn')
-  // disk_root usage is the real test-machine disk, so exclude it here.
+
+  // Aggregate now reflects WARN (exclude the machine-dependent disk metric).
   host.setMetricConfig('disk_root', { enabled: false })
   assert.equal(host.readMetrics().status, 'warn')
   host.setMetricConfig('disk_root', { enabled: true })
+})
+
+test('recovery is immediate — back under threshold flips to OK at once', () => {
+  host.resetCounters()
+  poll(3) // RAM → WARN
+  assert.equal(find('ram_usage').status, 'warn')
+  host.setMetricConfig('ram_usage', { warn: 90, crit: 95 }) // now 85 < 90
+  assert.equal(find('ram_usage').status, 'ok') // immediate, no poll needed
+  host.setMetricConfig('ram_usage', { warn: 80, crit: 90 })
+})
+
+test('a lower consecutive-polls setting flips sooner', () => {
+  host.resetCounters()
+  host.setMetricConfig('ram_usage', { polls: 1 })
+  poll(1)
+  assert.equal(find('ram_usage').status, 'warn') // 1 of 1
+  host.setMetricConfig('ram_usage', { polls: 3 })
 })
 
 test('no swap → OK with a note', () => {

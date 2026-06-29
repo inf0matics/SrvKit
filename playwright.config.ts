@@ -32,6 +32,8 @@ export default defineConfig({
       HOST_PROC: './tests/fixtures/host/proc',
       HOST_SYS: './tests/fixtures/host/sys',
       HOST_ROOT: '/tmp/srvkit-e2e-no-host-root',
+      // Freeze the consecutive-poll counters at the first poll (deterministic).
+      HOST_POLL_LOOP: 'off',
     },
     reuseExistingServer: false,
     timeout: 120_000,
