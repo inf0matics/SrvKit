@@ -110,6 +110,16 @@ async function testTelegram() {
   }
 }
 
+// Generate a random secret, drop it into the field + the example commands so
+// the value SrvKit stores and the one passed to `occ` are guaranteed to match.
+const genSecret = ref('')
+const exampleSecret = computed(() => genSecret.value || '<your-secret>')
+function generateSecret() {
+  const bytes = crypto.getRandomValues(new Uint8Array(32))
+  genSecret.value = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')
+  talk.secret = genSecret.value
+}
+
 async function testTalk() {
   const st = status.talk
   st.testing = true
@@ -273,20 +283,27 @@ async function testTalk() {
           <strong>secret</strong> you pass must match the <em>Bot secret</em> above. The conversation
           token is the last part of the room URL: <code>https://cloud.example.com/call/{token}</code>.
         </p>
+        <p>
+          SrvKit only <em>sends</em> messages, so it's a response-only bot — the webhook URL can be
+          a placeholder as long as you pass <code>--feature response</code>.
+        </p>
         <p class="variant">Nextcloud AIO (Docker):</p>
         <pre>docker exec nextcloud-aio-nextcloud php occ talk:bot:install \
   "SrvKit" \
-  "&lt;your-secret&gt;" \
-  "https://srvkit.example.com/api/talk-webhook" \
+  "{{ exampleSecret }}" \
+  "http://localhost/dummy" \
   "SrvKit Alerts" \
-  --feature webhook --feature response</pre>
+  --feature response</pre>
         <p class="variant">Standard Nextcloud:</p>
         <pre>sudo -u www-data php /var/www/html/occ talk:bot:install \
   "SrvKit" \
-  "&lt;your-secret&gt;" \
-  "https://srvkit.example.com/api/talk-webhook" \
+  "{{ exampleSecret }}" \
+  "http://localhost/dummy" \
   "SrvKit Alerts" \
-  --feature webhook --feature response</pre>
+  --feature response</pre>
+        <button class="tsp-btn tsp-btn-sm gen-btn" data-testid="gen-secret" @click="generateSecret">
+          Generate a random secret
+        </button>
       </div>
     </section>
   </div>
@@ -447,6 +464,10 @@ async function testTalk() {
   margin: 10px 0 4px;
   font-weight: 600;
   color: var(--tsp-text);
+}
+
+.info-box .gen-btn {
+  margin-top: 12px;
 }
 
 .info-box pre {

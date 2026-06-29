@@ -296,6 +296,12 @@ test.describe.serial('backups', () => {
     await expect(page.getByLabel('Nextcloud URL')).toHaveValue('https://cloud.example.com')
     await expect(page.getByLabel('Conversation token')).toHaveValue('abcd1234')
     await expect(page.getByLabel('Enable Nextcloud Talk alerts')).toBeChecked()
+
+    // Generate-secret fills both the Bot secret field and the example command.
+    await page.getByTestId('gen-secret').click()
+    const secret = await page.getByLabel('Bot secret').inputValue()
+    expect(secret).toMatch(/^[0-9a-f]{64}$/)
+    await expect(card).toContainText(secret)
   })
 
   test('settings: server name persists', async () => {
