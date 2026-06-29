@@ -1,6 +1,23 @@
 # Changelog
 
 
+## v1.0.1
+
+[compare changes](https://github.com/inf0matics/SrvKit/compare/v1.0.0...v1.0.1)
+
+### 🩹 Fixes
+
+- Filter the host disk list to real partitions only (spec 12.03) ([1549695](https://github.com/inf0matics/SrvKit/commit/1549695))
+- Widen sidebar so "Host monitoring" + badge fit on one line ([45eb39c](https://github.com/inf0matics/SrvKit/commit/45eb39c))
+
+### 🏡 Chore
+
+- Sync package-lock version to 1.0.0 ([e898663](https://github.com/inf0matics/SrvKit/commit/e898663))
+
+### ❤️ Contributors
+
+- Inf0matics <fil@thespielplatz.com>
+
 ## v1.0.0
 
 [compare changes](https://github.com/inf0matics/SrvKit/compare/v0.0.11...v1.0.0)
