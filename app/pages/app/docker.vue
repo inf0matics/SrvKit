@@ -70,9 +70,9 @@ async function saveGrace(c: DockerContainer) {
           <span class="c-name">Containers</span>
           <span class="counts">
             <span data-testid="count-running">running {{ counts.running }}</span>
-            <span data-testid="count-exited">exited {{ counts.exited }}</span>
-            <span>paused {{ counts.paused }}</span>
-            <span>dead {{ counts.dead }}</span>
+            <span data-testid="count-exited"><em>exited</em> {{ counts.exited }}</span>
+            <span><em>paused</em> {{ counts.paused }}</span>
+            <span><em>dead</em> {{ counts.dead }}</span>
           </span>
           <label
             class="switch"
@@ -89,6 +89,7 @@ async function saveGrace(c: DockerContainer) {
           </label>
         </div>
         <p class="summary-hint">
+          <span class="hint-icon" aria-hidden="true">ℹ️</span>
           When enabled, sends an alert whenever the number of <strong>running</strong> containers
           changes — any container starting, stopping, or crashing on the host, whether or not it's
           individually monitored below. The message lists the current
@@ -265,6 +266,10 @@ async function saveGrace(c: DockerContainer) {
   font-size: 0.8rem;
   line-height: 1.45;
   color: var(--tsp-text-muted);
+}
+
+.summary-hint .hint-icon {
+  margin-right: 4px;
 }
 
 .summary .counts {
