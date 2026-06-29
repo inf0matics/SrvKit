@@ -119,20 +119,37 @@ export interface MountEntry {
   fstype: string
 }
 
-// Real disk filesystems worth a usage row (tmpfs/proc/sysfs/etc excluded).
-const DISK_FS = new Set(['ext4', 'xfs', 'btrfs', 'ext3', 'ext2'])
+// Pseudo / virtual / container filesystems that never represent a real host
+// partition — excluded from the disk list (spec 12.03).
+const EXCLUDED_FS = new Set([
+  'tmpfs', 'devtmpfs', 'sysfs', 'proc', 'devpts', 'cgroup', 'cgroup2',
+  'overlay', 'aufs', 'fuse.lxcfs', 'squashfs', 'nsfs', 'mqueue',
+  'debugfs', 'tracefs', 'securityfs', 'pstore', 'bpf', 'hugetlbfs',
+  'ramfs', 'efivarfs', 'fusectl',
+])
+
+// Mountpoints containing any of these are runtime/container internals (incl.
+// duplicated host paths via /host/root/...), not real partitions.
+const EXCLUDED_PATHS = ['/var/lib/docker/', '/run/docker/', '/sys/', '/proc/', '/dev/']
 
 function unescapeMount(s: string): string {
   return s.replace(/\\(\d{3})/g, (_, o: string) => String.fromCharCode(parseInt(o, 8)))
 }
 
+/**
+ * Parse the host mount table (/host/etc/mtab) into real partitions: drop
+ * virtual filesystem types and mountpoints under Docker/runtime paths. The
+ * caller still skips single-file mounts (statfs / not-a-directory).
+ */
 export function parseMtab(content: string): MountEntry[] {
   const out: MountEntry[] = []
   for (const line of content.split('\n')) {
     const [device, mountpoint, fstype] = line.trim().split(/\s+/)
-    if (device && mountpoint && fstype && DISK_FS.has(fstype)) {
-      out.push({ device, mountpoint: unescapeMount(mountpoint), fstype })
-    }
+    if (!device || !mountpoint || !fstype) continue
+    if (EXCLUDED_FS.has(fstype)) continue
+    const mp = unescapeMount(mountpoint)
+    if (EXCLUDED_PATHS.some((p) => mp.includes(p))) continue
+    out.push({ device, mountpoint: mp, fstype })
   }
   return out
 }

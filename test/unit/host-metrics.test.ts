@@ -61,6 +61,25 @@ test('parseMtab keeps real disk filesystems only', () => {
   )
 })
 
+test('parseMtab drops overlay/virtual fs and Docker/runtime paths (spec 12.03)', () => {
+  const m = H.parseMtab(
+    [
+      '/dev/sda1 / ext4 rw 0 0',
+      '/dev/sda2 /boot ext4 rw 0 0',
+      'overlay /var/lib/docker/overlay2/abc/merged overlay rw 0 0',
+      '/dev/sda1 /host/root/var/lib/docker/containers/x ext4 rw 0 0', // ext4 but docker path
+      'cgroup2 /sys/fs/cgroup cgroup2 rw 0 0',
+      'devtmpfs /dev devtmpfs rw 0 0',
+      '/dev/sda1 /dev/shm ext4 rw 0 0', // ext4 but under /dev/
+      'efivarfs /sys/firmware/efi/efivars efivarfs rw 0 0',
+    ].join('\n'),
+  )
+  assert.deepEqual(
+    m.map((e) => e.mountpoint),
+    ['/', '/boot'],
+  )
+})
+
 test('parseNetDev + errorRatePct', () => {
   const dev = H.parseNetDev(
     'Inter-|   Receive\n face |bytes\n    lo:  100 10 0 0 0 0 0 0  100 10 0 0\n  eth0: 5000 1000 5 0 0 0 0 0 6000 1000 5 0\n',

@@ -1,4 +1,4 @@
-import { readFileSync, existsSync, readdirSync, statfsSync } from 'node:fs'
+import { readFileSync, existsSync, readdirSync, statfsSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { store } from './srvkit.ts'
 import * as H from '../../lib/host-metrics.ts'
@@ -335,12 +335,21 @@ export function readMetrics(tick = false): { metrics: Metric[]; status: MetricSt
   const elapsed = prevIo ? (cur.time - prevIo.time) / 1000 : 0
 
   if (existsSync(hostRoot())) {
-    const table = readFile(hostMtab()) ?? readFile(join(hostProc(), 'mounts')) ?? ''
+    // Source the partition list exclusively from the host mount table — never
+    // the container's /proc/mounts, which is full of bind-mounts + overlays.
+    const table = readFile(hostMtab()) ?? ''
     for (const m of H.parseMtab(table)) {
+      const target = join(hostRoot(), m.mountpoint)
+      try {
+        // Skip Docker-injected single-file mounts (resolv.conf, hostname, …).
+        if (!statSync(target).isDirectory()) continue
+      } catch {
+        continue // not reachable under the host root
+      }
       let usage: number | null = null
       let inodes: number | null = null
       try {
-        const s = statfsSync(join(hostRoot(), m.mountpoint))
+        const s = statfsSync(target)
         const used = s.blocks - s.bfree
         const avail = s.bavail
         if (used + avail > 0) usage = (used / (used + avail)) * 100
