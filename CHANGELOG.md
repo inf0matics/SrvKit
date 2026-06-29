@@ -1,6 +1,22 @@
 # Changelog
 
 
+## v1.1.0
+
+[compare changes](https://github.com/inf0matics/SrvKit/compare/v1.0.2...v1.1.0)
+
+### 🚀 Enhancements
+
+- Expand the dashboard with status boxes ([cb61334](https://github.com/inf0matics/SrvKit/commit/cb61334))
+
+### 🩹 Fixes
+
+- Read the host mount table from /host/proc/1/mounts ([5b24226](https://github.com/inf0matics/SrvKit/commit/5b24226))
+
+### ❤️ Contributors
+
+- Inf0matics <fil@thespielplatz.com>
+
 ## v1.0.2
 
 [compare changes](https://github.com/inf0matics/SrvKit/compare/v1.0.1...v1.0.2)
