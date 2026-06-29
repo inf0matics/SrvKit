@@ -126,20 +126,6 @@ onBeforeUnmount(() => {
           </span>
         </NuxtLink>
 
-        <NuxtLink to="/app/peers" class="nav-item" active-class="active">
-          <span class="gutter" />
-          <AppIcon name="heartbeat" />
-          <span>Peers</span>
-          <span
-            v-if="peersStatus"
-            class="host-badge"
-            :class="`hb-${peersStatus}`"
-            data-testid="peers-badge"
-          >
-            {{ peersStatus.toUpperCase() }}
-          </span>
-        </NuxtLink>
-
         <div class="nav-group">
           <NuxtLink to="/app/backups" class="nav-item" exact-active-class="active">
             <button
@@ -173,6 +159,20 @@ onBeforeUnmount(() => {
             </NuxtLink>
           </div>
         </div>
+
+        <NuxtLink to="/app/peers" class="nav-item" active-class="active">
+          <span class="gutter" />
+          <AppIcon name="heartbeat" />
+          <span>Peers</span>
+          <span
+            v-if="peersStatus"
+            class="host-badge"
+            :class="`hb-${peersStatus}`"
+            data-testid="peers-badge"
+          >
+            {{ peersStatus.toUpperCase() }}
+          </span>
+        </NuxtLink>
 
         <NuxtLink to="/app/alerts" class="nav-item" active-class="active">
           <span class="gutter" />
