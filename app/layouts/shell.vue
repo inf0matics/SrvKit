@@ -239,7 +239,7 @@ onBeforeUnmount(() => {
 }
 
 .sidenav {
-  width: 224px;
+  width: 252px;
   flex-shrink: 0;
   background: var(--tsp-surface);
   border-right: 1px solid var(--tsp-border);
@@ -294,6 +294,7 @@ onBeforeUnmount(() => {
   color: var(--tsp-text-muted);
   text-decoration: none;
   cursor: pointer;
+  white-space: nowrap; /* keep labels like "Host monitoring" + badge on one line */
 }
 
 .nav-item:hover {
