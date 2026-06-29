@@ -69,7 +69,6 @@ const cmp = (m: HostMetric) => (m.dir === 'low' ? '<' : '>')
       <section
         v-if="s.missing.length"
         class="warn-box"
-        :class="{ optional: s.optionalOnly }"
         :data-testid="`missing-${s.cat}`"
       >
         <strong v-if="s.optionalOnly">
@@ -163,12 +162,6 @@ const cmp = (m: HostMetric) => (m.dir === 'low' ? '<' : '>')
   padding: 14px 16px;
   margin: 16px 0;
   font-size: 0.9rem;
-}
-
-/* Optional mounts are informational, not an error — use a neutral border. */
-.warn-box.optional {
-  border-color: var(--tsp-border);
-  color: var(--tsp-text-muted);
 }
 
 .warn-box pre,
