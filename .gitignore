@@ -23,3 +23,6 @@ playwright/.cache/
 # Logs / OS
 *.log
 .DS_Store
+
+# Screenshot harness artifact
+scripts/screenshots/seed-ids.json
