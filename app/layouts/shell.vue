@@ -27,12 +27,19 @@ const {
   refresh: refreshDocker,
 } = useDocker()
 const dockerHasEnabled = computed(() => dockerContainers.value.some((c) => c.enabled))
+// Ping status badge on the Pings nav entry (only shown when a ping is enabled).
+const {
+  status: pingsStatus,
+  anyEnabled: pingsEnabled,
+  refresh: refreshPings,
+} = usePings()
 // Aggregate backup status badge on the Backups nav entry.
 const { status: backupsStatus, refresh: refreshBackups } = useBackupsStatus()
 // Peer heartbeat badge (crit if any peer is silent; no badge with no peers).
 const { status: peersStatus, refresh: refreshPeers } = usePeers()
 let hostTimer: ReturnType<typeof setInterval> | undefined
 let dockerTimer: ReturnType<typeof setInterval> | undefined
+let pingsTimer: ReturnType<typeof setInterval> | undefined
 let backupsTimer: ReturnType<typeof setInterval> | undefined
 let peersTimer: ReturnType<typeof setInterval> | undefined
 onMounted(() => {
@@ -40,6 +47,8 @@ onMounted(() => {
   hostTimer = setInterval(refreshHost, 60_000)
   refreshDocker()
   dockerTimer = setInterval(refreshDocker, 10_000)
+  refreshPings()
+  pingsTimer = setInterval(refreshPings, 15_000)
   refreshBackups()
   backupsTimer = setInterval(refreshBackups, 30_000)
   refreshPeers()
@@ -48,6 +57,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   clearInterval(hostTimer)
   clearInterval(dockerTimer)
+  clearInterval(pingsTimer)
   clearInterval(backupsTimer)
   clearInterval(peersTimer)
 })
@@ -123,6 +133,20 @@ onBeforeUnmount(() => {
             data-testid="docker-badge"
           >
             {{ dockerStatus.toUpperCase() }}
+          </span>
+        </NuxtLink>
+
+        <NuxtLink to="/app/pings" class="nav-item" active-class="active">
+          <span class="gutter" />
+          <AppIcon name="ping" />
+          <span>Pings</span>
+          <span
+            v-if="pingsEnabled"
+            class="host-badge"
+            :class="`hb-${pingsStatus}`"
+            data-testid="pings-badge"
+          >
+            {{ pingsStatus.toUpperCase() }}
           </span>
         </NuxtLink>
 

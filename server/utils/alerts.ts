@@ -36,7 +36,7 @@ function telegramEnabled(): boolean {
   return store().getConfig(K_ENABLED) === '1'
 }
 
-function recoveryEnabled(): boolean {
+export function recoveryEnabled(): boolean {
   return store().getConfig(K_RECOVERY) !== '0' // default on
 }
 
