@@ -1,6 +1,18 @@
 # Changelog
 
 
+## v1.2.0
+
+[compare changes](https://github.com/inf0matics/SrvKit/compare/v1.1.0...v1.2.0)
+
+### 🚀 Enhancements
+
+- Add HTTP ping monitoring ([c60c5f3](https://github.com/inf0matics/SrvKit/commit/c60c5f3))
+
+### ❤️ Contributors
+
+- Inf0matics <fil@thespielplatz.com>
+
 ## v1.1.0
 
 [compare changes](https://github.com/inf0matics/SrvKit/compare/v1.0.2...v1.1.0)

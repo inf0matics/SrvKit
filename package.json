@@ -1,6 +1,6 @@
 {
   "name": "srvkit",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -12,8 +12,7 @@
     "typecheck": "nuxt typecheck",
     "test:unit": "node --test \"test/unit/**/*.test.ts\"",
     "test:e2e": "playwright test",
-    "screenshots": "node scripts/screenshots/run.mjs",
-    "bump-version": "npm run lint && npx changelogen@latest --release && git push --follow-tags"
+    "screenshots": "node scripts/screenshots/run.mjs"
   },
   "devDependencies": {
     "@nuxt/eslint": "^1.16.0",
