@@ -1,6 +1,7 @@
 // Seeds a throwaway DB with representative data for README screenshots.
 // Run with the same ENCRYPTION_KEY / DATABASE_PATH the screenshot server uses.
 import { writeFileSync } from 'node:fs'
+import { randomUUID } from 'node:crypto'
 import { openStore } from '../../lib/store.ts'
 import { encrypt } from '../../lib/crypto.ts'
 import { hashPassword } from '../../lib/password.ts'
@@ -118,6 +119,18 @@ s.setConfig('docker_count_enabled', '1')
 
 // --- Peers: one healthy monitored peer ---
 s.createPeer('edge-2', encrypt('demo-peer-token'), '203.0.113.42')
+
+// --- Pings: two healthy external endpoints + one failing (404 vs expected 200).
+// Real reachable URLs (IANA example domains) so the boot poll resolves to a
+// deterministic OK/CRIT for the screenshot. ---
+s.setConfig(
+  'pings',
+  JSON.stringify([
+    { id: randomUUID(), url: 'https://example.com/', name: 'Marketing site', expectedStatus: 200, intervalSec: 300, enabled: true },
+    { id: randomUUID(), url: 'https://example.org/', name: 'Docs portal', expectedStatus: 200, intervalSec: 900, enabled: true },
+    { id: randomUUID(), url: 'https://example.com/api/health', name: 'Checkout API', expectedStatus: 200, intervalSec: 60, enabled: true },
+  ]),
+)
 
 s.close()
 

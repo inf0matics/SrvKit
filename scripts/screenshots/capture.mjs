@@ -36,6 +36,10 @@ await shot('host-monitoring', { settle: 1200 })
 await page.goto(`${BASE}/app/docker`)
 await shot('docker-monitoring', { settle: 1200 })
 
+// Ping monitoring (boot poll populates OK/CRIT from the seeded external URLs)
+await page.goto(`${BASE}/app/pings`)
+await shot('ping-monitoring', { settle: 1500 })
+
 // Backups — target detail with the job list
 await page.goto(`${BASE}/app/backups/${ids.targetId}`)
 await shot('backup-jobs')
