@@ -14,6 +14,8 @@ Lightweight DevOps companion for self-hosted servers — host monitoring, Docker
 
 ![Docker Monitoring](docs/screenshots/docker-monitoring.png)
 
+**Ping Monitoring** — Watch any HTTP endpoint from the outside. SrvKit sends a periodic `GET` to each URL you configure and alerts when the response status changes — a healthy `200` turning into a `503`, a timeout, or a refused connection — then again when it recovers. Redirects are followed, each check times out after 10 seconds, and alerts fire only on state changes so a persistently failing endpoint never spams. Perfect for APIs, third-party services, or anything reachable over HTTP — no second SrvKit instance required.
+
 **Backups** — Mount your data directories, point SrvKit at a Nextcloud share, and your backups run automatically. Watch files for changes, back up live SQLite databases safely, or schedule `pg_dump` / `mysqldump` from running containers — all without installing anything on the host.
 
 ![Backup Jobs](docs/screenshots/backup-jobs.png)
