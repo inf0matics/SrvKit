@@ -17,6 +17,34 @@ const expanded = reactive(new Set<string>())
 const loading = reactive(new Set<string>())
 const included = ref(new Set(props.modelValue))
 
+// Selected paths that no longer exist on disk (e.g. a file that was renamed).
+// They never appear in the tree, so we surface them separately with a deselect.
+const missing = ref<string[]>([])
+
+async function checkMissing() {
+  if (!included.value.size) {
+    missing.value = []
+    return
+  }
+  try {
+    const { missing: m } = await $fetch<{ missing: string[] }>('/api/fs/missing', {
+      method: 'POST',
+      body: { sourcePath: props.sourcePath, includes: [...included.value] },
+    })
+    missing.value = m
+  } catch {
+    missing.value = []
+  }
+}
+
+function removeMissing(rel: string) {
+  const next = new Set(included.value)
+  next.delete(rel)
+  included.value = next
+  missing.value = missing.value.filter((p) => p !== rel)
+  emit('update:modelValue', [...next])
+}
+
 const srcRel = (basePath: string) => basePath.slice(props.sourcePath.length + 1)
 
 function includedByAncestor(rel: string): boolean {
@@ -105,6 +133,7 @@ onMounted(async () => {
       expanded.add(acc)
     }
   }
+  await checkMissing()
 })
 
 watch(
@@ -113,6 +142,7 @@ watch(
     cache.clear()
     expanded.clear()
     included.value = new Set()
+    missing.value = []
     emit('update:modelValue', [])
     await load(props.sourcePath)
   },
@@ -120,14 +150,33 @@ watch(
 </script>
 
 <template>
-  <div class="tree">
-    <p v-if="loading.has(sourcePath) && !cache.has(sourcePath)" class="tsp-muted pad">
-      Loading…
-    </p>
-    <p v-else-if="!rootChildren.length" class="tsp-muted pad">
-      This directory is empty.
-    </p>
-    <FsTreeNode v-for="n in rootChildren" :key="n.path" :node="n" :depth="0" />
+  <div>
+    <div v-if="missing.length" class="missing" data-testid="missing-includes">
+      <p class="missing-head">
+        ⚠️ Selected but no longer on disk — deselect to stop the backup from failing:
+      </p>
+      <div v-for="m in missing" :key="m" class="missing-row" data-testid="missing-row">
+        <code class="missing-path">{{ m }}</code>
+        <button
+          type="button"
+          class="tsp-btn tsp-btn-sm tsp-btn-icon"
+          :aria-label="`Deselect ${m}`"
+          @click="removeMissing(m)"
+        >
+          <AppIcon name="trash" />
+        </button>
+      </div>
+    </div>
+
+    <div class="tree">
+      <p v-if="loading.has(sourcePath) && !cache.has(sourcePath)" class="tsp-muted pad">
+        Loading…
+      </p>
+      <p v-else-if="!rootChildren.length" class="tsp-muted pad">
+        This directory is empty.
+      </p>
+      <FsTreeNode v-for="n in rootChildren" :key="n.path" :node="n" :depth="0" />
+    </div>
   </div>
 </template>
 
@@ -143,5 +192,36 @@ watch(
 .tree .pad {
   padding: 8px;
   margin: 0;
+}
+
+.missing {
+  border: 1px solid var(--tsp-danger);
+  border-radius: var(--tsp-radius-sm);
+  background: rgba(255, 99, 71, 0.08);
+  padding: 8px 10px;
+  margin-bottom: 8px;
+}
+
+.missing-head {
+  margin: 0 0 6px;
+  font-size: 0.8rem;
+  color: var(--tsp-danger);
+}
+
+.missing-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0;
+}
+
+.missing-path {
+  flex: 1;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 0.8rem;
+  color: var(--tsp-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>

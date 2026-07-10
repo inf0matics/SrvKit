@@ -6,6 +6,7 @@ import {
   listDbFiles,
   listChildren,
   buildTree,
+  missingIncludes,
   type TreeNode,
   type ChildNode,
 } from '../../lib/sources.ts'
@@ -61,6 +62,11 @@ export function getChildren(rel: string): ChildNode[] | null {
   const full = resolveSourcePath(rel)
   if (!full) return null
   return listChildren(full, rel)
+}
+
+/** Of a Files job's `includes`, those that no longer exist under `sourcePath`. */
+export function getMissingIncludes(sourcePath: string, includes: string[]): string[] {
+  return missingIncludes(sourcesDir(), sourcePath, includes)
 }
 
 function baseJobFields(body: Record<string, unknown> | null) {

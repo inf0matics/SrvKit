@@ -1,5 +1,5 @@
-import { readdirSync } from 'node:fs'
-import { join } from 'node:path'
+import { readdirSync, existsSync } from 'node:fs'
+import { join, resolve, sep } from 'node:path'
 
 /**
  * Backup sources are the directories mounted under the configured base (default
@@ -37,6 +37,25 @@ export function listDbFiles(baseDir: string): string[] {
   } catch {
     return []
   }
+}
+
+/**
+ * Of `includes` (paths relative to `sourceDir`, itself relative to `absBase`),
+ * the ones that no longer exist on disk — e.g. a selected file that was renamed
+ * or deleted. Anything resolving outside the base is treated as missing too, so
+ * a stale or unsafe entry can always be surfaced for removal. Order is preserved.
+ */
+export function missingIncludes(
+  absBase: string,
+  sourceDir: string,
+  includes: string[],
+): string[] {
+  const root = resolve(absBase)
+  return includes.filter((inc) => {
+    const full = resolve(root, sourceDir, inc)
+    if (full !== root && !full.startsWith(root + sep)) return true
+    return !existsSync(full)
+  })
 }
 
 export interface ChildNode {
