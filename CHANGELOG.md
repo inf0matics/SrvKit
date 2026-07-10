@@ -1,6 +1,23 @@
 # Changelog
 
 
+## v1.2.1
+
+[compare changes](https://github.com/inf0matics/SrvKit/compare/v1.2.0...v1.2.1)
+
+### 🚀 Enhancements
+
+- Surface stale Files-job includes so they can be deselected ([16ef083](https://github.com/inf0matics/SrvKit/commit/16ef083))
+
+### 📖 Documentation
+
+- Add ping monitoring to README ([bc24e04](https://github.com/inf0matics/SrvKit/commit/bc24e04))
+- Add ping monitoring screenshot ([95ec1c6](https://github.com/inf0matics/SrvKit/commit/95ec1c6))
+
+### ❤️ Contributors
+
+- Inf0matics <fil@thespielplatz.com>
+
 ## v1.2.0
 
 [compare changes](https://github.com/inf0matics/SrvKit/compare/v1.1.0...v1.2.0)
