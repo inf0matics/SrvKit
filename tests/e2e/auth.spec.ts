@@ -144,12 +144,16 @@ test('sidebar bottom nav: theme toggle persists, tip jar hidden, github + versio
   // Tip Jar hidden when TIP_JAR_URL is unset (the e2e default).
   await expect(page.getByRole('link', { name: 'Tip Jar' })).toHaveCount(0)
 
-  // GitHub link + version badge present.
+  // GitHub link + version badge share one row; the badge links to the release.
   await expect(page.getByRole('link', { name: 'GitHub' })).toHaveAttribute(
     'href',
     /github\.com/,
   )
   await expect(page.getByTestId('sidebar-version')).toHaveText(/^v\d+\.\d+\.\d+$/)
+  await expect(page.locator('a.ver-badge')).toHaveAttribute(
+    'href',
+    /\/releases\/tag\/v\d+\.\d+\.\d+$/,
+  )
 })
 
 test('"Can\'t login?" modal shows the CLI reset command', async ({ page }) => {

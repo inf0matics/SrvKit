@@ -5,6 +5,7 @@ const config = useRuntimeConfig().public
 const version = config.version
 const tipJarUrl = config.tipJarUrl
 const githubUrl = 'https://github.com/inf0matics/SrvKit'
+const releaseUrl = `${githubUrl}/releases/tag/v${version}`
 
 // Targets shown as collapsible sub-items under the Backups nav entry.
 const { targets, refresh: refreshTargets } = useTargets()
@@ -234,16 +235,22 @@ onBeforeUnmount(() => {
           <span>Tip Jar</span>
         </a>
 
-        <a :href="githubUrl" target="_blank" rel="noopener" class="nav-item">
-          <AppIcon name="github" />
-          <span>GitHub</span>
-        </a>
+        <div class="foot-row">
+          <a :href="githubUrl" target="_blank" rel="noopener" class="nav-item">
+            <AppIcon name="github" />
+            <span>GitHub</span>
+          </a>
 
-        <div class="version-row">
-          <span class="ver-badge">
+          <a
+            :href="releaseUrl"
+            target="_blank"
+            rel="noopener"
+            class="ver-badge"
+            title="View this release on GitHub"
+          >
             <AppIcon name="tag" />
             <span data-testid="sidebar-version">v{{ version }}</span>
-          </span>
+          </a>
         </div>
       </div>
     </aside>
@@ -440,10 +447,15 @@ onBeforeUnmount(() => {
   margin: 12px 4px;
 }
 
-.version-row {
+.foot-row {
   display: flex;
-  justify-content: flex-end;
-  padding: 8px 12px 0;
+  align-items: center;
+  gap: 4px;
+}
+
+/* GitHub link fills the row so the version badge sits flush right. */
+.foot-row .nav-item {
+  flex: 1;
 }
 
 .ver-badge {
@@ -455,6 +467,13 @@ onBeforeUnmount(() => {
   padding: 2px 10px;
   font-size: 12px;
   color: var(--tsp-text-muted);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.ver-badge:hover {
+  color: var(--tsp-text);
+  border-color: var(--tsp-text-muted);
 }
 
 .ver-badge .app-icon {
