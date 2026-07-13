@@ -1,6 +1,19 @@
 # Changelog
 
 
+## v1.3.0
+
+[compare changes](https://github.com/inf0matics/SrvKit/compare/v1.2.1...v1.3.0)
+
+### 🚀 Enhancements
+
+- Send a recovery alert when a monitored container is back up ([92ce6ef](https://github.com/inf0matics/SrvKit/commit/92ce6ef))
+- Put GitHub + version on one sidebar row, link the tag to the release ([2181820](https://github.com/inf0matics/SrvKit/commit/2181820))
+
+### ❤️ Contributors
+
+- Inf0matics <fil@thespielplatz.com>
+
 ## v1.2.1
 
 [compare changes](https://github.com/inf0matics/SrvKit/compare/v1.2.0...v1.2.1)
