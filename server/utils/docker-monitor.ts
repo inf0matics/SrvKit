@@ -1,6 +1,6 @@
 import { store } from './srvkit.ts'
 import { dockerAvailable, listAllContainers, inspectContainer } from './docker.ts'
-import { dispatch, messagePrefix } from './alerts.ts'
+import { dispatch, messagePrefix, recoveryEnabled } from './alerts.ts'
 import {
   containerStatus,
   worstContainerStatus,
@@ -132,6 +132,10 @@ function buildCountAlert(prefix: string, c: CountSummary): string {
   return `⚠️ ${prefix} Docker container count changed — running: ${c.running}, exited: ${c.exited}, paused: ${c.paused}, dead: ${c.dead}`
 }
 
+function buildRecoveredMessage(prefix: string, name: string): string {
+  return `✅ ${prefix}: Container "${name}" is running again.`
+}
+
 interface Snap {
   id: string
   name: string
@@ -157,7 +161,12 @@ async function snapshot(): Promise<Snap[]> {
   return out
 }
 
-/** Fire one alert per down-episode (recovery clears silently). */
+/**
+ * One alert per down-episode, plus one recovery message when a monitored
+ * container comes back to `running` (gated by the recovery toggle, like backups
+ * and pings). Disabling a container, or a transient `pending` grace state, never
+ * notifies — the former resets silently, the latter leaves the state untouched.
+ */
 async function handleAlert(
   prefix: string,
   name: string,
@@ -167,13 +176,20 @@ async function handleAlert(
   elapsed: number,
 ): Promise<void> {
   const rt = runtime.get(name) ?? { alert: 'ok' as const }
-  const level = enabled && (status === 'warn' || status === 'crit') ? status : 'ok'
-  if (level === 'ok') {
-    rt.alert = 'ok'
-  } else if (rt.alert === 'ok') {
-    await dispatch(buildAlert(prefix, name, level, state, elapsed))
-    rt.alert = level
+  if (!enabled) {
+    rt.alert = 'ok' // not monitored → clear state silently (disabling must not notify)
+  } else if (status === 'ok') {
+    if (rt.alert !== 'ok') {
+      if (recoveryEnabled()) await dispatch(buildRecoveredMessage(prefix, name))
+      rt.alert = 'ok'
+    }
+  } else if (status === 'warn' || status === 'crit') {
+    if (rt.alert === 'ok') {
+      await dispatch(buildAlert(prefix, name, status, state, elapsed))
+      rt.alert = status
+    }
   }
+  // status === 'pending' → grace in progress; leave rt.alert unchanged.
   runtime.set(name, rt)
 }
 

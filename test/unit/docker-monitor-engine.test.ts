@@ -134,7 +134,28 @@ test('FinishedAt grace survives a restart (resetRuntime)', async () => {
   assert.equal(sent.length, 1) // re-alerts once after the restart
 })
 
-test('recovery clears silently; a new outage re-alerts', async () => {
+test('recovery sends one message; a new outage re-alerts', async () => {
+  set(fx('app', 'exited', isoAt(40)))
+  setContainerConfig('app', { enabled: true, grace: 30 })
+  await pollDocker(NOW)
+  assert.equal(sent.length, 1)
+  assert.match(sent[0]!, /is down/)
+
+  set(fx('app', 'running'))
+  await pollDocker(NOW)
+  assert.equal(sent.length, 2)
+  assert.match(sent[1]!, /Container "app" is running again\./)
+
+  await pollDocker(NOW) // still running → no repeat
+  assert.equal(sent.length, 2)
+
+  set(fx('app', 'exited', isoAt(40)))
+  await pollDocker(NOW)
+  assert.equal(sent.length, 3)
+})
+
+test('recovery is suppressed when the recovery toggle is off', async () => {
+  saveAlertSettings({ recovery: false })
   set(fx('app', 'exited', isoAt(40)))
   setContainerConfig('app', { enabled: true, grace: 30 })
   await pollDocker(NOW)
@@ -143,10 +164,33 @@ test('recovery clears silently; a new outage re-alerts', async () => {
   set(fx('app', 'running'))
   await pollDocker(NOW)
   assert.equal(sent.length, 1) // no recovery message
+})
 
+test('disabling a downed container does not send a recovery message', async () => {
   set(fx('app', 'exited', isoAt(40)))
+  setContainerConfig('app', { enabled: true, grace: 30 })
+  await pollDocker(NOW)
+  assert.equal(sent.length, 1)
+
+  setContainerConfig('app', { enabled: false })
+  await pollDocker(NOW)
+  assert.equal(sent.length, 1) // disabling is silent, not a "recovered"
+})
+
+test('a removed container that comes back sends a recovery message', async () => {
+  set(fx('svc', 'running'))
+  setContainerConfig('svc', { enabled: true })
+  await pollDocker(NOW) // baseline: known + running
+
+  set() // svc vanishes → removed CRIT + one alert
+  await pollDocker(NOW)
+  assert.equal(sent.length, 1)
+  assert.match(sent[0]!, /has been removed/)
+
+  set(fx('svc', 'running')) // comes back
   await pollDocker(NOW)
   assert.equal(sent.length, 2)
+  assert.match(sent[1]!, /Container "svc" is running again\./)
 })
 
 test('dead is CRIT immediately regardless of FinishedAt', async () => {

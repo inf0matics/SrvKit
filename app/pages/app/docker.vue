@@ -197,8 +197,9 @@ async function saveGrace(c: DockerContainer) {
           SrvKit polls every 10&nbsp;seconds and only sees containers that still exist. A
           monitored container that is <strong>stopped or crashes</strong> (state
           <code>exited</code> or <code>dead</code>) starts its grace period and then alerts
-          <code>CRIT</code>. Recovery to <code>running</code> clears the alert silently. The grace
-          clock is read from Docker's exit time, so it survives a SrvKit restart.
+          <code>CRIT</code>. Recovery to <code>running</code> sends a recovery alert (unless you've
+          turned recovery notifications off). The grace clock is read from Docker's exit time, so it
+          survives a SrvKit restart.
         </p>
         <p>
           A <strong>monitored</strong> container that is <strong>removed</strong> — e.g.
