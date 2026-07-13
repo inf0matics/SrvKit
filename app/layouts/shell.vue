@@ -277,6 +277,14 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   padding: 20px 0;
+  /* Pin to the viewport so the bottom nav (Settings/Logout/…) stays put while
+     the main content scrolls. height:100vh keeps margin-top:auto anchored to the
+     viewport bottom; overflow-y lets a tall nav scroll on short screens. */
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
+  height: 100vh;
+  overflow-y: auto;
 }
 
 .brand {

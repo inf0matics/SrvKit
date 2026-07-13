@@ -156,6 +156,28 @@ test('sidebar bottom nav: theme toggle persists, tip jar hidden, github + versio
   )
 })
 
+test('sidebar bottom nav stays pinned when the content scrolls', async ({ page }) => {
+  await page.goto('/')
+  await page.getByPlaceholder('Passphrase').fill(PASSWORD)
+  await page.getByRole('button', { name: 'Login', exact: true }).click()
+  await expect(page).toHaveURL(/\/app\/dashboard$/)
+
+  // A short viewport + the long Host page guarantees the content overflows.
+  await page.setViewportSize({ width: 1280, height: 500 })
+  await page.goto('/app/host')
+  await expect(page.getByTestId('host')).toBeVisible()
+
+  const settings = page.locator('.nav-bottom').getByRole('link', { name: 'Settings' })
+  await expect(settings).toBeInViewport()
+
+  // Scroll the content to the very bottom — the pinned sidebar keeps it in view.
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight))
+  await expect(async () => {
+    expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(50)
+  }).toPass()
+  await expect(settings).toBeInViewport()
+})
+
 test('"Can\'t login?" modal shows the CLI reset command', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('button', { name: "Can't login?" }).click()
