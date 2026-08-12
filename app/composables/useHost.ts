@@ -55,14 +55,24 @@ export function useHost() {
     pollIntervalSeconds.value = d.pollIntervalSeconds
   }
 
+  // Bumped whenever a save starts. The shell and the /app/host page each poll
+  // this state, so a GET can already be in flight when the user flips a switch —
+  // its response predates the save and would silently undo it. Responses from
+  // an older epoch are dropped instead of applied.
+  const epoch = useState<number>('host-epoch', () => 0)
+
   async function refresh() {
-    apply(await $fetch<HostData>('/api/host/metrics'))
+    const at = epoch.value
+    const d = await $fetch<HostData>('/api/host/metrics')
+    if (at !== epoch.value) return
+    apply(d)
   }
 
   async function saveMetric(
     id: string,
     patch: { enabled?: boolean; warn?: number; crit?: number; polls?: number },
   ) {
+    epoch.value++
     apply(await $fetch<HostData>(`/api/host/metrics/${id}`, { method: 'PUT', body: patch }))
   }
 

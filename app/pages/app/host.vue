@@ -38,6 +38,14 @@ const STATUS_LABEL: Record<string, string> = {
   off: 'disabled',
 }
 
+// A save that fails must say so — otherwise the optimistic switch keeps showing
+// a state the server never stored, until a poll silently flips it back.
+const saveError = ref<string | null>(null)
+function reason(e: unknown): string {
+  const d = e as { statusCode?: number; data?: { message?: string }; message?: string }
+  return d?.data?.message || (d?.statusCode ? `HTTP ${d.statusCode}` : d?.message) || 'unknown error'
+}
+
 // Inline threshold editor.
 const editingId = ref<string | null>(null)
 const draft = reactive({ warn: 0, crit: 0, polls: 3 })
@@ -48,16 +56,28 @@ function openEditor(m: HostMetric) {
   draft.polls = m.polls || 3
 }
 async function saveThresholds(m: HostMetric) {
-  await saveMetric(m.id, {
-    warn: Number(draft.warn),
-    crit: Number(draft.crit),
-    polls: Number(draft.polls),
-  })
-  editingId.value = null
+  try {
+    await saveMetric(m.id, {
+      warn: Number(draft.warn),
+      crit: Number(draft.crit),
+      polls: Number(draft.polls),
+    })
+    saveError.value = null
+    editingId.value = null
+  } catch (e) {
+    saveError.value = `Could not save the thresholds for “${m.name}”: ${reason(e)}`
+  }
 }
 async function toggle(m: HostMetric) {
+  const before = m.enabled
   m.enabled = !m.enabled // optimistic so the switch reflects the click immediately
-  await saveMetric(m.id, { enabled: m.enabled })
+  try {
+    await saveMetric(m.id, { enabled: m.enabled })
+    saveError.value = null
+  } catch (e) {
+    m.enabled = before // roll back — the server still has the old state
+    saveError.value = `Could not ${before ? 'disable' : 'enable'} “${m.name}”: ${reason(e)}`
+  }
 }
 
 // Comparator shown for thresholds: '>' for higher-is-worse, '<' for lower (inodes).
@@ -75,6 +95,10 @@ function durationLabel(polls: number): string {
     <header class="page-head">
       <h1>Host monitoring</h1>
     </header>
+
+    <p v-if="saveError" class="save-error" data-testid="save-error" role="alert">
+      ⚠️ {{ saveError }}
+    </p>
 
     <template v-for="s in sections" :key="s.cat">
       <section
@@ -177,6 +201,16 @@ function durationLabel(polls: number): string {
 .page-head h1 {
   margin: 0 0 8px;
   font-size: 1.6rem;
+}
+
+.save-error {
+  border: 1px solid var(--tsp-danger);
+  border-radius: var(--tsp-radius);
+  background: var(--tsp-surface);
+  color: var(--tsp-danger);
+  padding: 10px 14px;
+  margin: 12px 0 0;
+  font-size: 0.9rem;
 }
 
 .warn-box {
