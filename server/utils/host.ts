@@ -342,6 +342,9 @@ export function readMetrics(tick = false): { metrics: Metric[]; status: MetricSt
     // statically-mounted /host/etc/mtab if PID 1 isn't readable. parseMtab strips
     // the overlay/runtime noise either way.
     const table = readFile(join(hostProc(), '1/mounts')) ?? readFile(hostMtab()) ?? ''
+    // Two different mountpoints can slugify to the same id (/mnt/a-1, /mnt/a_1).
+    // Ids key both the saved config and the UI list, so they must stay unique.
+    const usedSlugs = new Set<string>()
     for (const m of H.parseMtab(table)) {
       const target = join(hostRoot(), m.mountpoint)
       try {
@@ -350,6 +353,10 @@ export function readMetrics(tick = false): { metrics: Metric[]; status: MetricSt
       } catch {
         continue // not reachable under the host root
       }
+      let key = slug(m.mountpoint)
+      for (let n = 2; usedSlugs.has(key); n++) key = `${slug(m.mountpoint)}_${n}`
+      usedSlugs.add(key)
+
       let usage: number | null = null
       let inodes: number | null = null
       try {
@@ -363,7 +370,7 @@ export function readMetrics(tick = false): { metrics: Metric[]; status: MetricSt
       }
       out.push(
         threshold({
-          id: `disk_${slug(m.mountpoint)}`,
+          id: `disk_${key}`,
           name: `Disk usage (${m.mountpoint})`,
           category: 'Disk',
           value: usage,
@@ -375,7 +382,7 @@ export function readMetrics(tick = false): { metrics: Metric[]; status: MetricSt
       )
       out.push(
         threshold({
-          id: `inode_${slug(m.mountpoint)}`,
+          id: `inode_${key}`,
           name: `Inodes free (${m.mountpoint})`,
           category: 'Disk',
           value: inodes,

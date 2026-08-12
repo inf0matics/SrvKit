@@ -140,18 +140,24 @@ function unescapeMount(s: string): string {
  * Parse the host mount table (/host/etc/mtab) into real partitions: drop
  * virtual filesystem types and mountpoints under Docker/runtime paths. The
  * caller still skips single-file mounts (statfs / not-a-directory).
+ *
+ * One entry per mountpoint: the kernel keeps every mount stacked on a path
+ * (a stray bind/symlink mount over an existing one shows up as a second line),
+ * but only the topmost is what statfs and `df` report — and a repeated
+ * mountpoint would otherwise yield two metrics sharing one id.
  */
 export function parseMtab(content: string): MountEntry[] {
-  const out: MountEntry[] = []
+  const byMount = new Map<string, MountEntry>()
   for (const line of content.split('\n')) {
     const [device, mountpoint, fstype] = line.trim().split(/\s+/)
     if (!device || !mountpoint || !fstype) continue
     if (EXCLUDED_FS.has(fstype)) continue
     const mp = unescapeMount(mountpoint)
     if (EXCLUDED_PATHS.some((p) => mp.includes(p))) continue
-    out.push({ device, mountpoint: mp, fstype })
+    byMount.delete(mp) // re-insert so the effective mount keeps the later slot
+    byMount.set(mp, { device, mountpoint: mp, fstype })
   }
-  return out
+  return [...byMount.values()]
 }
 
 // --- Network: /proc/net/dev ---

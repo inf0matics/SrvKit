@@ -80,6 +80,23 @@ test('parseMtab drops overlay/virtual fs and Docker/runtime paths (spec 12.03)',
   )
 })
 
+test('parseMtab keeps one entry per mountpoint — the effective (last) mount', () => {
+  // A stray bind/symlink mount lands on an already-mounted path: the kernel
+  // lists both, but only the topmost one is what `df` (and statfs) actually
+  // sees. Emitting both would produce two metrics with the same id.
+  const m = H.parseMtab(
+    [
+      '/dev/vda4 / ext4 rw 0 0',
+      '/dev/sdc1 /mnt/data ext4 rw 0 0',
+      '/dev/sdb1 / ext4 rw 0 0', // over-mount on /
+    ].join('\n'),
+  )
+  assert.deepEqual(
+    m.map((e) => `${e.device}:${e.mountpoint}`),
+    ['/dev/sdc1:/mnt/data', '/dev/sdb1:/'],
+  )
+})
+
 test('parseNetDev + errorRatePct', () => {
   const dev = H.parseNetDev(
     'Inter-|   Receive\n face |bytes\n    lo:  100 10 0 0 0 0 0 0  100 10 0 0\n  eth0: 5000 1000 5 0 0 0 0 0 6000 1000 5 0\n',
