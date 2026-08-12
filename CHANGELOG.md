@@ -1,6 +1,20 @@
 # Changelog
 
 
+## v1.3.1
+
+[compare changes](https://github.com/inf0matics/SrvKit/compare/v1.3.0...v1.3.1)
+
+### 🩹 Fixes
+
+- Keep the sidebar bottom nav pinned when content scrolls ([eb830c1](https://github.com/inf0matics/SrvKit/commit/eb830c1))
+- Keep host metric ids unique when a path is mounted twice ([7930c76](https://github.com/inf0matics/SrvKit/commit/7930c76))
+- Stop a stale poll from flipping a host metric toggle back on ([6961c27](https://github.com/inf0matics/SrvKit/commit/6961c27))
+
+### ❤️ Contributors
+
+- Inf0matics <fil@thespielplatz.com>
+
 ## v1.3.0
 
 [compare changes](https://github.com/inf0matics/SrvKit/compare/v1.2.1...v1.3.0)
