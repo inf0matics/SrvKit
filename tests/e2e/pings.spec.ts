@@ -2,11 +2,14 @@ import { test, expect, type Page } from '@playwright/test'
 
 // Runs after backups.spec.ts (alphabetical). One shared page + a single login.
 // Pings target the e2e server itself so OK/CRIT are deterministic:
-//   http://localhost:3100/           → 200 (public landing)  → OK   vs expected 200
-//   http://localhost:3100/nope-404   → 404 (unknown route)   → CRIT vs expected 200
+//   <baseURL>/           → 200 (public landing)  → OK   vs expected 200
+//   <baseURL>/nope-404   → 404 (unknown route)   → CRIT vs expected 200
 const PASSWORD = 'correct horse battery staple e2e'
-const OK_URL = 'http://localhost:3100/'
-const BAD_URL = 'http://localhost:3100/nope-404-xyz'
+// Not hardcoded: the e2e port falls back off 3100 when something already holds
+// it, and the resolved value reaches the workers (see playwright.config.ts).
+const BASE = `http://localhost:${process.env.E2E_RESOLVED_PORT || 3100}`
+const OK_URL = `${BASE}/`
+const BAD_URL = `${BASE}/nope-404-xyz`
 
 test.describe.serial('pings', () => {
   let page: Page
