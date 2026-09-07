@@ -26,6 +26,9 @@ const {
   getTalkSettings,
   saveTalkSettings,
   sendNextcloudTalk,
+  buildReminderMessage,
+  getRepeatHours,
+  setRepeatHours,
 } = await import('../../server/utils/alerts.ts')
 
 let jobId = ''
@@ -97,6 +100,8 @@ beforeEach(() => {
   saveTalkSettings({ enabled: false })
   store().setJobAlertState(jobId, 'ok')
   store().setIncidentSince(jobId, null)
+  store().setJobAlertSent(jobId, null)
+  setRepeatHours(24) // spec default
 })
 
 after(() => {
@@ -256,4 +261,139 @@ test('a disabled Talk channel is skipped — Telegram only', async () => {
   await handleRunResult(jobId, run('failed', 'boom'))
   assert.equal(calls.length, 1)
   assert.match(calls[0]!.url, /api\.telegram\.org/)
+})
+
+// --- Repeat alerts while a job stays failed (patch spec 09.01, delta 2) ---
+
+/** Record a failed run `hoursAgo`-relative to a fixed clock, then alert on it. */
+const T0 = Date.parse('2026-06-25T00:00:00Z')
+const iso = (hours: number) => new Date(T0 + hours * 3600_000).toISOString()
+
+async function failAt(hours: number, error = 'Dump produced 0 bytes', id = jobId) {
+  const result = { at: iso(hours), status: 'failed' as const, error, bytes: 0 }
+  store().recordRun(id, result)
+  await handleRunResult(id, result)
+}
+
+async function succeedAt(hours: number, id = jobId) {
+  const result = { at: iso(hours), status: 'success' as const, error: null, bytes: 42 }
+  store().recordRun(id, result)
+  await handleRunResult(id, result)
+}
+
+/** A job with no run history — `lastSuccessAt` is only ever null on a fresh one. */
+function freshJob(name: string): string {
+  return store().createJob({
+    targetId: store().listJobs()[0]!.targetId,
+    name,
+    type: 'sqlite',
+    sourcePath: 'app.db',
+    includes: [],
+    output: 'single',
+    subdirectory: '',
+    dateSuffix: false,
+    timeSuffix: false,
+    trigger: 'filewatcher',
+    container: '',
+    database: '',
+    dbUser: '',
+    dbPassword: '',
+    schedule: '',
+  }).id
+}
+
+test('the repeat interval defaults to 24 h and round-trips through config', () => {
+  assert.equal(getRepeatHours(), 24)
+  setRepeatHours(6)
+  assert.equal(getRepeatHours(), 6)
+  setRepeatHours(0) // off
+  assert.equal(getRepeatHours(), 0)
+})
+
+test('a job that stays failed reminds once per interval, not once per run', async () => {
+  await failAt(0) // opens the incident → initial alert
+  assert.equal(calls.length, 1)
+  assert.match(calls[0]!.text, /failed/)
+
+  // Four more runs inside the first 24 h window: silent.
+  await failAt(1)
+  await failAt(6)
+  await failAt(12)
+  await failAt(23)
+  assert.equal(calls.length, 1)
+
+  // Past the window: exactly one reminder.
+  await failAt(25)
+  assert.equal(calls.length, 2)
+  assert.match(calls[1]!.text, /still failing/)
+
+  // The clock restarts from the reminder, not from the first failure.
+  await failAt(48)
+  assert.equal(calls.length, 2)
+  await failAt(50)
+  assert.equal(calls.length, 3)
+})
+
+test('the reminder reports how long, how many runs, and the last success', async () => {
+  await succeedAt(-24) // a good run a day before the streak
+  calls = []
+  await failAt(0)
+  await failAt(24)
+
+  const reminder = calls[calls.length - 1]!.text
+  assert.match(reminder, /Backup "App DB" still failing — 1 day, 2 runs\./)
+  assert.match(reminder, /Dump produced 0 bytes/)
+  assert.match(reminder, /Last successful run: 2026-06-24T00:00:00\.000Z/)
+})
+
+test('a job that has never succeeded says so instead of naming a timestamp', async () => {
+  const virgin = freshJob('Never Worked')
+  await failAt(0, 'boom', virgin)
+  await failAt(25, 'boom', virgin)
+  assert.match(calls[calls.length - 1]!.text, /Last successful run: never/)
+})
+
+test('repeat interval off restores v1 behaviour: one alert, then silence', async () => {
+  setRepeatHours(0)
+  await failAt(0)
+  assert.equal(calls.length, 1)
+  await failAt(48)
+  await failAt(96)
+  assert.equal(calls.length, 1)
+})
+
+test('recovery after reminders sends one recovery and resets the timer', async () => {
+  await failAt(0)
+  await failAt(25) // reminder
+  assert.equal(calls.length, 2)
+
+  await succeedAt(26)
+  assert.equal(calls.length, 3)
+  assert.match(calls[2]!.text, /back to OK/)
+  assert.equal(store().getJob(jobId)?.lastAlertAt, null)
+
+  // A fresh streak alerts immediately rather than waiting out the old window.
+  await failAt(27)
+  assert.equal(calls.length, 4)
+  assert.match(calls[3]!.text, /failed/)
+})
+
+test('a disabled channel suppresses reminders too', async () => {
+  await failAt(0)
+  saveAlertSettings({ enabled: false })
+  await failAt(25)
+  assert.equal(calls.length, 1) // only the initial alert, sent while enabled
+})
+
+test('buildReminderMessage pluralises days and runs', () => {
+  const text = buildReminderMessage('[SrvKit]', {
+    name: 'Shlink DB',
+    since: '2026-08-12T03:12:44Z',
+    now: '2026-09-07T03:12:44Z',
+    runs: 26,
+    error: 'Dump produced 0 bytes — nothing was backed up',
+    lastSuccessAt: '2026-08-12T03:12:44Z',
+  })
+  assert.match(text, /Backup "Shlink DB" still failing — 26 days, 26 runs\./)
+  assert.match(text, /Last successful run: 2026-08-12T03:12:44Z/)
 })

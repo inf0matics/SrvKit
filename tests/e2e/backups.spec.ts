@@ -321,6 +321,26 @@ test.describe.serial('backups', () => {
     await expect(page.getByTestId('target-page')).toBeVisible()
   })
 
+  test('settings: the failure-repeat interval defaults to 24 h and persists', async () => {
+    await page.locator('.nav-bottom').getByRole('link', { name: 'Settings' }).click()
+    await expect(page.getByTestId('repeat-hours')).toHaveValue('24')
+
+    await page.getByTestId('repeat-hours').selectOption('0') // off
+    await page.getByRole('button', { name: 'Save' }).click()
+    await expect(page.getByText('✓ Saved.')).toBeVisible()
+
+    await page.reload()
+    await expect(page.getByTestId('repeat-hours')).toHaveValue('0')
+
+    // Restore the default so later tests see a normal configuration.
+    await page.getByTestId('repeat-hours').selectOption('24')
+    await page.getByRole('button', { name: 'Save' }).click()
+    await expect(page.getByText('✓ Saved.')).toBeVisible()
+
+    await page.locator('.subnav').getByRole('link', { name: 'My Nextcloud' }).click()
+    await expect(page.getByTestId('target-page')).toBeVisible()
+  })
+
   test('detail: saving a SQLite job rejects a non-database file', async () => {
     await page.getByRole('button', { name: 'Add Job' }).click()
     await page.getByLabel('Name', { exact: true }).fill('Bad DB')

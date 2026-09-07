@@ -5,14 +5,31 @@ usePageTitle('Settings')
 // Shared with the tab-title prefix so it updates live when saved here.
 const { serverName: sharedServerName } = useServerName()
 
-const form = reactive({ serverName: '' })
+const form = reactive({ serverName: '', repeatHours: 24 })
+
+// Reminder cadence while a job stays failed. 0 = off (one alert, then silence).
+const REPEAT_OPTIONS = [
+  { value: 0, label: 'Off' },
+  { value: 1, label: 'Every hour' },
+  { value: 6, label: 'Every 6 hours' },
+  { value: 12, label: 'Every 12 hours' },
+  { value: 24, label: 'Every 24 hours' },
+  { value: 48, label: 'Every 2 days' },
+  { value: 168, label: 'Every 7 days' },
+]
+
+interface General {
+  serverName: string
+  repeatHours: number
+}
 const saving = ref(false)
 const saved = ref(false)
 const saveError = ref('')
 
 async function load() {
-  const { serverName } = await $fetch<{ serverName: string }>('/api/settings/general')
+  const { serverName, repeatHours } = await $fetch<General>('/api/settings/general')
   form.serverName = serverName
+  form.repeatHours = repeatHours
   sharedServerName.value = serverName
 }
 onMounted(load)
@@ -22,11 +39,12 @@ async function save() {
   saved.value = false
   saveError.value = ''
   try {
-    const { serverName } = await $fetch<{ serverName: string }>('/api/settings/general', {
+    const { serverName, repeatHours } = await $fetch<General>('/api/settings/general', {
       method: 'PUT',
-      body: { serverName: form.serverName },
+      body: { serverName: form.serverName, repeatHours: form.repeatHours },
     })
     form.serverName = serverName
+    form.repeatHours = repeatHours
     sharedServerName.value = serverName
     saved.value = true
   } catch (e: unknown) {
@@ -58,6 +76,24 @@ async function save() {
       <p class="tsp-muted hint">
         Used to prefix alert messages — <code>[{{ form.serverName || 'name' }}|SrvKit]</code>
         when set, otherwise <code>[SrvKit]</code>.
+      </p>
+
+      <label class="field">
+        <span>Repeat failure alerts</span>
+        <select
+          v-model.number="form.repeatHours"
+          class="tsp-input"
+          data-testid="repeat-hours"
+        >
+          <option v-for="o in REPEAT_OPTIONS" :key="o.value" :value="o.value">
+            {{ o.label }}
+          </option>
+        </select>
+      </label>
+      <p class="tsp-muted hint">
+        While a backup job stays failed, send a reminder this often — with how long
+        it has been failing and when a good backup last landed. <strong>Off</strong>
+        sends one alert when it first breaks, then stays silent.
       </p>
 
       <div class="actions">

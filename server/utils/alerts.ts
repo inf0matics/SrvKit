@@ -8,6 +8,7 @@ const K_TOKEN = 'alerts_tg_token'
 const K_CHAT = 'alerts_tg_chat'
 const K_ENABLED = 'alerts_tg_enabled'
 const K_RECOVERY = 'alerts_recovery'
+const K_REPEAT = 'alerts_repeat_hours'
 // Nextcloud Talk channel
 const K_NC_URL = 'alerts_nctalk_url'
 const K_NC_SECRET = 'alerts_nctalk_secret'
@@ -38,6 +39,22 @@ function telegramEnabled(): boolean {
 
 export function recoveryEnabled(): boolean {
   return store().getConfig(K_RECOVERY) !== '0' // default on
+}
+
+/**
+ * Hours between reminders while a job stays failed; 0 = off (v1 behaviour: one
+ * alert on the transition, then silence). Defaults to 24.
+ */
+export function getRepeatHours(): number {
+  const raw = store().getConfig(K_REPEAT)
+  if (raw === null) return 24
+  const n = Number(raw)
+  return Number.isFinite(n) && n > 0 ? n : 0
+}
+
+export function setRepeatHours(hours: number): void {
+  const n = Number.isFinite(hours) && hours > 0 ? Math.floor(hours) : 0
+  store().setConfig(K_REPEAT, String(n))
 }
 
 /** Optional server name, used to prefix alert messages. */
@@ -227,6 +244,43 @@ export function buildRecoveredMessage(prefix: string, name: string): string {
   return `✅ ${prefix}: Backup "${name}" is back to OK.`
 }
 
+const plural = (n: number, unit: string) => `${n} ${unit}${n === 1 ? '' : 's'}`
+
+/** Coarse elapsed time — the reminder needs "how long", not a precise duration. */
+function elapsed(fromIso: string, toIso: string): string {
+  const ms = Math.max(0, Date.parse(toIso) - Date.parse(fromIso))
+  const minutes = Math.floor(ms / 60_000)
+  if (minutes < 60) return plural(Math.max(1, minutes), 'minute')
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return plural(hours, 'hour')
+  return plural(Math.floor(hours / 24), 'day')
+}
+
+export interface ReminderContext {
+  name: string
+  /** First failure of the streak. */
+  since: string
+  /** Timestamp of the run that triggered this reminder. */
+  now: string
+  runs: number
+  error: string | null
+  lastSuccessAt: string | null
+}
+
+/**
+ * The point of a reminder is the size of the gap: how long it has been failing,
+ * how many runs that covers, and when a good backup last landed — none of which
+ * the initial failure message can say.
+ */
+export function buildReminderMessage(prefix: string, ctx: ReminderContext): string {
+  const scale = `${elapsed(ctx.since, ctx.now)}, ${plural(ctx.runs, 'run')}`
+  return (
+    `❌ ${prefix}: Backup "${ctx.name}" still failing — ${scale}.\n` +
+    `${ctx.error ?? 'Unknown error'}\n` +
+    `Last successful run: ${ctx.lastSuccessAt ?? 'never'}`
+  )
+}
+
 async function dispatchTelegram(text: string): Promise<void> {
   const token = getToken()
   const chatId = getChatId()
@@ -260,8 +314,9 @@ export async function dispatch(text: string): Promise<void> {
 
 /**
  * Alert state machine, called after a job run is recorded. Emits on transitions
- * only (OK→FAILED and FAILED→OK) so a job that stays failed doesn't spam.
- * Muted jobs still advance their state but emit nothing. Never throws.
+ * (OK→FAILED, FAILED→OK) and, while a job stays failed, one reminder per repeat
+ * interval — a failure that goes quiet after day one is how a broken backup
+ * survives for weeks. Never throws.
  */
 export async function handleRunResult(jobId: string, run: RunResult): Promise<void> {
   try {
@@ -273,11 +328,32 @@ export async function handleRunResult(jobId: string, run: RunResult): Promise<vo
       // Open an incident: record the first failure of this streak.
       store().setJobAlertState(jobId, 'failed')
       store().setIncidentSince(jobId, run.at)
+      store().setJobAlertSent(jobId, run.at)
       await dispatch(buildFailedMessage(prefix, job.name, run))
+    } else if (run.status === 'failed' && job.alertState === 'failed') {
+      // Still failing. Remind only once per interval, measured from the last
+      // alert — a job failing every 15 minutes still sends at most one message.
+      const hours = getRepeatHours()
+      const since = job.incidentSince
+      const last = job.lastAlertAt ?? since
+      if (!hours || !since || !last) return
+      if (Date.parse(run.at) - Date.parse(last) < hours * 3600_000) return
+      store().setJobAlertSent(jobId, run.at)
+      await dispatch(
+        buildReminderMessage(prefix, {
+          name: job.name,
+          since,
+          now: run.at,
+          runs: job.failedRuns,
+          error: run.error,
+          lastSuccessAt: job.lastSuccessAt,
+        }),
+      )
     } else if (run.status === 'success' && job.alertState === 'failed') {
-      // Close the incident.
+      // Close the incident and reset the reminder clock for the next streak.
       store().setJobAlertState(jobId, 'ok')
       store().setIncidentSince(jobId, null)
+      store().setJobAlertSent(jobId, null)
       if (recoveryEnabled()) await dispatch(buildRecoveredMessage(prefix, job.name))
     }
   } catch (e) {

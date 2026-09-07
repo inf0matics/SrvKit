@@ -88,6 +88,12 @@ export interface JobRecord extends JobInput {
   alertState: 'ok' | 'failed'
   /** First failure of the current failed streak (null when not failing). */
   incidentSince: string | null
+  /** Runs in the current failed streak; reset to 0 by any success. */
+  failedRuns: number
+  /** Timestamp of the most recent successful run, ever (null if none). */
+  lastSuccessAt: string | null
+  /** When this job last had an alert sent for it — the repeat-reminder clock. */
+  lastAlertAt: string | null
   /** Disabled jobs don't run (no filewatcher, no cron, no alerts). */
   enabled: boolean
 }
@@ -143,6 +149,8 @@ export interface Store {
   setJobEnabled(id: string, enabled: boolean): boolean
   setJobAlertState(id: string, state: 'ok' | 'failed'): void
   setIncidentSince(id: string, since: string | null): void
+  /** Record (or clear, with null) when an alert was last sent for this job. */
+  setJobAlertSent(id: string, at: string | null): void
   listIncidents(): Incident[]
   deleteJob(id: string): boolean
   recordRun(id: string, run: RunResult): void
@@ -183,6 +191,9 @@ interface JobRow {
   lastStatus: 'success' | 'failed' | null
   lastError: string | null
   lastBytes: number | null
+  failedRuns: number
+  lastSuccessAt: string | null
+  lastAlertAt: string | null
 }
 
 function rowToJob(row: JobRow): JobRecord {
@@ -255,7 +266,10 @@ export function openStore(path: string): Store {
        last_run_at TEXT,
        last_status TEXT,
        last_error TEXT,
-       last_bytes INTEGER
+       last_bytes INTEGER,
+       failed_runs INTEGER NOT NULL DEFAULT 0,
+       last_success_at TEXT,
+       last_alert_at TEXT
      )`,
   )
   // Migrate job tables created before later columns existed.
@@ -290,6 +304,14 @@ export function openStore(path: string): Store {
   }
   if (!jobColNames.includes('last_bytes')) {
     db.exec('ALTER TABLE jobs ADD COLUMN last_bytes INTEGER')
+  }
+  if (!jobColNames.includes('failed_runs')) {
+    db.exec('ALTER TABLE jobs ADD COLUMN failed_runs INTEGER NOT NULL DEFAULT 0')
+  }
+  for (const col of ['last_success_at', 'last_alert_at']) {
+    if (!jobColNames.includes(col)) {
+      db.exec(`ALTER TABLE jobs ADD COLUMN ${col} TEXT`)
+    }
   }
   for (const col of ['container', 'database', 'db_user', 'db_password', 'schedule']) {
     if (!jobColNames.includes(col)) {
@@ -363,7 +385,8 @@ export function openStore(path: string): Store {
                    incident_since AS incidentSince, enabled, created_at AS createdAt,
                    last_run_at AS lastRunAt,
                    last_status AS lastStatus, last_error AS lastError,
-                   last_bytes AS lastBytes`
+                   last_bytes AS lastBytes, failed_runs AS failedRuns,
+                   last_success_at AS lastSuccessAt, last_alert_at AS lastAlertAt`
   const listJobsStmt = db.prepare(`SELECT ${jobCols} FROM jobs ORDER BY created_at`)
   const getJobStmt = db.prepare(`SELECT ${jobCols} FROM jobs WHERE id = ?`)
   const insertJobStmt = db.prepare(
@@ -396,8 +419,12 @@ export function openStore(path: string): Store {
   const deleteJobStmt = db.prepare('DELETE FROM jobs WHERE id = ?')
   const recordRunStmt = db.prepare(
     `UPDATE jobs SET last_run_at = ?, last_status = ?, last_error = ?,
-       last_bytes = ? WHERE id = ?`,
+       last_bytes = ?,
+       failed_runs = CASE WHEN ? = 'failed' THEN failed_runs + 1 ELSE 0 END,
+       last_success_at = CASE WHEN ? = 'success' THEN ? ELSE last_success_at END
+     WHERE id = ?`,
   )
+  const setAlertSentStmt = db.prepare('UPDATE jobs SET last_alert_at = ? WHERE id = ?')
 
   // --- Peers ---
   const peerCols = `id, name, token, ip, last_seen AS lastSeen,
@@ -516,6 +543,9 @@ export function openStore(path: string): Store {
         lastStatus: null,
         lastError: null,
         lastBytes: null,
+        failedRuns: 0,
+        lastSuccessAt: null,
+        lastAlertAt: null,
       }
     },
 
@@ -557,13 +587,26 @@ export function openStore(path: string): Store {
       setIncidentSinceStmt.run(since, id)
     },
 
+    setJobAlertSent(id: string, at: string | null) {
+      setAlertSentStmt.run(at, id)
+    },
+
 
     listIncidents: () => listIncidentsStmt.all() as unknown as Incident[],
 
     deleteJob: (id: string) => deleteJobStmt.run(id).changes > 0,
 
     recordRun(id: string, run: RunResult) {
-      recordRunStmt.run(run.at, run.status, run.error, run.bytes ?? null, id)
+      recordRunStmt.run(
+        run.at,
+        run.status,
+        run.error,
+        run.bytes ?? null,
+        run.status,
+        run.status,
+        run.at,
+        id,
+      )
     },
 
     listPeers: () => listPeersStmt.all() as unknown as PeerRecord[],
