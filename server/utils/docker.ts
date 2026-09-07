@@ -2,7 +2,7 @@ import { request as httpRequest } from 'node:http'
 import { existsSync } from 'node:fs'
 
 // Minimal Docker Engine API client over the mounted unix socket. Used to list
-// running containers and run pg_dump inside one of them — no docker CLI needed.
+// running containers and run a database dump inside one of them — no docker CLI needed.
 
 export function dockerSocketPath(): string {
   return process.env.DOCKER_SOCKET || '/var/run/docker.sock'
@@ -149,16 +149,17 @@ export interface DumpOptions {
 }
 
 /**
- * Run `cmd` inside `container` with `env`, returning stdout as a Buffer. Throws
- * on a missing container, a non-zero exit (with stderr), or a socket error.
- * `label` names the tool in error messages.
+ * Run `cmd` inside `container` with `env` and capture stdout, stderr and the
+ * exit code. Throws only on a missing container or a socket error — a non-zero
+ * exit is reported, not thrown, so callers can treat it as a signal (the binary
+ * probe below does). `label` names the tool in error messages.
  */
-async function execDump(
+async function execCapture(
   container: string,
   cmd: string[],
   env: string[],
   label: string,
-): Promise<Buffer> {
+): Promise<{ stdout: Buffer; stderr: Buffer; exitCode: number }> {
   const created = await dockerJson<{ Id: string }>(
     'POST',
     `/containers/${encodeURIComponent(container)}/exec`,
@@ -176,11 +177,25 @@ async function execDump(
   }
   const { stdout, stderr } = parseDockerFrames(body)
 
-  // Check the exit code.
   const info = await dockerJson<{ ExitCode: number | null }>('GET', `/exec/${execId}/json`)
-  if (info.ExitCode && info.ExitCode !== 0) {
+  return { stdout, stderr, exitCode: info.ExitCode ?? 0 }
+}
+
+/**
+ * Run `cmd` inside `container` with `env`, returning stdout as a Buffer. Throws
+ * on a missing container, a non-zero exit (with stderr), or a socket error.
+ * `label` names the tool in error messages.
+ */
+async function execDump(
+  container: string,
+  cmd: string[],
+  env: string[],
+  label: string,
+): Promise<Buffer> {
+  const { stdout, stderr, exitCode } = await execCapture(container, cmd, env, label)
+  if (exitCode !== 0) {
     const detail = stderr.toString('utf8').trim()
-    throw new Error(`${label} exited ${info.ExitCode}${detail ? `: ${detail}` : ''}`)
+    throw new Error(`${label} exited ${exitCode}${detail ? `: ${detail}` : ''}`)
   }
   return stdout
 }
@@ -196,14 +211,50 @@ export function pgDump(opts: DumpOptions): Promise<Buffer> {
 }
 
 /**
- * Run `mysqldump` inside `container`. The password goes via MYSQL_PWD (not
- * `-p…`) so mysqldump's command-line-password warning doesn't pollute stdout.
+ * Dump binaries to look for inside a MySQL/MariaDB container, in order.
+ * MariaDB >= 11 dropped the `mysqldump` compatibility symlink and ships only
+ * `mariadb-dump`; MySQL and MariaDB <= 10.x have `mysqldump`. The invocation is
+ * identical either way — only the binary name differs.
  */
-export function mysqlDump(opts: DumpOptions): Promise<Buffer> {
+const MYSQL_DUMP_BINARIES = ['mariadb-dump', 'mysqldump']
+
+/**
+ * Resolve the dump binary inside `container`, or null when none is present.
+ * Called on every run rather than pinned at job creation, so a container image
+ * upgrade or DB migration never needs the job to be reconfigured by hand.
+ */
+export async function resolveDumpBinary(
+  container: string,
+  candidates: string[] = MYSQL_DUMP_BINARIES,
+): Promise<string | null> {
+  const probe = candidates.map((b) => `command -v ${b}`).join(' || ')
+  const { stdout, exitCode } = await execCapture(
+    container,
+    ['sh', '-c', probe],
+    [],
+    'dump binary lookup',
+  )
+  const path = stdout.toString('utf8').trim().split('\n')[0]?.trim() ?? ''
+  return exitCode === 0 && path ? path : null
+}
+
+/**
+ * Run the container's MySQL/MariaDB dump binary inside `container`. The password
+ * goes via MYSQL_PWD (not `-p…`) so the command-line-password warning doesn't
+ * pollute stdout — MariaDB's client tools read the same variable.
+ */
+export async function mysqlDump(opts: DumpOptions): Promise<Buffer> {
+  const binary = await resolveDumpBinary(opts.container)
+  if (!binary) {
+    throw new Error(
+      `No dump binary found in container ${opts.container} ` +
+        `(looked for ${MYSQL_DUMP_BINARIES.join(', ')})`,
+    )
+  }
   return execDump(
     opts.container,
-    ['mysqldump', '-u', opts.user, opts.database],
+    [binary, '-u', opts.user, opts.database],
     [`MYSQL_PWD=${opts.password}`],
-    'mysqldump',
+    binary.split('/').pop() || binary,
   )
 }

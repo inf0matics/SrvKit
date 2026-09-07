@@ -77,7 +77,8 @@ export async function runBackup(jobId: string): Promise<void> {
       try {
         dump = isMysql ? await mysqlDump(opts) : await pgDump(opts)
       } catch (e) {
-        return fail(`${isMysql ? 'mysqldump' : 'pg_dump'} failed: ${(e as Error).message}`)
+        // The mysql message already names the resolved binary (or that none was found).
+        return fail(`${isMysql ? 'Dump' : 'pg_dump'} failed: ${(e as Error).message}`)
       }
       try {
         writeFileSync(join(work, sqlName), dump)

@@ -20,7 +20,7 @@ const TYPE_INFO: Record<string, string> = {
   postgres:
     'Runs pg_dump inside the selected Docker container and streams the output to your Nextcloud target. No extra tools required.',
   mysql:
-    'Runs mysqldump inside the selected Docker container and streams the output to your Nextcloud target. No extra tools required.',
+    'Runs mariadb-dump or mysqldump inside the selected Docker container and streams the output to your Nextcloud target. The available binary is detected automatically — MySQL and MariaDB are both supported. No extra tools required.',
 }
 
 // PostgreSQL/MySQL run a dump inside a container, so they need the Docker socket.
