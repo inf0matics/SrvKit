@@ -78,6 +78,12 @@ export interface JobRecord extends JobInput {
   lastRunAt: string | null
   lastStatus: 'success' | 'failed' | null
   lastError: string | null
+  /**
+   * Bytes of raw content the last run produced (before compression), null for
+   * runs recorded before this was tracked. A dump that shrinks toward zero is
+   * the earliest visible sign that a backup is going wrong.
+   */
+  lastBytes: number | null
   /** Alerting state machine: 'ok' until a run fails, back to 'ok' on recovery. */
   alertState: 'ok' | 'failed'
   /** First failure of the current failed streak (null when not failing). */
@@ -100,6 +106,8 @@ export interface RunResult {
   at: string
   status: 'success' | 'failed'
   error: string | null
+  /** Raw content bytes this run produced, when the runner measured them. */
+  bytes?: number | null
 }
 
 /** A registered incoming peer (this instance watches it for heartbeats). */
@@ -174,6 +182,7 @@ interface JobRow {
   lastRunAt: string | null
   lastStatus: 'success' | 'failed' | null
   lastError: string | null
+  lastBytes: number | null
 }
 
 function rowToJob(row: JobRow): JobRecord {
@@ -245,7 +254,8 @@ export function openStore(path: string): Store {
        created_at TEXT NOT NULL,
        last_run_at TEXT,
        last_status TEXT,
-       last_error TEXT
+       last_error TEXT,
+       last_bytes INTEGER
      )`,
   )
   // Migrate job tables created before later columns existed.
@@ -277,6 +287,9 @@ export function openStore(path: string): Store {
   }
   if (!jobColNames.includes('incident_since')) {
     db.exec('ALTER TABLE jobs ADD COLUMN incident_since TEXT')
+  }
+  if (!jobColNames.includes('last_bytes')) {
+    db.exec('ALTER TABLE jobs ADD COLUMN last_bytes INTEGER')
   }
   for (const col of ['container', 'database', 'db_user', 'db_password', 'schedule']) {
     if (!jobColNames.includes(col)) {
@@ -349,7 +362,8 @@ export function openStore(path: string): Store {
                    active, alert_state AS alertState,
                    incident_since AS incidentSince, enabled, created_at AS createdAt,
                    last_run_at AS lastRunAt,
-                   last_status AS lastStatus, last_error AS lastError`
+                   last_status AS lastStatus, last_error AS lastError,
+                   last_bytes AS lastBytes`
   const listJobsStmt = db.prepare(`SELECT ${jobCols} FROM jobs ORDER BY created_at`)
   const getJobStmt = db.prepare(`SELECT ${jobCols} FROM jobs WHERE id = ?`)
   const insertJobStmt = db.prepare(
@@ -381,7 +395,8 @@ export function openStore(path: string): Store {
   )
   const deleteJobStmt = db.prepare('DELETE FROM jobs WHERE id = ?')
   const recordRunStmt = db.prepare(
-    'UPDATE jobs SET last_run_at = ?, last_status = ?, last_error = ? WHERE id = ?',
+    `UPDATE jobs SET last_run_at = ?, last_status = ?, last_error = ?,
+       last_bytes = ? WHERE id = ?`,
   )
 
   // --- Peers ---
@@ -500,6 +515,7 @@ export function openStore(path: string): Store {
         lastRunAt: null,
         lastStatus: null,
         lastError: null,
+        lastBytes: null,
       }
     },
 
@@ -547,7 +563,7 @@ export function openStore(path: string): Store {
     deleteJob: (id: string) => deleteJobStmt.run(id).changes > 0,
 
     recordRun(id: string, run: RunResult) {
-      recordRunStmt.run(run.at, run.status, run.error, id)
+      recordRunStmt.run(run.at, run.status, run.error, run.bytes ?? null, id)
     },
 
     listPeers: () => listPeersStmt.all() as unknown as PeerRecord[],

@@ -122,3 +122,53 @@ test('sqlite job backs up the db and uploads with a dated filename', async () =>
     /\/srvkit\/db\/App_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.tar\.gz$/,
   )
 })
+
+// --- Empty content is a failure, not a green run (patch spec 09.01) ---
+
+test('records the byte count of the content on a successful run', async () => {
+  globalThis.fetch = (async () => ({ ok: true, status: 201 }) as Response) as typeof fetch
+  await runBackup(jobId)
+  const job = store().getJob(jobId)
+  assert.equal(job?.lastStatus, 'success')
+  assert.equal(job?.lastBytes, 5) // 'hello'
+})
+
+test('a files job whose sources are all empty fails and uploads nothing', async () => {
+  mkdirSync(join(base, 'sources', 'empty'), { recursive: true })
+  writeFileSync(join(base, 'sources', 'empty', 'nothing.txt'), '')
+  const emptyJobId = store().createJob({
+    targetId,
+    name: 'Empty',
+    type: 'files',
+    sourcePath: 'empty',
+    includes: ['nothing.txt'],
+    output: 'single',
+    subdirectory: 'sub',
+    dateSuffix: false,
+    timeSuffix: false,
+    trigger: 'filewatcher',
+    container: '',
+    database: '',
+    dbUser: '',
+    dbPassword: '',
+    schedule: '',
+  }).id
+
+  const calls: { method: string }[] = []
+  globalThis.fetch = (async (_url: string, init: { method: string }) => {
+    calls.push({ method: init.method })
+    return { ok: true, status: 201 } as Response
+  }) as typeof fetch
+
+  await runBackup(emptyJobId)
+
+  const job = store().getJob(emptyJobId)
+  assert.equal(job?.lastStatus, 'failed')
+  assert.equal(job?.lastError, 'Dump produced 0 bytes — nothing was backed up')
+  assert.equal(job?.lastBytes, 0)
+  // The substantive half: a bad run must not overwrite a good backup.
+  assert.equal(
+    calls.find((c) => c.method === 'PUT'),
+    undefined,
+  )
+})

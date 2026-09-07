@@ -92,12 +92,12 @@ before(async () => {
       res.writeHead(200, { 'content-type': 'application/vnd.docker.raw-stream' })
       if (kind === 'probe') {
         res.end(frame(1, probeResult(container).out))
+      } else if (container === 'bad') {
+        res.end(frame(2, 'FATAL: password authentication failed'))
+      } else if (container === 'emptydump') {
+        res.end(frame(1, '')) // exits 0, streams nothing — the silent failure
       } else {
-        res.end(
-          container === 'bad'
-            ? frame(2, 'FATAL: password authentication failed')
-            : frame(1, `DUMP for ${container}`),
-        )
+        res.end(frame(1, `DUMP for ${container}`))
       }
     } else if (
       req.method === 'GET' &&
@@ -343,4 +343,82 @@ test('runBackup fails a MySQL job with no dump binary and uploads nothing', asyn
     calls.find((c) => c.method === 'PUT'),
     undefined,
   )
+})
+
+test('runBackup fails a MySQL job whose dump is empty and uploads nothing', async () => {
+  const targetId = store().createTarget({
+    name: 'T4',
+    host: 'https://nc.example.com',
+    username: 'bob',
+    password: encryptPassword('secret'),
+    rootDir: 'srvkit',
+  }).id
+  const jobId = store().createJob({
+    targetId,
+    name: 'emptydb',
+    type: 'mysql',
+    sourcePath: '',
+    includes: [],
+    output: 'single',
+    subdirectory: 'db',
+    dateSuffix: false,
+    timeSuffix: false,
+    trigger: 'cron',
+    container: 'emptydump',
+    database: 'app',
+    dbUser: 'root',
+    dbPassword: encryptPassword('s3cret'),
+    schedule: '0 3 * * *',
+  }).id
+
+  const calls: { method: string; url: string }[] = []
+  globalThis.fetch = (async (url: string, init: { method: string }) => {
+    calls.push({ method: init.method, url: String(url) })
+    return { ok: true, status: 201 } as Response
+  }) as typeof fetch
+
+  await runBackup(jobId)
+
+  const job = store().getJob(jobId)
+  assert.equal(job?.lastStatus, 'failed')
+  assert.equal(job?.lastError, 'Dump produced 0 bytes — nothing was backed up')
+  assert.equal(job?.lastBytes, 0)
+  assert.equal(
+    calls.find((c) => c.method === 'PUT'),
+    undefined,
+  )
+})
+
+test('runBackup records the dump byte count on a successful MySQL run', async () => {
+  const targetId = store().createTarget({
+    name: 'T5',
+    host: 'https://nc.example.com',
+    username: 'bob',
+    password: encryptPassword('secret'),
+    rootDir: 'srvkit',
+  }).id
+  const jobId = store().createJob({
+    targetId,
+    name: 'sizedb',
+    type: 'mysql',
+    sourcePath: '',
+    includes: [],
+    output: 'single',
+    subdirectory: 'db',
+    dateSuffix: false,
+    timeSuffix: false,
+    trigger: 'cron',
+    container: 'mysql8',
+    database: 'app',
+    dbUser: 'root',
+    dbPassword: encryptPassword('s3cret'),
+    schedule: '0 3 * * *',
+  }).id
+
+  globalThis.fetch = (async () => ({ ok: true, status: 201 }) as Response) as typeof fetch
+  await runBackup(jobId)
+
+  const job = store().getJob(jobId)
+  assert.equal(job?.lastStatus, 'success')
+  assert.equal(job?.lastBytes, 'DUMP for mysql8'.length)
 })

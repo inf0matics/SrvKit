@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { TargetSummary } from '~/composables/useTargets'
 import { formatNextRun, formatLastRun } from '~/utils/cron'
+import { formatBytes } from '~/utils/bytes'
 
 interface Job {
   id: string
@@ -17,6 +18,8 @@ interface Job {
   lastRunAt: string | null
   lastStatus: 'success' | 'failed' | null
   lastError: string | null
+  /** Raw content bytes the last run produced; null for runs from before 1.4. */
+  lastBytes: number | null
   running: boolean
   state: 'never' | 'debouncing' | 'running' | 'success' | 'failed'
   remainingMs: number
@@ -179,6 +182,9 @@ function destPath(job: Job): string {
           </span>
           <span v-else-if="job.state === 'success'" class="tsp-muted">
             ✓ {{ fmt(job.lastRunAt) }}
+            <span v-if="job.lastBytes !== null" data-testid="job-bytes">
+              · {{ formatBytes(job.lastBytes) }}
+            </span>
           </span>
           <span v-else-if="job.state === 'failed'" class="st-fail">
             ✗ {{ fmt(job.lastRunAt) }}

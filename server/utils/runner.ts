@@ -1,6 +1,13 @@
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { readFileSync, writeFileSync, rmSync, mkdtempSync, existsSync } from 'node:fs'
+import {
+  readFileSync,
+  writeFileSync,
+  rmSync,
+  mkdtempSync,
+  existsSync,
+  statSync,
+} from 'node:fs'
 import { store } from './srvkit.ts'
 import {
   archiveFilename,
@@ -8,7 +15,7 @@ import {
   sourcesDir,
   uploadToWebdav,
 } from './backups.ts'
-import { createArchive, createFileArchive } from '../../lib/archive.ts'
+import { createArchive, createFileArchive, contentBytes } from '../../lib/archive.ts'
 import { backupSqliteFile } from '../../lib/sqlite-backup.ts'
 import { dockerAvailable, pgDump, mysqlDump } from './docker.ts'
 import { handleRunResult } from './alerts.ts'
@@ -40,13 +47,22 @@ export async function runBackup(jobId: string): Promise<void> {
     store().recordRun(jobId, result)
     await handleRunResult(jobId, result)
   }
-  const fail = (error: string) => finish({ at, status: 'failed', error })
+  const fail = (error: string, bytes?: number) =>
+    finish({ at, status: 'failed', error, bytes: bytes ?? null })
+
+  // A command that writes nothing and exits 0 yields a small, valid, empty
+  // archive and a green job row — how a backup can run into the void for weeks.
+  // Measure the raw content, and refuse to upload when there is none: with date
+  // suffixes off the target filename is static, so a bad run would otherwise
+  // overwrite the last good backup.
+  const EMPTY = 'Dump produced 0 bytes — nothing was backed up'
 
   try {
     const target = store().getTarget(job.targetId)
     if (!target) return fail('Target not found')
 
     const tarPath = join(work, 'archive.tar.gz')
+    let bytes = 0
 
     // 1. Produce the archive.
     if (job.type === 'sqlite') {
@@ -58,6 +74,8 @@ export async function runBackup(jobId: string): Promise<void> {
       } catch (e) {
         return fail(`Backup failed: ${(e as Error).message}`)
       }
+      bytes = statSync(join(work, dbName)).size
+      if (bytes === 0) return fail(EMPTY, 0)
       try {
         await createFileArchive(work, dbName, tarPath)
       } catch (e) {
@@ -80,6 +98,8 @@ export async function runBackup(jobId: string): Promise<void> {
         // The mysql message already names the resolved binary (or that none was found).
         return fail(`${isMysql ? 'Dump' : 'pg_dump'} failed: ${(e as Error).message}`)
       }
+      bytes = dump.length
+      if (bytes === 0) return fail(EMPTY, 0)
       try {
         writeFileSync(join(work, sqlName), dump)
         await createFileArchive(work, sqlName, tarPath)
@@ -87,8 +107,11 @@ export async function runBackup(jobId: string): Promise<void> {
         return fail(`Archive failed: ${(e as Error).message}`)
       }
     } else {
+      const srcDir = join(sourcesDir(), job.sourcePath)
+      bytes = contentBytes(srcDir, job.includes)
+      if (bytes === 0) return fail(EMPTY, 0)
       try {
-        await createArchive(join(sourcesDir(), job.sourcePath), job.includes, tarPath)
+        await createArchive(srcDir, job.includes, tarPath)
       } catch (e) {
         return fail(`Archive failed: ${(e as Error).message}`)
       }
@@ -103,9 +126,9 @@ export async function runBackup(jobId: string): Promise<void> {
         (dir ? dir + '/' : '') +
         archiveFilename(job.name, job.dateSuffix, job.timeSuffix)
       await uploadToWebdav(target.host, target.username, password, destPath, body)
-      await finish({ at, status: 'success', error: null })
+      await finish({ at, status: 'success', error: null, bytes })
     } catch (e) {
-      await fail(`Upload failed: ${(e as Error).message}`)
+      await fail(`Upload failed: ${(e as Error).message}`, bytes)
     }
   } finally {
     rmSync(work, { recursive: true, force: true })
