@@ -1,6 +1,23 @@
 # Changelog
 
 
+## v1.4.0
+
+[compare changes](https://github.com/inf0matics/SrvKit/compare/v1.3.2...v1.4.0)
+
+### 🚀 Enhancements
+
+- Fail a backup run that produced no content, and record its size ([2048455](https://github.com/inf0matics/SrvKit/commit/2048455))
+- Remind while a backup job stays failed ([a47cef6](https://github.com/inf0matics/SrvKit/commit/a47cef6))
+
+### 🩹 Fixes
+
+- Resolve the MySQL dump binary at run time (MariaDB >= 11) ([0645e5b](https://github.com/inf0matics/SrvKit/commit/0645e5b))
+
+### ❤️ Contributors
+
+- Inf0matics <fil@thespielplatz.com>
+
 ## v1.3.2
 
 [compare changes](https://github.com/inf0matics/SrvKit/compare/v1.3.1...v1.3.2)
