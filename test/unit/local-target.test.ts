@@ -1,6 +1,17 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSync, chmodSync, existsSync } from 'node:fs'
+import {
+  mkdtempSync,
+  mkdirSync,
+  writeFileSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  chmodSync,
+  existsSync,
+  symlinkSync,
+  utimesSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -187,5 +198,99 @@ test('deleteLocalFile removes the file', () => {
 test('deleteLocalFile refuses to escape the base', () => {
   const base = freshBase()
   assert.throws(() => deleteLocalFile(base, '../../something'), /outside/i)
+  rmSync(base, { recursive: true, force: true })
+})
+
+/* ---- the targets mount must exist; we never create it (review #1) ---- */
+
+test('uploadLocalFile refuses to write when the base is not mounted', () => {
+  const base = join(freshBase(), 'never-mounted')
+  assert.throws(
+    () => uploadLocalFile(base, 'db/backup.tar.gz', Buffer.from('x')),
+    /not mounted/i,
+  )
+  // The whole point: the mount must not be conjured into existence.
+  assert.equal(existsSync(base), false)
+})
+
+test('uploadLocalFile refuses when the base is a file, not a directory', () => {
+  const base = freshBase()
+  const asFile = join(base, 'afile')
+  writeFileSync(asFile, 'x')
+  assert.throws(() => uploadLocalFile(asFile, 'backup.tar.gz', Buffer.from('x')), /not mounted/i)
+  rmSync(base, { recursive: true, force: true })
+})
+
+test('uploadLocalFile still creates directories below a mounted base', () => {
+  const base = freshBase()
+  uploadLocalFile(base, 'deep/nested/backup.tar.gz', Buffer.from('x'))
+  assert.equal(readFileSync(join(base, 'deep/nested/backup.tar.gz'), 'utf8'), 'x')
+  rmSync(base, { recursive: true, force: true })
+})
+
+/* ---- symlinks must not escape the mount (review #8) ---- */
+
+test('resolveInBase rejects a path that escapes through a symlink', () => {
+  const base = freshBase()
+  const outside = freshBase()
+  symlinkSync(outside, join(base, 'link'))
+  assert.equal(resolveInBase(base, 'link'), null)
+  assert.equal(resolveInBase(base, 'link/sub'), null)
+  rmSync(base, { recursive: true, force: true })
+  rmSync(outside, { recursive: true, force: true })
+})
+
+test('resolveInBase still accepts a symlink that stays inside the mount', () => {
+  const base = freshBase()
+  mkdirSync(join(base, 'real'))
+  symlinkSync(join(base, 'real'), join(base, 'inner'))
+  assert.equal(resolveInBase(base, 'inner'), join(base, 'inner'))
+  rmSync(base, { recursive: true, force: true })
+})
+
+test('a symlinked target root cannot be written through', () => {
+  const base = freshBase()
+  const outside = freshBase()
+  symlinkSync(outside, join(base, 'link'))
+  assert.throws(() => uploadLocalFile(base, 'link/backup.tar.gz', Buffer.from('x')), /outside/i)
+  assert.equal(existsSync(join(outside, 'backup.tar.gz')), false)
+  rmSync(base, { recursive: true, force: true })
+  rmSync(outside, { recursive: true, force: true })
+})
+
+/* ---- delete is idempotent, like the WebDAV driver (review #4) ---- */
+
+test('deleteLocalFile treats an already-deleted file as success', () => {
+  const base = freshBase()
+  mkdirSync(join(base, 'dir'))
+  // Retention only ever reduces to a count, so a file someone already removed
+  // is the outcome we wanted — the same rule deleteWebdav applies to a 404.
+  deleteLocalFile(base, 'dir/gone.tar.gz')
+  rmSync(base, { recursive: true, force: true })
+})
+
+/* ---- stale temp archives are swept (review #14) ---- */
+
+test('uploadLocalFile removes a stale temp archive left by a killed run', () => {
+  const base = freshBase()
+  mkdirSync(join(base, 'dir'))
+  const stale = join(base, 'dir', '.backup.tar.gz.tmp-deadbeef0000')
+  writeFileSync(stale, 'half-written')
+  // Backdate it well past the sweep threshold.
+  const old = new Date(Date.now() - 24 * 60 * 60 * 1000)
+  utimesSync(stale, old, old)
+
+  uploadLocalFile(base, 'dir/backup.tar.gz', Buffer.from('x'))
+
+  assert.deepEqual(readdirSync(join(base, 'dir')), ['backup.tar.gz'])
+  rmSync(base, { recursive: true, force: true })
+})
+
+test('uploadLocalFile leaves a fresh temp archive alone (a concurrent run owns it)', () => {
+  const base = freshBase()
+  mkdirSync(join(base, 'dir'))
+  writeFileSync(join(base, 'dir', '.other.tar.gz.tmp-abc123abc123'), 'in flight')
+  uploadLocalFile(base, 'dir/backup.tar.gz', Buffer.from('x'))
+  assert.equal(readdirSync(join(base, 'dir')).length, 2)
   rmSync(base, { recursive: true, force: true })
 })
