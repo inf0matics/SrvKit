@@ -1,4 +1,4 @@
-import { join, resolve, sep, isAbsolute, normalize } from 'node:path'
+import { join, isAbsolute, normalize } from 'node:path'
 import { createError } from 'h3'
 import { encrypt, decrypt } from '../../lib/crypto.ts'
 import {
@@ -13,6 +13,7 @@ import {
 import type { JobInput, JobRecord } from '../../lib/store.ts'
 import { isSqliteFile, isWalDatabase } from '../../lib/sqlite-backup.ts'
 import { isValidCron } from '../../lib/cron.ts'
+import { resolveWithin, isSafeRelPath } from '../../lib/paths.ts'
 import { isValidRetention } from '../../lib/retention.ts'
 import { store } from './srvkit.ts'
 
@@ -50,12 +51,13 @@ export function getSourceTree(name: string): TreeNode[] | null {
   return buildTree(join(sourcesDir(), name))
 }
 
-/** Resolve a base-relative path to an absolute path, or null if it escapes. */
+/**
+ * Resolve a base-relative path to an absolute path, or null if it escapes.
+ * Same guard the writable targets mount uses: a symlink inside the sources
+ * mount must not be able to point out of it either.
+ */
 export function resolveSourcePath(rel: string): string | null {
-  const base = resolve(sourcesDir())
-  const full = resolve(base, rel || '.')
-  if (full !== base && !full.startsWith(base + sep)) return null
-  return full
+  return resolveWithin(sourcesDir(), rel)
 }
 
 /** Direct children of a base-relative path (lazy tree), or null if invalid. */
@@ -129,6 +131,15 @@ export function parseJobInput(
   const sourcePath = trimStr(body?.sourcePath)
   const output = trimStr(body?.output) || 'single'
   const subdirectory = normalizeRoot(body?.subdirectory)
+  // Joined onto the target root at upload time, so a `..` here would climb out
+  // of the configured root. The local driver would still refuse the write; a
+  // WebDAV share would happily accept it anywhere in the linked account.
+  if (!isSafeRelPath(subdirectory)) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'The sub-directory must stay inside the target root.',
+    })
+  }
   const dateSuffix = body?.dateSuffix === true
   const timeSuffix = body?.timeSuffix === true
   const keepVersions = Number.isInteger(body?.keepVersions)
@@ -304,9 +315,18 @@ export function parseTargetType(v: unknown): string {
   return type
 }
 
-/** Trim whitespace and strip leading/trailing slashes for clean path joins. */
+/**
+ * Trim whitespace and strip leading/trailing slashes for clean path joins.
+ * This tidies a path, it does not sanitise one — callers must still validate
+ * with `isSafeTargetRoot`.
+ */
 export function normalizeRoot(root: unknown): string {
   return trimStr(root).replace(/^\/+|\/+$/g, '')
+}
+
+/** A target's root must stay inside the share it is a root of. */
+export function isSafeTargetRoot(root: string): boolean {
+  return isSafeRelPath(root)
 }
 
 export function encryptPassword(plain: string): string {

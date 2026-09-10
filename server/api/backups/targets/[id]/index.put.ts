@@ -2,6 +2,7 @@ import { store } from '../../../../utils/srvkit.ts'
 import type { TargetInput } from '../../../../../lib/store.ts'
 import {
   encryptPassword,
+  isSafeTargetRoot,
   isValidHost,
   normalizeRoot,
   trimStr,
@@ -52,6 +53,12 @@ export default defineEventHandler(async (event) => {
   if (body?.rootDir !== undefined) {
     // Empty is allowed — it means the share root / the targets mount itself.
     const rootDir = normalizeRoot(body.rootDir)
+    if (!isSafeTargetRoot(rootDir)) {
+      throw createError({
+        statusCode: 400,
+        statusMessage: 'root directory must stay inside the share',
+      })
+    }
     if (isLocal && !isValidLocalRoot(rootDir)) {
       throw createError({
         statusCode: 400,

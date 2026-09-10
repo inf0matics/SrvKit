@@ -27,3 +27,24 @@ test('rejects traversal and absolute paths', () => {
   assert.equal(isSafeInclude('..'), false)
   assert.equal(isSafeInclude(''), false)
 })
+
+/* ---- source paths must not escape through a symlink either ---- */
+
+const { resolveSourcePath } = await import('../../server/utils/backups.ts')
+
+test('resolveSourcePath rejects a lexical escape', () => {
+  assert.equal(resolveSourcePath('..'), null)
+  assert.equal(resolveSourcePath('root/../../etc'), null)
+})
+
+test('resolveSourcePath rejects an escape through a symlink', async () => {
+  const { mkdirSync, symlinkSync, rmSync } = await import('node:fs')
+  const outside = join(base, 'outside')
+  mkdirSync(join(base, 'sources'), { recursive: true })
+  mkdirSync(outside, { recursive: true })
+  const link = join(base, 'sources', 'escape')
+  rmSync(link, { force: true })
+  symlinkSync(outside, link)
+  assert.equal(resolveSourcePath('escape'), null)
+  assert.equal(resolveSourcePath('escape/secrets'), null)
+})

@@ -70,3 +70,27 @@ test('a job editing itself does not collide with itself', () => {
   const input = parseJobInput(body({ name: 'db' }), existing.id)
   assert.equal(input.name, 'db')
 })
+
+/* ---- a sub-directory must stay under the target root ---- */
+
+test('a job subdirectory that climbs out of the target root is rejected', () => {
+  assert.throws(
+    () => parseJobInput(body({ name: 'esc1', subdirectory: '../../elsewhere' })),
+    /sub-directory/i,
+  )
+  assert.throws(
+    () => parseJobInput(body({ name: 'esc2', subdirectory: 'db/../../etc' })),
+    /sub-directory/i,
+  )
+})
+
+test('a leading slash is just tidied away, not treated as an escape', () => {
+  // normalizeRoot strips it, so this is the relative folder "etc".
+  const input = parseJobInput(body({ name: 'lead', subdirectory: '/etc' }))
+  assert.equal(input.subdirectory, 'etc')
+})
+
+test('an ordinary nested subdirectory is still fine', () => {
+  const input = parseJobInput(body({ name: 'nested', subdirectory: 'db/nightly' }))
+  assert.equal(input.subdirectory, 'db/nightly')
+})

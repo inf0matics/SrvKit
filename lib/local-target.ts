@@ -2,15 +2,15 @@ import {
   readdirSync,
   statSync,
   existsSync,
-  realpathSync,
   mkdirSync,
   writeFileSync,
   renameSync,
   rmSync,
   unlinkSync,
 } from 'node:fs'
-import { join, resolve, sep, dirname, basename } from 'node:path'
+import { join, resolve, dirname, basename } from 'node:path'
 import { randomBytes } from 'node:crypto'
+import { resolveWithin } from './paths.ts'
 
 /**
  * A local backup target writes to a directory on the host, mounted writable
@@ -33,44 +33,12 @@ export interface LocalBrowseResult {
 }
 
 /**
- * The deepest existing ancestor of `p`, canonicalized, with the not-yet-created
- * tail re-joined. Used to compare real locations rather than spellings.
- */
-function canonical(p: string): string {
-  const tail: string[] = []
-  let cur = p
-  for (;;) {
-    try {
-      return join(realpathSync(cur), ...tail)
-    } catch {
-      const parent = dirname(cur)
-      if (parent === cur) return p // walked to the root, nothing exists
-      tail.unshift(basename(cur))
-      cur = parent
-    }
-  }
-}
-
-/**
- * Resolve a base-relative path to an absolute one, or null if it escapes.
- *
- * Two checks, because they catch different escapes: the lexical one rejects
- * `../` even where nothing exists yet, and the canonical one rejects a symlink
- * inside the mount that points out of it — `resolve()` does not follow links,
- * so spelling alone would say a symlinked directory is contained when the bytes
- * would land somewhere else entirely.
- *
- * The returned path is the lexical one: callers get the location they asked
- * for, and only the containment decision is made on the canonical form.
+ * Resolve a base-relative path to an absolute one, or null if it escapes the
+ * targets mount. The containment rules — lexical plus canonical, so a symlink
+ * inside the mount cannot point out of it — are shared with backup sources.
  */
 export function resolveInBase(base: string, rel: string): string | null {
-  const root = resolve(base)
-  const full = resolve(root, rel || '.')
-  if (full !== root && !full.startsWith(root + sep)) return null
-  const realRoot = canonical(root)
-  const realFull = canonical(full)
-  if (realFull !== realRoot && !realFull.startsWith(realRoot + sep)) return null
-  return full
+  return resolveWithin(base, rel)
 }
 
 /** Resolve or throw — the shared guard for every write-side operation. */

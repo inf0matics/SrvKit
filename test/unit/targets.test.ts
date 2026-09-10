@@ -136,3 +136,15 @@ test('updateTarget cannot change a target type', () => {
   assert.equal(got.rootDir, 'other', 'other fields still update')
   s.close()
 })
+
+/* ---- a target root must not climb out of the share ---- */
+
+test('normalizeRoot leaves a traversing root visible to validation', async () => {
+  const { normalizeRoot, isSafeTargetRoot } = await import('../../server/utils/backups.ts')
+  // Stripping slashes is not sanitising — the caller must still validate.
+  assert.equal(isSafeTargetRoot(normalizeRoot('/srvkit/')), true)
+  assert.equal(isSafeTargetRoot(normalizeRoot('srvkit/nested')), true)
+  assert.equal(isSafeTargetRoot(normalizeRoot('')), true)
+  assert.equal(isSafeTargetRoot(normalizeRoot('../../etc')), false)
+  assert.equal(isSafeTargetRoot(normalizeRoot('srvkit/../../etc')), false)
+})

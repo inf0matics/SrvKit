@@ -1,6 +1,7 @@
 import { store } from '../../../utils/srvkit.ts'
 import {
   encryptPassword,
+  isSafeTargetRoot,
   isValidHost,
   normalizeRoot,
   parseTargetType,
@@ -19,6 +20,13 @@ export default defineEventHandler(async (event) => {
 
   if (!name) {
     throw createError({ statusCode: 400, statusMessage: 'name is required' })
+  }
+  // Every job path is joined onto this root, so it must stay inside the share.
+  if (!isSafeTargetRoot(rootDir)) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'root directory must stay inside the share',
+    })
   }
 
   if (type === 'local') {
