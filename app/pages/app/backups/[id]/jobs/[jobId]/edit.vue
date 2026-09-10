@@ -81,6 +81,7 @@ const includes = ref<string[]>([])
 // rewrite a filename scheme the user never touched.
 const loadedMode = ref<RetentionMode>('overwrite')
 const loadedTimeSuffix = ref(false)
+const loadedName = ref('')
 const hasDbPassword = ref(false)
 const walDetected = ref(false)
 
@@ -96,6 +97,7 @@ watch(
     form.retentionMode = retentionMode(j.dateSuffix, j.keepVersions)
     loadedMode.value = form.retentionMode
     loadedTimeSuffix.value = j.timeSuffix
+    loadedName.value = j.name
     // Keep a sensible number in the box even while another mode is selected.
     form.keepVersions = j.keepVersions || 7
     form.timeSuffix = j.timeSuffix
@@ -178,6 +180,11 @@ const keepCount = computed(() => {
   const n = Math.floor(Number(form.keepVersions))
   return Number.isFinite(n) ? Math.max(n, MIN_KEEP_VERSIONS) : MIN_KEEP_VERSIONS
 })
+
+/** Archives are matched by name, so a rename walks away from the old ones. */
+const renameOrphansHistory = computed(
+  () => keepsVersions.value && !!loadedName.value && form.name !== loadedName.value,
+)
 
 const retention = computed(() => ({
   ...retentionColumns(form.retentionMode, keepCount.value),
@@ -437,6 +444,19 @@ async function save() {
         <p v-if="form.retentionMode === 'keep-n'" class="tsp-muted sub hint">
           Older archives are removed after the next successful run — saving does
           not delete anything.
+          <br>
+          <strong>Archives already in that folder count too</strong>, so the next
+          run removes everything beyond the newest {{ keepCount }}, including
+          versions written before this setting.
+        </p>
+
+        <p
+          v-if="renameOrphansHistory"
+          class="tsp-muted sub hint"
+          data-testid="rename-note"
+        >
+          Renaming leaves the existing “{{ loadedName }}” archives where they
+          are — they are no longer counted or removed by this job.
         </p>
       </fieldset>
       <p v-if="saveError" class="err">{{ saveError }}</p>

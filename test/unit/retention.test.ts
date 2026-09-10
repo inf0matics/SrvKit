@@ -212,3 +212,18 @@ test('a keep count of 1 is rejected — that is overwriting under another name',
   assert.equal(isValidRetention(true, 1), false)
   assert.equal(isValidRetention(true, -1), false)
 })
+
+test('a current archive missing from the listing keeps one extra, never one too few', () => {
+  // Read-after-write lag on the target: the archive this run just wrote is not
+  // in the listing yet. Erring toward keeping is the only safe direction.
+  const files = [
+    'db_2026-09-08.tar.gz',
+    'db_2026-09-09.tar.gz',
+    'db_2026-09-10.tar.gz',
+  ]
+  const deleted = archivesToDelete(files, 'db', 2, 'db_2026-09-11.tar.gz')
+  assert.deepEqual(deleted, ['db_2026-09-08.tar.gz'])
+  // Two listed survivors plus the unlisted new one = 3 on disk, not 2. The
+  // next run sees all four and trims to the configured count.
+  assert.equal(files.length - deleted.length, 2)
+})

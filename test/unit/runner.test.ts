@@ -1,6 +1,13 @@
 import { test, before, after, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, mkdirSync, writeFileSync, readdirSync, rmSync } from 'node:fs'
+import {
+  mkdtempSync,
+  mkdirSync,
+  writeFileSync,
+  readdirSync,
+  existsSync,
+  rmSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
@@ -642,4 +649,104 @@ test('a later clean run clears a recorded cleanup error', async () => {
   await runBackup(jobId2)
 
   assert.equal(store().getJob(jobId2)?.lastCleanupError, null)
+})
+
+test('a job name that climbs out of the target fails the run and writes nothing', async () => {
+  mkdirSync(join(base, 'targets', 'escape'), { recursive: true })
+  const targetId2 = store().createTarget({
+    name: 'T-escape',
+    type: 'local',
+    host: '',
+    username: '',
+    password: '',
+    rootDir: 'escape',
+  }).id
+  // The store takes any name; the write path is what has to refuse it.
+  const jobId2 = store().createJob({
+    targetId: targetId2,
+    name: '../../pwned',
+    type: 'files',
+    sourcePath: 'root',
+    includes: ['file.txt'],
+    output: 'single',
+    subdirectory: '',
+    dateSuffix: false,
+    timeSuffix: false,
+    keepVersions: 0,
+    trigger: 'filewatcher',
+    container: '',
+    database: '',
+    dbUser: '',
+    dbPassword: '',
+    schedule: '',
+  }).id
+
+  await runBackup(jobId2)
+
+  const job = store().getJob(jobId2)
+  assert.equal(job?.lastStatus, 'failed')
+  assert.match(job!.lastError!, /Upload failed/)
+  assert.equal(existsSync(join(base, 'targets', 'pwned.tar.gz')), false)
+  assert.equal(existsSync(join(base, 'pwned.tar.gz')), false)
+  assert.deepEqual(readdirSync(join(base, 'targets', 'escape')), [])
+})
+
+test('one failing delete stops the batch but leaves the run green and says why', async () => {
+  const ncJobId = store().createJob({
+    targetId,
+    name: 'Partial',
+    type: 'files',
+    sourcePath: 'root',
+    includes: ['file.txt'],
+    output: 'single',
+    subdirectory: 'partial',
+    dateSuffix: true,
+    timeSuffix: false,
+    keepVersions: 2,
+    trigger: 'filewatcher',
+    container: '',
+    database: '',
+    dbUser: '',
+    dbPassword: '',
+    schedule: '',
+  }).id
+
+  const today = new Date().toISOString().slice(0, 10)
+  const names = [
+    'Partial_2026-01-01.tar.gz',
+    'Partial_2026-01-02.tar.gz',
+    'Partial_2026-01-03.tar.gz',
+    `Partial_${today}.tar.gz`,
+  ]
+  const listing = `<d:multistatus xmlns:d="DAV:">
+    <d:response><d:href>/remote.php/dav/files/alice/srvkit/partial/</d:href>
+      <d:propstat><d:prop><d:resourcetype><d:collection/></d:resourcetype></d:prop></d:propstat></d:response>
+    ${names
+      .map(
+        (n) => `<d:response><d:href>/remote.php/dav/files/alice/srvkit/partial/${n}</d:href>
+      <d:propstat><d:prop><d:resourcetype/></d:prop></d:propstat></d:response>`,
+      )
+      .join('')}
+  </d:multistatus>`
+
+  const deleted: string[] = []
+  globalThis.fetch = (async (url: string, init: { method: string }) => {
+    if (init.method === 'PROPFIND') return new Response(listing, { status: 207 })
+    if (init.method === 'DELETE') {
+      const name = decodeURIComponent(String(url).split('/').pop()!)
+      // The second candidate is refused; the first already went.
+      if (deleted.length >= 1) return new Response('', { status: 403 })
+      deleted.push(name)
+      return new Response(null, { status: 204 })
+    }
+    return new Response('', { status: 201 })
+  }) as unknown as typeof fetch
+
+  await runBackup(ncJobId)
+
+  const job = store().getJob(ncJobId)
+  assert.equal(job?.lastStatus, 'success', 'the backup itself is fine')
+  assert.equal(deleted.length, 1, 'the batch stops at the first refusal')
+  // The untrimmed remainder is not lost — the next run reduces to the count.
+  assert.match(job!.lastCleanupError!, /403/)
 })

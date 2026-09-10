@@ -771,4 +771,64 @@ test.describe.serial('backups', () => {
     expect(await res.text()).toMatch(/date in the filename/i)
   })
 
+
+  test('local: Edit on a saved local target also hides the credential fields', async () => {
+    // openEdit() populates the form from the stored target, a different path
+    // than the Add flow's type picker.
+    await page.goto('/app/backups')
+    const row = content().locator('.target-row', { hasText: 'Local disk' })
+    await row.getByRole('button', { name: 'Edit' }).click()
+    await expect(page.getByLabel('Name', { exact: true })).toHaveValue('Local disk')
+    await expect(page.getByLabel('Host', { exact: true })).toHaveCount(0)
+    await expect(page.getByLabel('Password', { exact: true })).toHaveCount(0)
+    // The type is fixed once the target exists, so the picker is gone too.
+    await expect(page.getByRole('radio', { name: 'Local directory' })).toHaveCount(0)
+    await page.getByRole('button', { name: 'Cancel' }).click()
+    await content().getByRole('link', { name: 'Local disk' }).click()
+    await expect(page.getByTestId('target-page')).toBeVisible()
+  })
+
+  test('retention: keep-N warns that pre-existing archives are trimmed too', async () => {
+    await page.getByRole('button', { name: 'Edit job' }).click()
+    await expect(page).toHaveURL(/\/jobs\/[0-9a-f-]+\/edit$/)
+
+    // The surprise this prevents: retention reduces to the count, so archives
+    // written before the setting existed are removed on the next run.
+    await page.getByRole('radio', { name: /Keep the newest/ }).check()
+    await expect(page.getByTestId('retention')).toContainText('already in that folder')
+    await expect(page.getByTestId('retention')).toContainText('saving does')
+
+    // Not claimed in a mode that never deletes.
+    await page.getByRole('radio', { name: 'Keep all versions' }).check()
+    await expect(page.getByTestId('retention')).not.toContainText('already in that folder')
+    await page.getByRole('radio', { name: /Keep the newest/ }).check()
+  })
+
+  test('retention: renaming a versioned job warns that its history is left behind', async () => {
+    await expect(page.getByTestId('rename-note')).toHaveCount(0)
+    await page.getByLabel('Name', { exact: true }).fill('Nightly files renamed')
+    await expect(page.getByTestId('rename-note')).toContainText('Nightly files')
+    // Put the name back; the note goes with it.
+    await page.getByLabel('Name', { exact: true }).fill('Nightly files')
+    await expect(page.getByTestId('rename-note')).toHaveCount(0)
+    await page.getByRole('link', { name: 'Cancel' }).click()
+    await expect(page).toHaveURL(/\/app\/backups\/[0-9a-f-]+$/)
+  })
+
+  test('retention: an unusable keep count is refused by the API', async () => {
+    const jobs = await page.request.get('/api/backups/jobs').then((r) => r.json())
+    const job = jobs.find((j: { name: string }) => j.name === 'Nightly files')
+    for (const bad of ['7', 2.5, 1]) {
+      const res = await page.request.put(`/api/backups/jobs/${job.id}`, {
+        data: { ...job, dateSuffix: true, keepVersions: bad },
+      })
+      expect(res.status(), `keepVersions ${JSON.stringify(bad)}`).toBe(400)
+    }
+    // Unset still means "retention off", so an older client keeps working.
+    const ok = await page.request.put(`/api/backups/jobs/${job.id}`, {
+      data: { ...job, dateSuffix: true, keepVersions: undefined },
+    })
+    expect(ok.status()).toBe(200)
+  })
+
 })
