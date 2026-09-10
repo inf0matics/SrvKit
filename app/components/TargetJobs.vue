@@ -13,6 +13,7 @@ interface Job {
   subdirectory: string
   includes: string[]
   dateSuffix: boolean
+  keepVersions: number
   active: boolean
   enabled: boolean
   lastRunAt: string | null
@@ -174,6 +175,13 @@ function destPath(job: Job): string {
             <span class="job-name">{{ job.name }}</span>
             <span class="job-type-badge" data-testid="job-type">
               {{ typeLabel(job) }}
+            </span>
+            <span
+              v-if="job.keepVersions >= 2"
+              class="job-type-badge"
+              data-testid="job-keep"
+            >
+              keep {{ job.keepVersions }}
             </span>
           </div>
           <div class="job-meta tsp-muted" data-testid="job-dest">{{ destPath(job) }}</div>

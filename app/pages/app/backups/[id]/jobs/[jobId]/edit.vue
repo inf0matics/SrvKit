@@ -1,4 +1,11 @@
 <script setup lang="ts">
+import {
+  MIN_KEEP_VERSIONS,
+  retentionColumns,
+  retentionMode,
+  type RetentionMode,
+} from '~~/lib/retention'
+
 import { matchesDbImage, dbTypeLabel } from '~/utils/containers'
 
 definePageMeta({ middleware: 'auth', layout: 'shell' })
@@ -14,6 +21,7 @@ interface Job {
   includes: string[]
   dateSuffix: boolean
   timeSuffix: boolean
+  keepVersions: number
   trigger: string
   container: string
   database: string
@@ -56,8 +64,10 @@ const form = reactive({
   sourcePath: '',
   output: 'single',
   subdirectory: '',
-  dateSuffix: false,
   timeSuffix: false,
+  // One decision about what a run does; the suffix columns are its mechanism.
+  retentionMode: 'overwrite' as RetentionMode,
+  keepVersions: 7,
   trigger: 'filewatcher',
   container: '',
   database: '',
@@ -78,7 +88,9 @@ watch(
     form.sourcePath = j.sourcePath
     form.output = j.output
     form.subdirectory = j.subdirectory
-    form.dateSuffix = j.dateSuffix
+    form.retentionMode = retentionMode(j.dateSuffix, j.keepVersions)
+    // Keep a sensible number in the box even while another mode is selected.
+    form.keepVersions = j.keepVersions || 7
     form.timeSuffix = j.timeSuffix
     form.trigger = j.trigger
     form.container = j.container
@@ -137,6 +149,18 @@ const filteredContainers = computed(() =>
 
 const isLocalTarget = computed(() => target.value?.type === 'local')
 
+const keepsVersions = computed(() => form.retentionMode !== 'overwrite')
+
+/**
+ * The stored columns the selected mode implements. In Overwrite the filename is
+ * static, so the time suffix cannot apply — it would make every run a new file
+ * that nothing ever cleans up.
+ */
+const retention = computed(() => ({
+  ...retentionColumns(form.retentionMode, form.keepVersions),
+  timeSuffix: keepsVersions.value && form.timeSuffix,
+}))
+
 // Full destination: {host}/{root}/{subdirectory}/{name}[_date][_time].tar.gz,
 // or /{root}/{subdirectory}/… for a local directory, which has no host.
 const archive = computed(() => {
@@ -144,8 +168,10 @@ const archive = computed(() => {
     ? ''
     : (target.value?.host ?? '').replace(/^https?:\/\//, '').replace(/\/+$/, '')
   const iso = new Date().toISOString()
-  const date = form.dateSuffix ? `_${iso.slice(0, 10)}` : ''
-  const time = form.timeSuffix ? `_${iso.slice(11, 19).replace(/:/g, '-')}` : ''
+  const date = retention.value.dateSuffix ? `_${iso.slice(0, 10)}` : ''
+  const time = retention.value.timeSuffix
+    ? `_${iso.slice(11, 19).replace(/:/g, '-')}`
+    : ''
   const file = (form.name || 'job') + date + time + '.tar.gz'
   const segs = [host, target.value?.rootDir, form.subdirectory].filter(Boolean)
   return (isLocalTarget.value ? '/' : '') + [...segs, file].join('/')
@@ -168,8 +194,9 @@ async function save() {
         includes: includes.value,
         output: form.output,
         subdirectory: form.subdirectory,
-        dateSuffix: form.dateSuffix,
-        timeSuffix: form.timeSuffix,
+        dateSuffix: retention.value.dateSuffix,
+        timeSuffix: retention.value.timeSuffix,
+        keepVersions: retention.value.keepVersions,
         trigger: form.trigger,
         container: form.container,
         database: form.database,
@@ -331,16 +358,66 @@ async function save() {
         >
       </label>
 
-      <p class="archive tsp-muted" data-testid="archive">Archive: {{ archive }}</p>
+      <fieldset class="field retention" data-testid="retention">
+        <legend>Every run</legend>
 
-      <label class="field toggle">
-        <input v-model="form.dateSuffix" type="checkbox">
-        <span>Append date to filename (_YYYY-MM-DD)</span>
-      </label>
-      <label class="field toggle">
-        <input v-model="form.timeSuffix" type="checkbox">
-        <span>Append time to filename (_HH-MM-SS)</span>
-      </label>
+        <label class="radio">
+          <input
+            v-model="form.retentionMode"
+            type="radio"
+            name="retention"
+            value="overwrite"
+          >
+          <span>Overwrite — always the same file</span>
+        </label>
+
+        <label class="radio">
+          <input
+            v-model="form.retentionMode"
+            type="radio"
+            name="retention"
+            value="keep-n"
+          >
+          <span>
+            Keep the newest
+            <input
+              v-model.number="form.keepVersions"
+              class="tsp-input keep-count"
+              type="number"
+              :min="MIN_KEEP_VERSIONS"
+              max="999"
+              data-testid="keep-count"
+              aria-label="Versions to keep"
+              @focus="form.retentionMode = 'keep-n'"
+            >
+            versions
+          </span>
+        </label>
+
+        <label class="radio">
+          <input
+            v-model="form.retentionMode"
+            type="radio"
+            name="retention"
+            value="keep-all"
+          >
+          <span>Keep all versions</span>
+        </label>
+
+        <!-- Without this a second run on the same day overwrites the first
+             day's file: right for a nightly job, wrong for an hourly one. -->
+        <label v-if="keepsVersions" class="field toggle sub">
+          <input v-model="form.timeSuffix" type="checkbox">
+          <span>runs more than once a day (adds the time to the filename)</span>
+        </label>
+
+        <p class="archive tsp-muted sub" data-testid="archive">Archive: {{ archive }}</p>
+
+        <p v-if="form.retentionMode === 'keep-n'" class="tsp-muted sub hint">
+          Older archives are removed after the next successful run — saving does
+          not delete anything.
+        </p>
+      </fieldset>
       <p v-if="saveError" class="err">{{ saveError }}</p>
 
       <div class="actions">
@@ -431,6 +508,48 @@ async function save() {
 
 .selected {
   margin-top: 8px;
+}
+
+.retention {
+  border: 1px solid var(--tsp-border);
+  border-radius: var(--tsp-radius);
+  padding: 12px 14px 4px;
+  margin-bottom: 0.9rem;
+}
+
+.retention legend {
+  padding: 0 6px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--tsp-text-muted);
+}
+
+.radio {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 0.5rem;
+  cursor: pointer;
+}
+
+.radio span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.keep-count {
+  width: 5.5rem;
+  padding: 3px 6px;
+}
+
+.retention .sub {
+  margin-left: 24px;
+}
+
+.hint {
+  font-size: 0.8rem;
+  line-height: 1.45;
 }
 
 .archive {
