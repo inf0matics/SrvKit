@@ -169,8 +169,18 @@ const keepsVersions = computed(() => form.retentionMode !== 'overwrite')
  * its destination filename on any unrelated save. Only clear it when the user
  * actually chose Overwrite in this session.
  */
+/**
+ * The count as a usable whole number. The field can hold an empty string or a
+ * half-typed value, and the API refuses anything that is not a whole count —
+ * so clamp here rather than letting the form produce a request it will reject.
+ */
+const keepCount = computed(() => {
+  const n = Math.floor(Number(form.keepVersions))
+  return Number.isFinite(n) ? Math.max(n, MIN_KEEP_VERSIONS) : MIN_KEEP_VERSIONS
+})
+
 const retention = computed(() => ({
-  ...retentionColumns(form.retentionMode, form.keepVersions),
+  ...retentionColumns(form.retentionMode, keepCount.value),
   timeSuffix: keepsVersions.value
     ? form.timeSuffix
     : loadedMode.value === 'overwrite' && loadedTimeSuffix.value,
@@ -396,6 +406,7 @@ async function save() {
               type="number"
               :min="MIN_KEEP_VERSIONS"
               max="999"
+              step="1"
               data-testid="keep-count"
               aria-label="Versions to keep"
               @focus="form.retentionMode = 'keep-n'"

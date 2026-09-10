@@ -14,7 +14,7 @@ import type { JobInput, JobRecord } from '../../lib/store.ts'
 import { isSqliteFile, isWalDatabase } from '../../lib/sqlite-backup.ts'
 import { isValidCron } from '../../lib/cron.ts'
 import { resolveWithin, isSafeRelPath } from '../../lib/paths.ts'
-import { isValidRetention } from '../../lib/retention.ts'
+import { isValidRetention, MIN_KEEP_VERSIONS } from '../../lib/retention.ts'
 import { store } from './srvkit.ts'
 
 /** Base directory holding the mounted backup sources. */
@@ -142,15 +142,30 @@ export function parseJobInput(
   }
   const dateSuffix = body?.dateSuffix === true
   const timeSuffix = body?.timeSuffix === true
-  const keepVersions = Number.isInteger(body?.keepVersions)
-    ? (body!.keepVersions as number)
-    : 0
+  // Absent means an older client that predates retention: default it off. A
+  // value that is present but unusable is rejected rather than coerced — a
+  // silent fall back to 0 would store "keep everything" while the user believes
+  // they asked for a count, and nothing would ever be cleaned up.
+  const rawKeep = body?.keepVersions
+  let keepVersions = 0
+  if (rawKeep !== undefined && rawKeep !== null && rawKeep !== '') {
+    if (!Number.isInteger(rawKeep) || (rawKeep as number) < 0) {
+      throw createError({
+        statusCode: 400,
+        statusMessage: 'Versions to keep must be a whole number.',
+      })
+    }
+    keepVersions = rawKeep as number
+  }
   // Unreachable through the UI, but a stale client or a hand-crafted request
   // must not create a job that silently never cleans up.
   if (!isValidRetention(dateSuffix, keepVersions)) {
     throw createError({
       statusCode: 400,
-      statusMessage: 'Keeping versions requires the date in the filename.',
+      statusMessage:
+        keepVersions < MIN_KEEP_VERSIONS
+          ? `Keep at least ${MIN_KEEP_VERSIONS} versions, or choose overwrite.`
+          : 'Keeping versions requires the date in the filename.',
     })
   }
   // Archives are matched by job name, so two jobs writing the same names into

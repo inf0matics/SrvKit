@@ -94,3 +94,37 @@ test('an ordinary nested subdirectory is still fine', () => {
   const input = parseJobInput(body({ name: 'nested', subdirectory: 'db/nightly' }))
   assert.equal(input.subdirectory, 'db/nightly')
 })
+
+/* ---- an invalid keep count must not silently become "keep all" ---- */
+
+test('an unset keepVersions still means retention off (older clients)', () => {
+  // undefined / null / '' are "not set", not a count that got discarded.
+  for (const unset of [undefined, null, '']) {
+    const input = parseJobInput(body({ name: `unset-${String(unset)}`, keepVersions: unset }))
+    assert.equal(input.keepVersions, 0)
+  }
+})
+
+test('a value that means a count but cannot be one is rejected, not coerced to 0', () => {
+  for (const bad of ['7', 2.5, true, {}, -1]) {
+    assert.throws(
+      () => parseJobInput(body({ name: 'bad', keepVersions: bad })),
+      /whole number/i,
+      `expected rejection for ${JSON.stringify(bad)}`,
+    )
+  }
+})
+
+test('a keep count of 1 is rejected with a message about the count', () => {
+  assert.throws(
+    () => parseJobInput(body({ name: 'one', keepVersions: 1 })),
+    /at least 2/i,
+  )
+})
+
+test('keeping versions without the date still names the date', () => {
+  assert.throws(
+    () => parseJobInput(body({ name: 'nodate', dateSuffix: false, keepVersions: 7 })),
+    /date in the filename/i,
+  )
+})
