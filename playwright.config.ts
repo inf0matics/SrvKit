@@ -47,6 +47,10 @@ export default defineConfig({
       // Subshell: `|| true` must swallow only find's failure. Left unbracketed it
       // would also rescue a failed build and boot a stale server against the tests.
       ` && (find ./.data -name 'e2e-*.db*' -mmin +360 -delete 2>/dev/null || true)` +
+      // Same sweep for the local-target directories beside them: a killed run
+      // leaks one with real seeded archives inside and nothing else removes it.
+      ` && (find ./.data -maxdepth 1 -type d -name 'e2e-targets-*' -mmin +360` +
+      ` -exec rm -rf {} + 2>/dev/null || true)` +
       ` && rm -f ${DB} ${DB}-wal ${DB}-shm` +
       ` && rm -rf ${TARGETS} && mkdir -p ${TARGETS}/disk2/nightly` +
       ` && node .output/server/index.mjs`,

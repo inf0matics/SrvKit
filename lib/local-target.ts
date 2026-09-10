@@ -7,6 +7,9 @@ import {
   renameSync,
   rmSync,
   unlinkSync,
+  openSync,
+  fsyncSync,
+  closeSync,
 } from 'node:fs'
 import { join, resolve, dirname, basename } from 'node:path'
 import { randomBytes } from 'node:crypto'
@@ -129,8 +132,19 @@ export function uploadLocalFile(base: string, destPath: string, bytes: Uint8Arra
   sweepStaleTemps(dir)
   const tmp = join(dir, `.${basename(full)}.tmp-${randomBytes(6).toString('hex')}`)
   try {
-    writeFileSync(tmp, bytes)
+    // Flush the bytes before the rename, then the directory entry after it.
+    // Without both, a power loss can leave the rename visible while the file's
+    // contents are still in the page cache — a zero-length archive sitting
+    // exactly where a valid backup is expected.
+    const fd = openSync(tmp, 'w')
+    try {
+      writeFileSync(fd, bytes)
+      fsyncSync(fd)
+    } finally {
+      closeSync(fd)
+    }
     renameSync(tmp, full)
+    fsyncDir(dir)
   } catch (e) {
     rmSync(tmp, { force: true })
     throw new Error(reason(e), { cause: e })
@@ -199,5 +213,19 @@ function sweepStaleTemps(dir: string): void {
     } catch {
       // Someone else won the race, or we may not remove it. Either is fine.
     }
+  }
+}
+
+/** Flush a directory entry, where the platform supports it. */
+function fsyncDir(dir: string): void {
+  let fd
+  try {
+    fd = openSync(dir, 'r')
+    fsyncSync(fd)
+  } catch {
+    // Not supported everywhere (notably Windows). The rename already happened;
+    // losing only the directory flush is not worth failing a good backup over.
+  } finally {
+    if (fd !== undefined) closeSync(fd)
   }
 }
