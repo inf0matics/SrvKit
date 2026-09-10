@@ -28,6 +28,7 @@ services:
       # Optional overrides (defaults shown):
       # DATABASE_PATH: "/data/srvkit.db"
       # BACKUP_SOURCES_DIR: "/backups"
+      # BACKUP_TARGETS_DIR: "/backup-targets"
       # SESSION_TTL: "86400"               # session inactivity timeout (seconds)
       # TIP_JAR_URL: "https://thespielplatz.com/tip-jar"
       # COOKIE_SECURE: leave UNSET behind TLS (Secure cookies are the default).
@@ -37,6 +38,9 @@ services:
       # Each sub-directory shows up as a source in the backup-job wizard:
       - /root:/backups/root:ro
       - /etc:/backups/etc:ro
+      # Destinations for local-directory targets — WRITABLE, note the missing
+      # :ro. Ideally a different physical disk than the sources above.
+      - /srv/backups:/backup-targets
     networks: [traefik]
     labels:
       - "traefik.enable=true"
@@ -73,12 +77,18 @@ reset below.
 
 ## 3. Configure backups
 
-1. **Add a target** — your Nextcloud destination (host, username, password, and a
-   root folder picked via the directory browser). Passwords are encrypted at
-   rest with `ENCRYPTION_KEY`.
+1. **Add a target** — the destination backups are written to. Two types:
+   - **Nextcloud** — host, username, password, and a root folder picked via the
+     directory browser. Passwords are encrypted at rest with `ENCRYPTION_KEY`.
+   - **Local directory** — a folder inside the writable `/backup-targets` mount,
+     picked with the same browser. No credentials, no network; a database dump
+     lands on disk in seconds. **This is not an off-site backup** — it survives a
+     bad migration or a broken container, not a dead disk. Put it on a different
+     physical disk than the data, and keep an off-site target alongside it. Its
+     disk usage is covered by Host Monitoring's thresholds for that mount.
 2. **Add a job** — pick a mounted source under `/backups`, choose which files to
    include, and a destination sub-directory. SrvKit watches the selected files
-   and uploads a `tar.gz` to Nextcloud whenever they change (10s debounce). Use
+   and writes a `tar.gz` to the target whenever they change (10s debounce). Use
    **Run Now** to trigger a backup immediately.
 
 ## Environment variables
@@ -88,6 +98,7 @@ reset below.
 | `ENCRYPTION_KEY` | **yes** | — | Encrypts stored target passwords. Keep stable. |
 | `DATABASE_PATH` | no | `/data/srvkit.db` | SQLite DB location (on the volume). |
 | `BACKUP_SOURCES_DIR` | no | `/backups` | Base dir for mounted backup sources. |
+| `BACKUP_TARGETS_DIR` | no | `/backup-targets` | Base dir for local-directory targets (mount writable). |
 | `SESSION_TTL` | no | `86400` | Session inactivity timeout, in seconds. |
 | `COOKIE_SECURE` | no | `true` | Secure session cookie. Leave unset behind TLS. |
 | `TIP_JAR_URL` | no | — | Sidebar Tip-Jar link; hidden when unset. |

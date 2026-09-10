@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test'
-import { writeFileSync, readFileSync } from 'node:fs'
+import { writeFileSync, readFileSync, existsSync, statSync } from 'node:fs'
+import { join } from 'node:path'
 
 // Runs after auth.spec.ts (alphabetical). One shared page + a single login so it
 // doesn't eat into the per-IP login rate limit.
@@ -585,4 +586,94 @@ test.describe.serial('backups', () => {
     await expect(page.getByTestId('no-peers')).toBeVisible()
     await expect(page.getByTestId('peers-badge')).toHaveCount(0)
   })
+
+  /* ---- Local directory targets (spec 18) ---- */
+
+  // Destinations mount used by the e2e server (playwright.config.ts).
+  const TARGETS_DIR = `./.data/e2e-targets-${process.env.E2E_RESOLVED_PORT}`
+
+  test('local: the Add modal drops the credential fields and warns once', async () => {
+    await page.goto('/app/backups')
+    await page.getByRole('button', { name: 'Add Target' }).click()
+    await page.getByRole('radio', { name: 'Local directory' }).click()
+
+    // A local target stores no credentials — nothing to encrypt, nothing to leak.
+    await expect(page.getByLabel('Host', { exact: true })).toHaveCount(0)
+    await expect(page.getByLabel('Username', { exact: true })).toHaveCount(0)
+    await expect(page.getByLabel('Password', { exact: true })).toHaveCount(0)
+    await expect(page.getByTestId('local-note')).toContainText('same machine')
+
+    // Test answers the only question that matters: can SrvKit write here?
+    await page.getByRole('button', { name: 'Test', exact: true }).click()
+    await expect(page.locator('.overlay .test-ok')).toContainText('writable')
+  })
+
+  test('local: saving shows a Local pill and a path instead of a host', async () => {
+    await page.getByLabel('Name', { exact: true }).fill('Local disk')
+    await page.getByRole('button', { name: 'Save' }).click()
+
+    const row = content().locator('.target-row', { hasText: 'Local disk' })
+    await expect(row.getByTestId('target-type')).toHaveText('Local')
+    await expect(row.locator('.t-host')).toHaveText('/')
+  })
+
+  test('local: the directory browser navigates inside the targets mount', async () => {
+    await content().getByRole('link', { name: 'Local disk' }).click()
+    await expect(page.getByTestId('target-page')).toBeVisible()
+    await expect(page.getByTestId('target-destination')).toHaveText('/')
+
+    await page.getByRole('button', { name: 'Choose location' }).click()
+    await page.getByRole('button', { name: 'disk2', exact: true }).click()
+    await page.getByRole('button', { name: 'nightly', exact: true }).click()
+    await page.getByRole('button', { name: 'Select', exact: true }).click()
+
+    await expect(page.getByTestId('location')).toHaveText('/disk2/nightly')
+    await expect(page.getByTestId('target-destination')).toHaveText('/disk2/nightly')
+  })
+
+  test('local: Test reports the directory as writable', async () => {
+    await page.getByRole('button', { name: 'Test', exact: true }).click()
+    await expect(page.locator('.test-ok')).toContainText('Directory is writable')
+  })
+
+  test('local: a root escaping the targets mount is rejected', async () => {
+    const id = page.url().split('/').pop()
+    const res = await page.request.put(`/api/backups/targets/${id}`, {
+      data: { rootDir: '../../escape' },
+    })
+    expect(res.status()).toBe(400)
+    // The stored root is untouched.
+    await page.reload()
+    await expect(page.getByTestId('location')).toHaveText('/disk2/nightly')
+  })
+
+  test('local: a files job writes a real archive to disk', async () => {
+    await page.getByRole('button', { name: 'Add Job' }).click()
+    await page.getByLabel('Name', { exact: true }).fill('Nightly files')
+    await page.getByRole('button', { name: 'Create' }).click()
+    await expect(page).toHaveURL(/\/jobs\/[0-9a-f-]+\/edit$/)
+
+    await page.getByLabel('Source path').selectOption('root')
+    await page.getByRole('checkbox', { name: '.bashrc' }).check()
+    // A local target has no host, so the subdirectory label is neutral.
+    await page.getByLabel('Target subdirectory').fill('sub')
+    await expect(page.getByTestId('archive')).toContainText(
+      '/disk2/nightly/sub/Nightly files.tar.gz',
+    )
+    await page.getByRole('button', { name: 'Save' }).click()
+
+    await expect(page.getByTestId('job-dest')).toHaveText(
+      '/disk2/nightly/sub/Nightly files.tar.gz',
+    )
+
+    await page.getByRole('button', { name: 'Run job now' }).click()
+    await expect(page.getByTestId('job-status')).toContainText('today')
+    await expect(page.getByTestId('job-error')).toHaveCount(0)
+
+    // The substantive half: the archive is really on disk, under the mount.
+    const archive = join(TARGETS_DIR, 'disk2/nightly/sub/Nightly files.tar.gz')
+    await expect.poll(() => existsSync(archive), { timeout: 5000 }).toBe(true)
+    expect(statSync(archive).size).toBeGreaterThan(0)
+  })
+
 })

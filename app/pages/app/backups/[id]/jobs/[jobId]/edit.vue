@@ -135,15 +135,20 @@ const filteredContainers = computed(() =>
     : containers.value.filter((c) => matchesDbImage(c.image, form.type)),
 )
 
-// Full destination: {host}/{root}/{subdirectory}/{name}[_date][_time].tar.gz
+const isLocalTarget = computed(() => target.value?.type === 'local')
+
+// Full destination: {host}/{root}/{subdirectory}/{name}[_date][_time].tar.gz,
+// or /{root}/{subdirectory}/… for a local directory, which has no host.
 const archive = computed(() => {
-  const host = (target.value?.host ?? '').replace(/^https?:\/\//, '').replace(/\/+$/, '')
+  const host = isLocalTarget.value
+    ? ''
+    : (target.value?.host ?? '').replace(/^https?:\/\//, '').replace(/\/+$/, '')
   const iso = new Date().toISOString()
   const date = form.dateSuffix ? `_${iso.slice(0, 10)}` : ''
   const time = form.timeSuffix ? `_${iso.slice(11, 19).replace(/:/g, '-')}` : ''
   const file = (form.name || 'job') + date + time + '.tar.gz'
   const segs = [host, target.value?.rootDir, form.subdirectory].filter(Boolean)
-  return [...segs, file].join('/')
+  return (isLocalTarget.value ? '/' : '') + [...segs, file].join('/')
 })
 
 const saving = ref(false)
@@ -316,7 +321,7 @@ async function save() {
       </template>
 
       <label class="field">
-        <span>Nextcloud subdirectory</span>
+        <span>{{ isLocalTarget ? 'Target subdirectory' : 'Nextcloud subdirectory' }}</span>
         <input
           v-model="form.subdirectory"
           class="tsp-input"

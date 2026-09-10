@@ -26,6 +26,10 @@ const PORT = resolvePort()
 // The DB is keyed by port so two e2e runs on different ports don't wipe each
 // other's state (the server boots by deleting it, see the command below).
 const DB = `./.data/e2e-${PORT}.db`
+// Destinations for local-directory targets. Keyed by port like the DB, wiped
+// per run, and pre-seeded with a folder so the directory browser has something
+// to navigate into.
+const TARGETS = `./.data/e2e-targets-${PORT}`
 
 export default defineConfig({
   testDir: './tests/e2e',
@@ -44,6 +48,7 @@ export default defineConfig({
       // would also rescue a failed build and boot a stale server against the tests.
       ` && (find ./.data -name 'e2e-*.db*' -mmin +360 -delete 2>/dev/null || true)` +
       ` && rm -f ${DB} ${DB}-wal ${DB}-shm` +
+      ` && rm -rf ${TARGETS} && mkdir -p ${TARGETS}/disk2/nightly` +
       ` && node .output/server/index.mjs`,
     port: PORT,
     env: {
@@ -52,6 +57,7 @@ export default defineConfig({
       COOKIE_SECURE: 'false', // plain http in e2e
       ENCRYPTION_KEY: 'e2e-encryption-key',
       BACKUP_SOURCES_DIR: './tests/fixtures/sources',
+      BACKUP_TARGETS_DIR: TARGETS,
       // Backup targets in e2e point at 127.0.0.1 — allow private hosts (see M3).
       ALLOW_PRIVATE_WEBDAV: '1',
       // No Docker in CI — point at a missing socket so PostgreSQL jobs report
