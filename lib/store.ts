@@ -100,6 +100,12 @@ export interface JobRecord extends JobInput {
   lastSuccessAt: string | null
   /** When this job last had an alert sent for it — the repeat-reminder clock. */
   lastAlertAt: string | null
+  /**
+   * Why the last retention pass could not clean up, or null when it was fine.
+   * A cleanup failure deliberately leaves the run green, so without this the
+   * only trace is a container log line nobody reads while the target fills up.
+   */
+  lastCleanupError: string | null
   /** Disabled jobs don't run (no filewatcher, no cron, no alerts). */
   enabled: boolean
 }
@@ -152,6 +158,7 @@ export interface Store {
   createJob(input: JobInput): JobRecord
   updateJob(id: string, input: JobInput): boolean
   setJobActive(id: string, active: boolean): void
+  setJobCleanupError(id: string, error: string | null): void
   setJobEnabled(id: string, enabled: boolean): boolean
   setJobAlertState(id: string, state: 'ok' | 'failed'): void
   setIncidentSince(id: string, since: string | null): void
@@ -201,6 +208,7 @@ interface JobRow {
   failedRuns: number
   lastSuccessAt: string | null
   lastAlertAt: string | null
+  lastCleanupError: string | null
 }
 
 function rowToJob(row: JobRow): JobRecord {
@@ -280,6 +288,7 @@ export function openStore(path: string): Store {
        last_status TEXT,
        last_error TEXT,
        last_bytes INTEGER,
+       last_cleanup_error TEXT,
        failed_runs INTEGER NOT NULL DEFAULT 0,
        last_success_at TEXT,
        last_alert_at TEXT
@@ -321,6 +330,9 @@ export function openStore(path: string): Store {
   }
   if (!jobColNames.includes('last_bytes')) {
     db.exec('ALTER TABLE jobs ADD COLUMN last_bytes INTEGER')
+  }
+  if (!jobColNames.includes('last_cleanup_error')) {
+    db.exec('ALTER TABLE jobs ADD COLUMN last_cleanup_error TEXT')
   }
   if (!jobColNames.includes('failed_runs')) {
     db.exec('ALTER TABLE jobs ADD COLUMN failed_runs INTEGER NOT NULL DEFAULT 0')
@@ -406,6 +418,7 @@ export function openStore(path: string): Store {
                    last_run_at AS lastRunAt,
                    last_status AS lastStatus, last_error AS lastError,
                    last_bytes AS lastBytes, failed_runs AS failedRuns,
+                   last_cleanup_error AS lastCleanupError,
                    last_success_at AS lastSuccessAt, last_alert_at AS lastAlertAt`
   const listJobsStmt = db.prepare(`SELECT ${jobCols} FROM jobs ORDER BY created_at`)
   const getJobStmt = db.prepare(`SELECT ${jobCols} FROM jobs WHERE id = ?`)
@@ -423,6 +436,9 @@ export function openStore(path: string): Store {
        database = ?, db_user = ?, db_password = ?, schedule = ? WHERE id = ?`,
   )
   const setActiveStmt = db.prepare('UPDATE jobs SET active = ? WHERE id = ?')
+  const setCleanupErrorStmt = db.prepare(
+    'UPDATE jobs SET last_cleanup_error = ? WHERE id = ?',
+  )
   const setEnabledStmt = db.prepare('UPDATE jobs SET enabled = ? WHERE id = ?')
   const setAlertStateStmt = db.prepare('UPDATE jobs SET alert_state = ? WHERE id = ?')
   const setIncidentSinceStmt = db.prepare(
@@ -572,6 +588,7 @@ export function openStore(path: string): Store {
         failedRuns: 0,
         lastSuccessAt: null,
         lastAlertAt: null,
+        lastCleanupError: null,
       }
     },
 
@@ -597,6 +614,10 @@ export function openStore(path: string): Store {
           id,
         ).changes > 0
       )
+    },
+
+    setJobCleanupError(id: string, error: string | null) {
+      setCleanupErrorStmt.run(error, id)
     },
 
     setJobActive(id: string, active: boolean) {

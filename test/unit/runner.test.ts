@@ -532,3 +532,114 @@ test('a cleanup failure leaves the run green and logs the reason', async () => {
   assert.ok(line, `expected a log line naming the job, got: ${JSON.stringify(logged)}`)
   assert.match(line!, /500/)
 })
+
+// --- Review fixes: concurrency, colliding jobs, visible cleanup failures ---
+
+test('a second run of the same job is skipped while one is in flight', async () => {
+  const jobId2 = localRetentionJob('Concurrent', 'concurrent', 2)
+  // Kick off two runs without awaiting the first: the second must return
+  // immediately rather than racing the first through upload and retention.
+  const first = runBackup(jobId2)
+  const second = runBackup(jobId2)
+  await Promise.all([first, second])
+  const written = readdirSync(join(base, 'targets', 'concurrent'))
+  assert.equal(written.length, 1, 'only one archive, written once')
+  assert.equal(store().getJob(jobId2)?.lastStatus, 'success')
+})
+
+test('retention skips cleanup when another job writes the same archive names', async () => {
+  mkdirSync(join(base, 'targets', 'shared2'), { recursive: true })
+  const targetId2 = store().createTarget({
+    name: 'T-shared2',
+    type: 'local',
+    host: '',
+    username: '',
+    password: '',
+    rootDir: 'shared2',
+  }).id
+  const common = {
+    targetId: targetId2,
+    type: 'files',
+    sourcePath: 'root',
+    includes: ['file.txt'],
+    output: 'single',
+    subdirectory: '',
+    dateSuffix: true,
+    trigger: 'filewatcher',
+    container: '',
+    database: '',
+    dbUser: '',
+    dbPassword: '',
+    schedule: '',
+  }
+  // Two jobs, same name, same target, same directory — one daily, one hourly.
+  const daily = store().createJob({
+    ...common,
+    name: 'twin',
+    timeSuffix: false,
+    keepVersions: 2,
+  }).id
+  store().createJob({ ...common, name: 'twin', timeSuffix: true, keepVersions: 0 })
+
+  seed('shared2', [
+    'twin_2026-01-01.tar.gz',
+    'twin_2026-01-02_03-00-00.tar.gz',
+    'twin_2026-01-03_03-00-00.tar.gz',
+  ])
+
+  await runBackup(daily)
+
+  // A job must never delete archives it cannot prove are its own.
+  const left = readdirSync(join(base, 'targets', 'shared2'))
+  assert.ok(left.includes('twin_2026-01-01.tar.gz'))
+  assert.ok(left.includes('twin_2026-01-02_03-00-00.tar.gz'))
+  assert.ok(left.includes('twin_2026-01-03_03-00-00.tar.gz'))
+  const job = store().getJob(daily)
+  assert.equal(job?.lastStatus, 'success')
+  assert.match(job!.lastCleanupError!, /another job/i)
+})
+
+test('a cleanup failure is recorded on the job, not just logged', async () => {
+  const ncJobId = store().createJob({
+    targetId,
+    name: 'NCVisible',
+    type: 'files',
+    sourcePath: 'root',
+    includes: ['file.txt'],
+    output: 'single',
+    subdirectory: 'nc3',
+    dateSuffix: true,
+    timeSuffix: false,
+    keepVersions: 2,
+    trigger: 'filewatcher',
+    container: '',
+    database: '',
+    dbUser: '',
+    dbPassword: '',
+    schedule: '',
+  }).id
+
+  globalThis.fetch = (async (_url: string, init: { method: string }) => {
+    if (init.method === 'PROPFIND') return new Response('', { status: 403 })
+    return new Response('', { status: 201 })
+  }) as unknown as typeof fetch
+
+  await runBackup(ncJobId)
+
+  const job = store().getJob(ncJobId)
+  assert.equal(job?.lastStatus, 'success', 'the backup itself is fine')
+  assert.equal(job?.lastError, null)
+  assert.match(job!.lastCleanupError!, /403/)
+})
+
+test('a later clean run clears a recorded cleanup error', async () => {
+  const jobId2 = localRetentionJob('Recovers', 'recovers', 2)
+  store().setJobCleanupError(jobId2, 'stale failure from yesterday')
+  globalThis.fetch = (async () => {
+    throw new Error('local target must not use the network')
+  }) as typeof fetch
+
+  await runBackup(jobId2)
+
+  assert.equal(store().getJob(jobId2)?.lastCleanupError, null)
+})

@@ -45,7 +45,7 @@ export default defineEventHandler(async (event) => {
   if (!host || !username || !password) {
     throw createError({
       statusCode: 400,
-      statusMessage: 'name, host, username and password are required',
+      statusMessage: 'host, username and password are required',
     })
   }
   if (!isValidHost(host)) {

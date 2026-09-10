@@ -218,3 +218,17 @@ test('keepVersions is listed with the job', () => {
   assert.equal(s.listJobs()[0]!.keepVersions, 5)
   s.close()
 })
+
+/* ---- cleanup errors are visible, not just logged (review #11) ---- */
+
+test('lastCleanupError starts null and round-trips', () => {
+  const s = openStore(':memory:')
+  const { id } = s.createJob(sample)
+  assert.equal(s.getJob(id)?.lastCleanupError, null)
+  s.setJobCleanupError(id, 'HTTP 403')
+  assert.equal(s.getJob(id)?.lastCleanupError, 'HTTP 403')
+  assert.equal(s.listJobs()[0]!.lastCleanupError, 'HTTP 403')
+  s.setJobCleanupError(id, null)
+  assert.equal(s.getJob(id)?.lastCleanupError, null)
+  s.close()
+})

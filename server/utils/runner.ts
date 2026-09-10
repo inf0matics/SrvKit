@@ -41,15 +41,46 @@ async function pruneVersions(
   currentArchive: string,
 ): Promise<void> {
   if (job.keepVersions < MIN_KEEP_VERSIONS) return
+  // Archives are matched by the job's name, so a second job writing the same
+  // names into the same directory is indistinguishable from our own history —
+  // and its files would be deleted as ours. Decline to clean up instead.
+  if (hasNameTwin(job)) {
+    return noteCleanup(job.id, `Skipped: another job writes "${job.name}" to the same folder`)
+  }
   try {
     const files = await driver.list(dir)
     for (const name of archivesToDelete(files, job.name, job.keepVersions, currentArchive)) {
       await driver.delete((dir ? dir + '/' : '') + name)
     }
+    noteCleanup(job.id, null)
   } catch (e) {
-    console.error(
-      `[backup] retention failed for job "${job.name}": ${(e as Error).message}`,
+    const message = (e as Error).message
+    console.error(`[backup] retention failed for job "${job.name}": ${message}`)
+    // Recorded on the job as well as logged: the run stays green on purpose, so
+    // a log line alone would let a target fill up with nobody ever told.
+    noteCleanup(job.id, message)
+  }
+}
+
+/** Another job writing this job's archive names into the same directory. */
+function hasNameTwin(job: JobRecord): boolean {
+  return store()
+    .listJobs()
+    .some(
+      (other) =>
+        other.id !== job.id &&
+        other.name === job.name &&
+        other.targetId === job.targetId &&
+        other.subdirectory === job.subdirectory,
     )
+}
+
+/** Record why cleanup could not run (or clear it). Never throws. */
+function noteCleanup(jobId: string, error: string | null): void {
+  try {
+    store().setJobCleanupError(jobId, error)
+  } catch {
+    // Cleanup bookkeeping must never be able to fail a good run.
   }
 }
 
@@ -62,6 +93,9 @@ async function pruneVersions(
 export async function runBackup(jobId: string): Promise<void> {
   const job = store().getJob(jobId)
   if (!job) return
+  // A trigger landing mid-run must not start a second execution: two runs would
+  // prune against each other's stale listings and can delete below keepVersions.
+  if (runningJobs.has(jobId)) return
 
   runningJobs.add(jobId)
   const at = new Date().toISOString()

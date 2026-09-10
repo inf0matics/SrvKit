@@ -117,8 +117,14 @@ export function publicJob(job: JobRecord): Omit<JobRecord, 'dbPassword'> & {
   return { ...rest, hasDbPassword: !!dbPassword }
 }
 
-/** Full validation for saving (activating) a job from the edit page. */
-export function parseJobInput(body: Record<string, unknown> | null): JobInput {
+/**
+ * Full validation for saving (activating) a job from the edit page.
+ * `excludeJobId` is the job being edited, so it does not collide with itself.
+ */
+export function parseJobInput(
+  body: Record<string, unknown> | null,
+  excludeJobId = '',
+): JobInput {
   const { name, targetId, type } = baseJobFields(body)
   const sourcePath = trimStr(body?.sourcePath)
   const output = trimStr(body?.output) || 'single'
@@ -136,6 +142,25 @@ export function parseJobInput(body: Record<string, unknown> | null): JobInput {
       statusMessage: 'Keeping versions requires the date in the filename.',
     })
   }
+  // Archives are matched by job name, so two jobs writing the same names into
+  // one folder cannot tell their histories apart and retention would delete the
+  // other's backups. Refuse the collision where it is created.
+  const twin = store()
+    .listJobs()
+    .find(
+      (j) =>
+        j.id !== excludeJobId &&
+        j.name === name &&
+        j.targetId === targetId &&
+        j.subdirectory === subdirectory,
+    )
+  if (twin) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'Another job already writes this name to that folder.',
+    })
+  }
+
   const includes = Array.isArray(body?.includes)
     ? (body.includes as unknown[])
         .filter((e): e is string => typeof e === 'string')
