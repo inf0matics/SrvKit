@@ -13,6 +13,7 @@ import {
 import type { JobInput, JobRecord } from '../../lib/store.ts'
 import { isSqliteFile, isWalDatabase } from '../../lib/sqlite-backup.ts'
 import { isValidCron } from '../../lib/cron.ts'
+import { isValidRetention } from '../../lib/retention.ts'
 import { store } from './srvkit.ts'
 
 /** Base directory holding the mounted backup sources. */
@@ -101,6 +102,7 @@ export function parseNewJob(body: Record<string, unknown> | null): JobInput {
     subdirectory: '',
     dateSuffix: false,
     timeSuffix: false,
+    keepVersions: 0,
     trigger: 'filewatcher',
     schedule: '',
     ...emptyPgFields,
@@ -123,6 +125,17 @@ export function parseJobInput(body: Record<string, unknown> | null): JobInput {
   const subdirectory = normalizeRoot(body?.subdirectory)
   const dateSuffix = body?.dateSuffix === true
   const timeSuffix = body?.timeSuffix === true
+  const keepVersions = Number.isInteger(body?.keepVersions)
+    ? (body!.keepVersions as number)
+    : 0
+  // Unreachable through the UI, but a stale client or a hand-crafted request
+  // must not create a job that silently never cleans up.
+  if (!isValidRetention(dateSuffix, keepVersions)) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'Keeping versions requires the date in the filename.',
+    })
+  }
   const includes = Array.isArray(body?.includes)
     ? (body.includes as unknown[])
         .filter((e): e is string => typeof e === 'string')
@@ -196,6 +209,7 @@ export function parseJobInput(body: Record<string, unknown> | null): JobInput {
     subdirectory,
     dateSuffix,
     timeSuffix,
+    keepVersions,
     trigger,
     schedule,
     ...pg,

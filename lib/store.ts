@@ -59,6 +59,8 @@ export interface JobInput {
   dateSuffix: boolean
   /** Append _HH-MM-SS to the archive filename. */
   timeSuffix: boolean
+  /** Keep only the newest N archives of this job. 0 = never delete anything. */
+  keepVersions: number
   /** What fires the job: 'filewatcher' or 'cron'. (Files = always filewatcher.) */
   trigger: string
   /** PostgreSQL: Docker container to run pg_dump in. */
@@ -180,6 +182,7 @@ interface JobRow {
   subdirectory: string
   dateSuffix: number
   timeSuffix: number
+  keepVersions: number
   trigger: string
   container: string
   database: string
@@ -261,6 +264,7 @@ export function openStore(path: string): Store {
        subdirectory TEXT NOT NULL DEFAULT '',
        date_suffix INTEGER NOT NULL DEFAULT 0,
        time_suffix INTEGER NOT NULL DEFAULT 0,
+       keep_versions INTEGER NOT NULL DEFAULT 0,
        "trigger" TEXT NOT NULL DEFAULT 'filewatcher',
        container TEXT NOT NULL DEFAULT '',
        database TEXT NOT NULL DEFAULT '',
@@ -295,6 +299,10 @@ export function openStore(path: string): Store {
   }
   if (!jobColNames.includes('time_suffix')) {
     db.exec('ALTER TABLE jobs ADD COLUMN time_suffix INTEGER NOT NULL DEFAULT 0')
+  }
+  // 0 = no cleanup, so every job that predates retention keeps behaving as it did.
+  if (!jobColNames.includes('keep_versions')) {
+    db.exec('ALTER TABLE jobs ADD COLUMN keep_versions INTEGER NOT NULL DEFAULT 0')
   }
   if (jobColNames.includes('excludes') && !jobColNames.includes('includes')) {
     db.exec('ALTER TABLE jobs RENAME COLUMN excludes TO includes')
@@ -390,7 +398,8 @@ export function openStore(path: string): Store {
   // --- Jobs ---
   const jobCols = `id, target_id AS targetId, name, type, source_path AS sourcePath,
                    includes, output, subdirectory, date_suffix AS dateSuffix,
-                   time_suffix AS timeSuffix, "trigger", container, database,
+                   time_suffix AS timeSuffix, keep_versions AS keepVersions,
+                   "trigger", container, database,
                    db_user AS dbUser, db_password AS dbPassword, schedule,
                    active, alert_state AS alertState,
                    incident_since AS incidentSince, enabled, created_at AS createdAt,
@@ -403,15 +412,15 @@ export function openStore(path: string): Store {
   const insertJobStmt = db.prepare(
     `INSERT INTO jobs
        (id, target_id, name, type, source_path, includes, output, subdirectory,
-        date_suffix, time_suffix, "trigger", container, database, db_user,
-        db_password, schedule, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        date_suffix, time_suffix, keep_versions, "trigger", container, database,
+        db_user, db_password, schedule, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
   const updateJobStmt = db.prepare(
     `UPDATE jobs SET target_id = ?, name = ?, type = ?, source_path = ?,
        includes = ?, output = ?, subdirectory = ?, date_suffix = ?,
-       time_suffix = ?, "trigger" = ?, container = ?, database = ?, db_user = ?,
-       db_password = ?, schedule = ? WHERE id = ?`,
+       time_suffix = ?, keep_versions = ?, "trigger" = ?, container = ?,
+       database = ?, db_user = ?, db_password = ?, schedule = ? WHERE id = ?`,
   )
   const setActiveStmt = db.prepare('UPDATE jobs SET active = ? WHERE id = ?')
   const setEnabledStmt = db.prepare('UPDATE jobs SET enabled = ? WHERE id = ?')
@@ -539,6 +548,7 @@ export function openStore(path: string): Store {
         input.subdirectory,
         input.dateSuffix ? 1 : 0,
         input.timeSuffix ? 1 : 0,
+        input.keepVersions,
         input.trigger,
         input.container,
         input.database,
@@ -577,6 +587,7 @@ export function openStore(path: string): Store {
           input.subdirectory,
           input.dateSuffix ? 1 : 0,
           input.timeSuffix ? 1 : 0,
+          input.keepVersions,
           input.trigger,
           input.container,
           input.database,

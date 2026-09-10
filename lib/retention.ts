@@ -70,3 +70,45 @@ export function archivesToDelete(
   const room = currentArchive && files.includes(currentArchive) ? keep - 1 : keep
   return archives.slice(Math.max(room, 0)).map((a) => a.name)
 }
+
+/**
+ * What a run does, as one decision. The two filename suffix columns are the
+ * mechanism behind it, not a user-facing setting:
+ *
+ *   overwrite  — one static filename, replaced every run; nothing accumulates
+ *   keep-all   — a dated file per run, nothing ever deleted
+ *   keep-n     — a dated file per run, trimmed to the newest N after a success
+ */
+export type RetentionMode = 'overwrite' | 'keep-all' | 'keep-n'
+
+/** The columns that implement a mode. Dates are what make versions possible. */
+export function retentionColumns(
+  mode: RetentionMode,
+  keepVersions: number,
+): { dateSuffix: boolean; keepVersions: number } {
+  if (mode === 'keep-n') {
+    return { dateSuffix: true, keepVersions: Math.max(keepVersions, MIN_KEEP_VERSIONS) }
+  }
+  return { dateSuffix: mode === 'keep-all', keepVersions: 0 }
+}
+
+/**
+ * The mode stored columns render as. A job from before retention existed reads
+ * as what it already does: date suffix off is *overwrite*, on is *keep all*.
+ */
+export function retentionMode(dateSuffix: boolean, keepVersions: number): RetentionMode {
+  // Without a date suffix the filename is static, so nothing accumulates and a
+  // keep count could never do anything — that is overwriting.
+  if (!dateSuffix) return 'overwrite'
+  return keepVersions >= MIN_KEEP_VERSIONS ? 'keep-n' : 'keep-all'
+}
+
+/**
+ * Whether a job's stored retention makes sense. The UI cannot produce a keep
+ * count without a date suffix, but a stale client or a hand-crafted request
+ * must not create a job that silently never cleans up.
+ */
+export function isValidRetention(dateSuffix: boolean, keepVersions: number): boolean {
+  if (keepVersions === 0) return true
+  return dateSuffix && keepVersions >= MIN_KEEP_VERSIONS
+}

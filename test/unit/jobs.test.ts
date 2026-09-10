@@ -12,6 +12,7 @@ const sample = {
   subdirectory: 'root',
   dateSuffix: false,
   timeSuffix: false,
+  keepVersions: 0,
   trigger: 'filewatcher',
   container: '',
   database: '',
@@ -187,5 +188,33 @@ test('deleteJob removes the row', () => {
   assert.equal(s.deleteJob(id), true)
   assert.deepEqual(s.listJobs(), [])
   assert.equal(s.deleteJob(id), false)
+  s.close()
+})
+
+/* ---- retention (spec 19) ---- */
+
+test('keepVersions defaults to 0 — an existing job never cleans up', () => {
+  const s = openStore(':memory:')
+  const job = s.createJob(sample)
+  assert.equal(job.keepVersions, 0)
+  assert.equal(s.getJob(job.id)?.keepVersions, 0)
+  s.close()
+})
+
+test('keepVersions round-trips through create, get and update', () => {
+  const s = openStore(':memory:')
+  const { id } = s.createJob({ ...sample, dateSuffix: true, keepVersions: 7 })
+  assert.equal(s.getJob(id)?.keepVersions, 7)
+  s.updateJob(id, { ...sample, dateSuffix: true, keepVersions: 3 })
+  assert.equal(s.getJob(id)?.keepVersions, 3)
+  s.updateJob(id, { ...sample, dateSuffix: true, keepVersions: 0 })
+  assert.equal(s.getJob(id)?.keepVersions, 0)
+  s.close()
+})
+
+test('keepVersions is listed with the job', () => {
+  const s = openStore(':memory:')
+  s.createJob({ ...sample, dateSuffix: true, keepVersions: 5 })
+  assert.equal(s.listJobs()[0]!.keepVersions, 5)
   s.close()
 })

@@ -1,6 +1,11 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { archivesToDelete } from '../../lib/retention.ts'
+import {
+  archivesToDelete,
+  retentionColumns,
+  retentionMode,
+  isValidRetention,
+} from '../../lib/retention.ts'
 
 /* ---- picking the newest N ---- */
 
@@ -151,4 +156,59 @@ test('running again on an already-trimmed directory deletes nothing', () => {
   const files = ['db_2026-09-09.tar.gz', 'db_2026-09-10.tar.gz']
   const remaining = files.filter((f) => !archivesToDelete(files, 'db', 2).includes(f))
   assert.deepEqual(archivesToDelete(remaining, 'db', 2), [])
+})
+
+/* ---- the mode <-> column mapping, in both directions ---- */
+
+test('each mode maps onto the columns that implement it', () => {
+  assert.deepEqual(retentionColumns('overwrite', 7), { dateSuffix: false, keepVersions: 0 })
+  assert.deepEqual(retentionColumns('keep-all', 7), { dateSuffix: true, keepVersions: 0 })
+  assert.deepEqual(retentionColumns('keep-n', 7), { dateSuffix: true, keepVersions: 7 })
+})
+
+test('keep-n below the minimum is raised to it, never silently disabled', () => {
+  assert.deepEqual(retentionColumns('keep-n', 1), { dateSuffix: true, keepVersions: 2 })
+  assert.deepEqual(retentionColumns('keep-n', 0), { dateSuffix: true, keepVersions: 2 })
+})
+
+test('stored columns render the mode they came from', () => {
+  assert.equal(retentionMode(false, 0), 'overwrite')
+  assert.equal(retentionMode(true, 0), 'keep-all')
+  assert.equal(retentionMode(true, 7), 'keep-n')
+})
+
+test('an existing job reads as the mode it already behaves like', () => {
+  // Every job that predates retention has keepVersions 0.
+  assert.equal(retentionMode(false, 0), 'overwrite', 'date suffix off = overwrite')
+  assert.equal(retentionMode(true, 0), 'keep-all', 'date suffix on = keep all')
+})
+
+test('the unreachable combination is read as overwrite, which is what it does', () => {
+  // keepVersions >= 2 with no date suffix means one static filename: nothing
+  // ever accumulates, so nothing is ever deleted.
+  assert.equal(retentionMode(false, 7), 'overwrite')
+})
+
+test('every mode round-trips through the columns and back', () => {
+  for (const mode of ['overwrite', 'keep-all', 'keep-n'] as const) {
+    const cols = retentionColumns(mode, 7)
+    assert.equal(retentionMode(cols.dateSuffix, cols.keepVersions), mode, mode)
+  }
+})
+
+/* ---- what the API must refuse ---- */
+
+test('keeping versions without a date suffix is rejected', () => {
+  // Unreachable through the UI, but a stale client must not create a job that
+  // silently never cleans up.
+  assert.equal(isValidRetention(false, 0), true)
+  assert.equal(isValidRetention(true, 0), true)
+  assert.equal(isValidRetention(true, 2), true)
+  assert.equal(isValidRetention(false, 2), false)
+  assert.equal(isValidRetention(false, 7), false)
+})
+
+test('a keep count of 1 is rejected — that is overwriting under another name', () => {
+  assert.equal(isValidRetention(true, 1), false)
+  assert.equal(isValidRetention(true, -1), false)
 })
