@@ -1,5 +1,11 @@
 import { test, expect, type Page } from '@playwright/test'
-import { writeFileSync, readFileSync, existsSync, statSync } from 'node:fs'
+import {
+  writeFileSync,
+  readFileSync,
+  readdirSync,
+  existsSync,
+  statSync,
+} from 'node:fs'
 import { join } from 'node:path'
 
 // Runs after auth.spec.ts (alphabetical). One shared page + a single login so it
@@ -232,7 +238,8 @@ test.describe.serial('backups', () => {
     await expect(page).toHaveURL(/\/jobs\/[0-9a-f-]+\/edit$/)
     await expect(page.getByTestId('job-edit')).toBeVisible()
     await page.getByRole('button', { name: 'app.db', exact: true }).click()
-    await page.getByLabel('Append date to filename').check()
+    // Dated files come from choosing a mode that keeps versions.
+    await page.getByRole('radio', { name: 'Keep all versions' }).check()
     await page.getByLabel('Nextcloud subdirectory').fill('db')
     await expect(page.getByTestId('archive')).toContainText(
       /App DB_\d{4}-\d{2}-\d{2}\.tar\.gz/,
@@ -674,6 +681,94 @@ test.describe.serial('backups', () => {
     const archive = join(TARGETS_DIR, 'disk2/nightly/sub/Nightly files.tar.gz')
     await expect.poll(() => existsSync(archive), { timeout: 5000 }).toBe(true)
     expect(statSync(archive).size).toBeGreaterThan(0)
+  })
+
+
+  /* ---- Retention: keep the newest N (spec 19) ---- */
+
+  const nightlyDir = () => join(TARGETS_DIR, 'disk2/nightly/sub')
+  const nightlyFiles = () => readdirSync(nightlyDir()).sort()
+
+  test('retention: an existing job opens as the mode it already behaves like', async () => {
+    // "Nightly files" was saved with no date suffix — that is Overwrite.
+    await page.getByRole('button', { name: 'Edit job' }).click()
+    await expect(page).toHaveURL(/\/jobs\/[0-9a-f-]+\/edit$/)
+    await expect(page.getByRole('radio', { name: /Overwrite/ })).toBeChecked()
+    // The time checkbox is not offered while nothing accumulates.
+    await expect(page.getByText('runs more than once a day')).toHaveCount(0)
+  })
+
+  test('retention: choosing "keep the newest" dates the filename live', async () => {
+    await expect(page.getByTestId('archive')).toContainText(
+      '/disk2/nightly/sub/Nightly files.tar.gz',
+    )
+    await page.getByRole('radio', { name: /Keep the newest/ }).check()
+    await page.getByTestId('keep-count').fill('2')
+
+    // Dates are what make versions possible, so the mode switches them on.
+    await expect(page.getByTestId('archive')).toContainText(
+      /\/disk2\/nightly\/sub\/Nightly files_\d{4}-\d{2}-\d{2}\.tar\.gz/,
+    )
+    // Saving is not what deletes anything — say so.
+    await expect(page.getByTestId('retention')).toContainText('saving does')
+    await expect(page.getByText('runs more than once a day')).toBeVisible()
+
+    await page.getByRole('button', { name: 'Save' }).click()
+    await expect(page).toHaveURL(/\/app\/backups\/[0-9a-f-]+$/)
+    await expect(page.getByTestId('job-keep')).toHaveText('keep 2')
+  })
+
+  test('retention: the saved mode reads back the same way', async () => {
+    await page.getByRole('button', { name: 'Edit job' }).click()
+    await expect(page.getByRole('radio', { name: /Keep the newest/ })).toBeChecked()
+    await expect(page.getByTestId('keep-count')).toHaveValue('2')
+    await page.getByRole('link', { name: 'Cancel' }).click()
+    await expect(page).toHaveURL(/\/app\/backups\/[0-9a-f-]+$/)
+  })
+
+  test('retention: a successful run trims to N and touches nothing else', async () => {
+    // Archives from earlier runs, plus files retention must not touch: another
+    // job's archive, a prefix-overlapping name, and this job's own undated file
+    // from when it was still in Overwrite mode.
+    writeFileSync(join(nightlyDir(), 'Nightly files_2026-01-01.tar.gz'), 'old')
+    writeFileSync(join(nightlyDir(), 'Nightly files_2026-01-02.tar.gz'), 'old')
+    writeFileSync(join(nightlyDir(), 'Nightly files_2026-01-03.tar.gz'), 'old')
+    writeFileSync(join(nightlyDir(), 'Other job_2026-01-01.tar.gz'), 'other')
+    writeFileSync(join(nightlyDir(), 'Nightly files-old_2026-01-01.tar.gz'), 'other')
+    expect(nightlyFiles()).toContain('Nightly files.tar.gz')
+
+    await page.getByRole('button', { name: 'Run job now' }).click()
+    await expect(page.getByTestId('job-status')).toContainText('today')
+    await expect(page.getByTestId('job-error')).toHaveCount(0)
+
+    const today = new Date().toISOString().slice(0, 10)
+    await expect
+      .poll(() => nightlyFiles().filter((f) => /^Nightly files_/.test(f)), {
+        timeout: 5000,
+      })
+      .toEqual([`Nightly files_${today}.tar.gz`, 'Nightly files_2026-01-03.tar.gz'].sort())
+
+    const left = nightlyFiles()
+    expect(left).toContain('Other job_2026-01-01.tar.gz')
+    expect(left).toContain('Nightly files-old_2026-01-01.tar.gz')
+    expect(left).toContain('Nightly files.tar.gz')
+  })
+
+  test('retention: running again on an already-trimmed directory changes nothing', async () => {
+    const before = nightlyFiles()
+    await page.getByRole('button', { name: 'Run job now' }).click()
+    await expect(page.getByTestId('job-status')).toContainText('today')
+    await expect.poll(() => nightlyFiles(), { timeout: 5000 }).toEqual(before)
+  })
+
+  test('retention: keeping versions without a date suffix is refused', async () => {
+    const jobs = await page.request.get('/api/backups/jobs').then((r) => r.json())
+    const job = jobs.find((j: { name: string }) => j.name === 'Nightly files')
+    const res = await page.request.put(`/api/backups/jobs/${job.id}`, {
+      data: { ...job, dateSuffix: false, keepVersions: 7 },
+    })
+    expect(res.status()).toBe(400)
+    expect(await res.text()).toMatch(/date in the filename/i)
   })
 
 })

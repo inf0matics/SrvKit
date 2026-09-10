@@ -90,6 +90,16 @@ reset below.
    include, and a destination sub-directory. SrvKit watches the selected files
    and writes a `tar.gz` to the target whenever they change (10s debounce). Use
    **Run Now** to trigger a backup immediately.
+3. **Decide what each run does** — one choice on the job:
+   - **Overwrite** — one file, replaced every run. Nothing accumulates.
+   - **Keep the newest N** — a dated file per run; after a successful run,
+     everything older than the N newest is deleted. Minimum 2.
+   - **Keep all versions** — a dated file per run, nothing ever deleted.
+
+   Cleanup happens only after a *successful* run, so a failed backup can never
+   delete a good one, and only among that job's own archives in its own output
+   directory. Saving a new choice deletes nothing — the next successful run does
+   the trimming.
 
 ## Environment variables
 
