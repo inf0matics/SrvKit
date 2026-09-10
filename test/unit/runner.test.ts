@@ -252,3 +252,44 @@ test('a local run fails cleanly when the target directory is not writable', asyn
   assert.equal(job?.lastStatus, 'failed')
   assert.match(job!.lastError!, /Upload failed/)
 })
+
+test('a sqlite job writes a dated archive into a local target directory', async () => {
+  mkdirSync(join(base, 'targets', 'nas2'), { recursive: true })
+  const localTargetId = store().createTarget({
+    name: 'Local2',
+    type: 'local',
+    host: '',
+    username: '',
+    password: '',
+    rootDir: 'nas2',
+  }).id
+  const localSqliteId = store().createJob({
+    targetId: localTargetId,
+    name: 'LocalDB',
+    type: 'sqlite',
+    sourcePath: 'data.db',
+    includes: [],
+    output: 'single',
+    subdirectory: 'db',
+    dateSuffix: true,
+    timeSuffix: true,
+    trigger: 'filewatcher',
+    container: '',
+    database: '',
+    dbUser: '',
+    dbPassword: '',
+    schedule: '',
+  }).id
+
+  globalThis.fetch = (async () => {
+    throw new Error('a local target must not make network requests')
+  }) as typeof fetch
+
+  await runBackup(localSqliteId)
+
+  assert.equal(store().getJob(localSqliteId)?.lastStatus, 'success')
+  // Same name it would have produced on Nextcloud: LocalDB_YYYY-MM-DD_HH-MM-SS.tar.gz
+  const written = readdirSync(join(base, 'targets', 'nas2', 'db'))
+  assert.equal(written.length, 1)
+  assert.match(written[0]!, /^LocalDB_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.tar\.gz$/)
+})
