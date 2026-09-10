@@ -86,6 +86,12 @@ reset below.
      bad migration or a broken container, not a dead disk. Put it on a different
      physical disk than the data, and keep an off-site target alongside it. Its
      disk usage is covered by Host Monitoring's thresholds for that mount.
+
+     The mount has to exist: SrvKit refuses to write when `/backup-targets` is
+     missing rather than creating it, because a forgotten volume would otherwise
+     put every backup in the container's own filesystem, where the next `docker
+     compose up` destroys it. Use **Test** after adding the target — it writes a
+     probe file and reports exactly what a real run would hit.
 2. **Add a job** — pick a mounted source under `/backups`, choose which files to
    include, and a destination sub-directory. SrvKit watches the selected files
    and writes a `tar.gz` to the target whenever they change (10s debounce). Use
@@ -99,7 +105,11 @@ reset below.
    Cleanup happens only after a *successful* run, so a failed backup can never
    delete a good one, and only among that job's own archives in its own output
    directory. Saving a new choice deletes nothing — the next successful run does
-   the trimming.
+   the trimming, and it counts archives written before the setting existed.
+
+   Two jobs cannot share a name *and* a destination folder: their archives would
+   be indistinguishable and each would delete the other's. Renaming a job leaves
+   its old archives in place, no longer counted or removed.
 
 ## Environment variables
 
