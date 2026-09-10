@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { TargetSummary } from '~/composables/useTargets'
+import { targetDestination } from '~/utils/targetPath'
 
 definePageMeta({ middleware: 'auth', layout: 'shell' })
 usePageTitle('Backups')
@@ -134,7 +135,7 @@ const TYPE_LABELS: Record<string, string> = {
 }
 const typeLabel = (t: Target) => TYPE_LABELS[t.type] ?? 'Nextcloud'
 // A local row shows its directory where a Nextcloud row shows its host.
-const destination = (t: Target) => (t.type === 'local' ? '/' + t.rootDir : t.host)
+const destination = targetDestination
 
 /* ---- inline delete confirmation ---- */
 const confirmingDelete = ref<string | null>(null)

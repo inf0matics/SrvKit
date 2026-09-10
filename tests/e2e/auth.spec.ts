@@ -171,8 +171,10 @@ test('sidebar bottom nav stays pinned when the content scrolls', async ({ page }
   await expect(settings).toBeInViewport()
 
   // Scroll the content to the very bottom — the pinned sidebar keeps it in view.
-  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight))
+  // Scroll inside the retry: the host page grows as its metrics arrive, and a
+  // single scroll issued before it finished can never reach the bottom.
   await expect(async () => {
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight))
     expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(50)
   }).toPass()
   await expect(settings).toBeInViewport()

@@ -2,6 +2,8 @@
 import type { TargetSummary } from '~/composables/useTargets'
 import { formatNextRun, formatLastRun } from '~/utils/cron'
 import { formatBytes } from '~/utils/bytes'
+import { targetArchivePath } from '~/utils/targetPath'
+import { MIN_KEEP_VERSIONS } from '~~/lib/retention'
 
 interface Job {
   id: string
@@ -13,12 +15,15 @@ interface Job {
   subdirectory: string
   includes: string[]
   dateSuffix: boolean
+  timeSuffix: boolean
   keepVersions: number
   active: boolean
   enabled: boolean
   lastRunAt: string | null
   lastStatus: 'success' | 'failed' | null
   lastError: string | null
+  /** Why the last retention pass could not clean up, or null when it was fine. */
+  lastCleanupError: string | null
   /** Raw content bytes the last run produced; null for runs from before 1.4. */
   lastBytes: number | null
   running: boolean
@@ -126,20 +131,8 @@ const TYPE_LABELS: Record<string, string> = {
 const typeLabel = (job: Job) => TYPE_LABELS[job.type] ?? 'Files'
 const fmtNext = (iso: string) => formatNextRun(new Date(iso), timezone.value)
 
-/**
- * Full destination path: {host}/{root}/{subdir}/{name}[_date].tar.gz on
- * Nextcloud, or /{root}/{subdir}/… for a local directory, which has no host.
- */
-function destPath(job: Job): string {
-  const isLocal = props.target.type === 'local'
-  const host = isLocal
-    ? ''
-    : props.target.host.replace(/^https?:\/\//, '').replace(/\/+$/, '')
-  const date = new Date().toISOString().slice(0, 10)
-  const file = job.name + (job.dateSuffix ? `_${date}` : '') + '.tar.gz'
-  const segs = [host, props.target.rootDir, job.subdirectory].filter(Boolean)
-  return (isLocal ? '/' : '') + [...segs, file].join('/')
-}
+/** Full destination of this job's archive — shared with the job edit page. */
+const destPath = (job: Job) => targetArchivePath(props.target, job)
 </script>
 
 <template>
@@ -177,7 +170,7 @@ function destPath(job: Job): string {
               {{ typeLabel(job) }}
             </span>
             <span
-              v-if="job.keepVersions >= 2"
+              v-if="job.keepVersions >= MIN_KEEP_VERSIONS"
               class="job-type-badge"
               data-testid="job-keep"
             >
@@ -240,6 +233,16 @@ function destPath(job: Job): string {
         class="job-error"
         data-testid="job-error"
       >{{ job.lastError }}</pre>
+
+      <!-- The backup itself succeeded, so the row stays green; without this the
+           only trace of a stuck cleanup is a container log nobody reads. -->
+      <p
+        v-if="confirmingDelete !== job.id && job.lastCleanupError"
+        class="job-cleanup"
+        data-testid="job-cleanup"
+      >
+        Old versions were not cleaned up: {{ job.lastCleanupError }}
+      </p>
     </div>
 
     <p v-if="!jobs.length" class="tsp-muted no-jobs">No backup jobs yet.</p>
@@ -278,6 +281,16 @@ function destPath(job: Job): string {
   line-height: 1.45;
   white-space: pre-wrap;
   word-break: break-all;
+}
+
+.job-cleanup {
+  margin: 8px 0 2px;
+  padding: 6px 10px;
+  border: 1px solid var(--tsp-border);
+  border-radius: var(--tsp-radius-sm);
+  color: var(--tsp-text-muted);
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .job-info {

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { targetDestination } from '~/utils/targetPath'
+
 definePageMeta({ middleware: 'auth', layout: 'shell' })
 
 const route = useRoute()
@@ -13,7 +15,7 @@ usePageTitle(() => target.value?.name ?? 'Backups')
 
 // A local target has no URL — its header shows the directory it writes to.
 const destination = computed(() =>
-  target.value?.type === 'local' ? '/' + target.value.rootDir : target.value?.host,
+  target.value ? targetDestination(target.value) : '',
 )
 </script>
 

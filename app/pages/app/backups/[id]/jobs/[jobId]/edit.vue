@@ -5,6 +5,7 @@ import {
   retentionMode,
   type RetentionMode,
 } from '~~/lib/retention'
+import { targetArchivePath } from '~/utils/targetPath'
 
 import { matchesDbImage, dbTypeLabel } from '~/utils/containers'
 
@@ -76,6 +77,10 @@ const form = reactive({
   schedule: '',
 })
 const includes = ref<string[]>([])
+// What the job looked like when it loaded, so an unrelated save cannot silently
+// rewrite a filename scheme the user never touched.
+const loadedMode = ref<RetentionMode>('overwrite')
+const loadedTimeSuffix = ref(false)
 const hasDbPassword = ref(false)
 const walDetected = ref(false)
 
@@ -89,6 +94,8 @@ watch(
     form.output = j.output
     form.subdirectory = j.subdirectory
     form.retentionMode = retentionMode(j.dateSuffix, j.keepVersions)
+    loadedMode.value = form.retentionMode
+    loadedTimeSuffix.value = j.timeSuffix
     // Keep a sensible number in the box even while another mode is selected.
     form.keepVersions = j.keepVersions || 7
     form.timeSuffix = j.timeSuffix
@@ -152,30 +159,33 @@ const isLocalTarget = computed(() => target.value?.type === 'local')
 const keepsVersions = computed(() => form.retentionMode !== 'overwrite')
 
 /**
- * The stored columns the selected mode implements. In Overwrite the filename is
- * static, so the time suffix cannot apply — it would make every run a new file
- * that nothing ever cleans up.
+ * The stored columns the selected mode implements. The time toggle is only
+ * offered in the two keep modes — in Overwrite the filename is static, and a
+ * time suffix would make every run a new file nothing ever cleans up.
+ *
+ * The old UI had two independent checkboxes, so a job can already be stored
+ * with the time suffix on and the date off. That job reads as Overwrite, where
+ * the toggle is hidden, so clearing it unconditionally would silently change
+ * its destination filename on any unrelated save. Only clear it when the user
+ * actually chose Overwrite in this session.
  */
 const retention = computed(() => ({
   ...retentionColumns(form.retentionMode, form.keepVersions),
-  timeSuffix: keepsVersions.value && form.timeSuffix,
+  timeSuffix: keepsVersions.value
+    ? form.timeSuffix
+    : loadedMode.value === 'overwrite' && loadedTimeSuffix.value,
 }))
 
-// Full destination: {host}/{root}/{subdirectory}/{name}[_date][_time].tar.gz,
-// or /{root}/{subdirectory}/… for a local directory, which has no host.
-const archive = computed(() => {
-  const host = isLocalTarget.value
-    ? ''
-    : (target.value?.host ?? '').replace(/^https?:\/\//, '').replace(/\/+$/, '')
-  const iso = new Date().toISOString()
-  const date = retention.value.dateSuffix ? `_${iso.slice(0, 10)}` : ''
-  const time = retention.value.timeSuffix
-    ? `_${iso.slice(11, 19).replace(/:/g, '-')}`
-    : ''
-  const file = (form.name || 'job') + date + time + '.tar.gz'
-  const segs = [host, target.value?.rootDir, form.subdirectory].filter(Boolean)
-  return (isLocalTarget.value ? '/' : '') + [...segs, file].join('/')
-})
+// Full destination — the same formatter the job list uses, so the two pages
+// can never disagree about the filename a job produces.
+const archive = computed(() =>
+  targetArchivePath(target.value, {
+    name: form.name,
+    subdirectory: form.subdirectory,
+    dateSuffix: retention.value.dateSuffix,
+    timeSuffix: retention.value.timeSuffix,
+  }),
+)
 
 const saving = ref(false)
 const saveError = ref('')
