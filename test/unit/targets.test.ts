@@ -93,3 +93,46 @@ test('deleteTarget removes the row', () => {
   assert.equal(s.deleteTarget(id), false) // already gone
   s.close()
 })
+
+/* ---- target type (spec 18: local directory targets) ---- */
+
+const localSample = {
+  name: 'Local disk',
+  type: 'local',
+  host: '',
+  username: '',
+  password: '',
+  rootDir: 'nas/db',
+}
+
+test('a target created without a type is a nextcloud target', () => {
+  const s = openStore(':memory:')
+  const created = s.createTarget(sample)
+  assert.equal(created.type, 'nextcloud')
+  assert.equal(s.getTarget(created.id)?.type, 'nextcloud')
+  assert.equal(s.listTargets()[0]!.type, 'nextcloud')
+  s.close()
+})
+
+test('a local target round-trips its type and keeps no credentials', () => {
+  const s = openStore(':memory:')
+  const { id } = s.createTarget(localSample)
+  const got = s.getTarget(id)!
+  assert.equal(got.type, 'local')
+  assert.equal(got.host, '')
+  assert.equal(got.username, '')
+  assert.equal(got.password, '')
+  assert.equal(got.rootDir, 'nas/db')
+  assert.equal(s.listTargets()[0]!.type, 'local')
+  s.close()
+})
+
+test('updateTarget cannot change a target type', () => {
+  const s = openStore(':memory:')
+  const { id } = s.createTarget(localSample)
+  s.updateTarget(id, { type: 'nextcloud', rootDir: 'other' } as Partial<typeof localSample>)
+  const got = s.getTarget(id)!
+  assert.equal(got.type, 'local', 'type must stay as created')
+  assert.equal(got.rootDir, 'other', 'other fields still update')
+  s.close()
+})

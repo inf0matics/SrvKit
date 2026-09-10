@@ -279,16 +279,23 @@ export interface BrowseResult {
 }
 
 /**
- * Parse a WebDAV PROPFIND (Depth 1) multistatus response into the names of the
- * immediate child collections (directories) of `path`. Namespace-agnostic so it
- * copes with `d:` / `D:` prefixes; the queried folder's own entry is skipped.
+ * Names of the immediate children of `path` in a WebDAV PROPFIND (Depth 1)
+ * multistatus response — collections when `wantDir`, plain resources otherwise.
+ * Namespace-agnostic so it copes with `d:` / `D:` prefixes; the queried folder's
+ * own entry, and anything deeper than one level, are skipped.
  */
-export function parseDirs(xml: string, username: string, path: string): string[] {
+function parseEntries(
+  xml: string,
+  username: string,
+  path: string,
+  wantDir: boolean,
+): string[] {
   const prefix = `/remote.php/dav/files/${username}/${path ? path + '/' : ''}`
   const blocks = xml.split(/<(?:[a-z0-9]+:)?response[\s>]/i).slice(1)
-  const dirs: string[] = []
+  const names: string[] = []
   for (const block of blocks) {
-    if (!/<(?:[a-z0-9]+:)?collection\s*\/?>/i.test(block)) continue
+    const isDir = /<(?:[a-z0-9]+:)?collection\s*\/?>/i.test(block)
+    if (isDir !== wantDir) continue
     const m = block.match(/<(?:[a-z0-9]+:)?href>([^<]*)<\/(?:[a-z0-9]+:)?href>/i)
     if (!m) continue
     let href = m[1]!
@@ -303,9 +310,19 @@ export function parseDirs(xml: string, username: string, path: string): string[]
     if (!href.startsWith(prefix)) continue
     const rel = href.slice(prefix.length).replace(/\/$/, '')
     if (!rel || rel.includes('/')) continue // self or deeper than one level
-    dirs.push(rel)
+    names.push(rel)
   }
-  return dirs.sort((a, b) => a.localeCompare(b))
+  return names.sort((a, b) => a.localeCompare(b))
+}
+
+/** Immediate child directories of `path` — the root-directory picker. */
+export function parseDirs(xml: string, username: string, path: string): string[] {
+  return parseEntries(xml, username, path, true)
+}
+
+/** Immediate child files of `path` — retention (spec 19). */
+export function parseFiles(xml: string, username: string, path: string): string[] {
+  return parseEntries(xml, username, path, false)
 }
 
 const PROPFIND_BODY =
@@ -414,5 +431,57 @@ export async function testWebdav(
     }
   } catch (e) {
     return { ok: false, message: (e as Error).message || 'Network error' }
+  }
+}
+
+/**
+ * File names directly inside `path` on the share (retention, spec 19).
+ * Throws on any non-multistatus response — the caller decides what a failed
+ * cleanup means for the run.
+ */
+export async function listWebdav(
+  host: string,
+  username: string,
+  password: string,
+  path: string,
+): Promise<string[]> {
+  const base = host.replace(/\/+$/, '')
+  const rel = path ? path.split('/').map(encodeURIComponent).join('/') + '/' : ''
+  const url = `${base}/remote.php/dav/files/${encodeURIComponent(username)}/${rel}`
+  const authz = 'Basic ' + Buffer.from(`${username}:${password}`).toString('base64')
+  const res = await fetch(url, {
+    method: 'PROPFIND',
+    headers: { Authorization: authz, Depth: '1', 'Content-Type': 'application/xml' },
+    body: PROPFIND_BODY,
+    signal: AbortSignal.timeout(10_000),
+  })
+  if (!(res.status === 207 || res.ok)) {
+    throw new Error(`HTTP ${res.status}`)
+  }
+  return parseFiles(await res.text(), username, path)
+}
+
+/**
+ * Delete one file from the share (retention, spec 19). A 404 counts as success:
+ * retention only ever reduces to a target count, so a file someone already
+ * removed is the outcome we wanted.
+ */
+export async function deleteWebdav(
+  host: string,
+  username: string,
+  password: string,
+  filePath: string,
+): Promise<void> {
+  const base = host.replace(/\/+$/, '')
+  const rel = filePath.split('/').filter(Boolean).map(encodeURIComponent).join('/')
+  const url = `${base}/remote.php/dav/files/${encodeURIComponent(username)}/${rel}`
+  const authz = 'Basic ' + Buffer.from(`${username}:${password}`).toString('base64')
+  const res = await fetch(url, {
+    method: 'DELETE',
+    headers: { Authorization: authz },
+    signal: AbortSignal.timeout(10_000),
+  })
+  if (!res.ok && res.status !== 404) {
+    throw new Error(`HTTP ${res.status}`)
   }
 }

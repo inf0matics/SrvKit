@@ -17,6 +17,8 @@ import { dirname } from 'node:path'
 export interface TargetSummary {
   id: string
   name: string
+  /** 'nextcloud' (WebDAV) or 'local' (a directory in the targets mount). */
+  type: string
   host: string
   username: string
   /** Base path on the share; all jobs upload beneath it. */
@@ -31,6 +33,8 @@ export interface TargetRecord extends TargetSummary {
 
 export interface TargetInput {
   name: string
+  /** 'nextcloud' (default) or 'local'. Fixed at creation — never updatable. */
+  type?: string
   host: string
   username: string
   /** Already-encrypted password blob. */
@@ -226,6 +230,7 @@ export function openStore(path: string): Store {
     `CREATE TABLE IF NOT EXISTS targets (
        id TEXT PRIMARY KEY,
        name TEXT NOT NULL,
+       type TEXT NOT NULL DEFAULT 'nextcloud',
        host TEXT NOT NULL,
        username TEXT NOT NULL,
        password TEXT NOT NULL,
@@ -239,6 +244,10 @@ export function openStore(path: string): Store {
   }[]
   if (!targetCols.some((c) => c.name === 'root_dir')) {
     db.exec("ALTER TABLE targets ADD COLUMN root_dir TEXT NOT NULL DEFAULT ''")
+  }
+  // Every target that predates local directories is a Nextcloud target.
+  if (!targetCols.some((c) => c.name === 'type')) {
+    db.exec("ALTER TABLE targets ADD COLUMN type TEXT NOT NULL DEFAULT 'nextcloud'")
   }
   db.exec(
     `CREATE TABLE IF NOT EXISTS jobs (
@@ -362,17 +371,19 @@ export function openStore(path: string): Store {
 
   // --- Targets ---
   const listTargetsStmt = db.prepare(
-    `SELECT id, name, host, username, root_dir AS rootDir, created_at AS createdAt
+    `SELECT id, name, type, host, username, root_dir AS rootDir,
+            created_at AS createdAt
        FROM targets ORDER BY created_at`,
   )
   const getTargetStmt = db.prepare(
-    `SELECT id, name, host, username, password, root_dir AS rootDir,
+    `SELECT id, name, type, host, username, password, root_dir AS rootDir,
             created_at AS createdAt
        FROM targets WHERE id = ?`,
   )
   const insertTargetStmt = db.prepare(
-    `INSERT INTO targets (id, name, host, username, password, root_dir, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO targets
+       (id, name, type, host, username, password, root_dir, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
   )
   const deleteTargetStmt = db.prepare('DELETE FROM targets WHERE id = ?')
 
@@ -460,9 +471,11 @@ export function openStore(path: string): Store {
     createTarget(input: TargetInput): TargetSummary {
       const id = randomUUID()
       const createdAt = new Date().toISOString()
+      const type = input.type || 'nextcloud'
       insertTargetStmt.run(
         id,
         input.name,
+        type,
         input.host,
         input.username,
         input.password,
@@ -472,6 +485,7 @@ export function openStore(path: string): Store {
       return {
         id,
         name: input.name,
+        type,
         host: input.host,
         username: input.username,
         rootDir: input.rootDir,
@@ -480,7 +494,9 @@ export function openStore(path: string): Store {
     },
 
     updateTarget(id: string, fields: Partial<TargetInput>): boolean {
-      const columns: Record<keyof TargetInput, string> = {
+      // `type` is absent on purpose: the fields behind a target type differ, so
+      // a type is fixed at creation. Switching means delete and re-create.
+      const columns: Record<Exclude<keyof TargetInput, 'type'>, string> = {
         name: 'name',
         host: 'host',
         username: 'username',
@@ -489,7 +505,7 @@ export function openStore(path: string): Store {
       }
       const sets: string[] = []
       const values: string[] = []
-      for (const key of Object.keys(columns) as (keyof TargetInput)[]) {
+      for (const key of Object.keys(columns) as (keyof typeof columns)[]) {
         if (fields[key] !== undefined) {
           sets.push(`${columns[key]} = ?`)
           values.push(fields[key]!)
