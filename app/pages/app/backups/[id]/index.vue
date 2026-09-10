@@ -10,6 +10,11 @@ const target = computed(() =>
 )
 
 usePageTitle(() => target.value?.name ?? 'Backups')
+
+// A local target has no URL — its header shows the directory it writes to.
+const destination = computed(() =>
+  target.value?.type === 'local' ? '/' + target.value.rootDir : target.value?.host,
+)
 </script>
 
 <template>
@@ -18,7 +23,7 @@ usePageTitle(() => target.value?.name ?? 'Backups')
 
     <template v-if="target">
       <h1>{{ target.name }}</h1>
-      <p class="host tsp-muted">{{ target.host }}</p>
+      <p class="host tsp-muted" data-testid="target-destination">{{ destination }}</p>
       <TargetLocation :target="target" @changed="refresh" />
 
       <hr class="divider">

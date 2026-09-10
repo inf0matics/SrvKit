@@ -21,7 +21,14 @@ const modal = reactive<{ open: boolean; id: string | null }>({
   open: false,
   id: null,
 })
-const form = reactive({ name: '', host: '', username: '', password: '' })
+const form = reactive({
+  type: 'nextcloud',
+  name: '',
+  host: '',
+  username: '',
+  password: '',
+})
+const isLocal = computed(() => form.type === 'local')
 const formError = ref('')
 const saving = ref(false)
 
@@ -30,15 +37,30 @@ const modalTesting = ref(false)
 
 function openAdd() {
   modal.id = null
-  Object.assign(form, { name: '', host: '', username: '', password: '' })
+  Object.assign(form, {
+    type: 'nextcloud',
+    name: '',
+    host: '',
+    username: '',
+    password: '',
+  })
   formError.value = ''
   modalTest.value = null
   modal.open = true
 }
 
+// The type decides which fields exist, so it is chosen once and then fixed —
+// switching means deleting the target and creating a new one.
+function chooseType(type: string) {
+  form.type = type
+  modalTest.value = null
+  formError.value = ''
+}
+
 function openEdit(t: Target) {
   modal.id = t.id
   Object.assign(form, {
+    type: t.type,
     name: t.name,
     host: t.host,
     username: t.username,
@@ -60,6 +82,12 @@ async function testForm() {
         `/api/backups/targets/${modal.id}/test`,
         { method: 'POST' },
       )
+    } else if (isLocal.value) {
+      // A new local target has no root yet — this tests the targets mount itself.
+      modalTest.value = await $fetch<TestResult>('/api/backups/targets/test', {
+        method: 'POST',
+        body: { type: 'local', rootDir: '' },
+      })
     } else {
       modalTest.value = await $fetch<TestResult>('/api/backups/targets/test', {
         method: 'POST',
@@ -98,6 +126,15 @@ async function save() {
     saving.value = false
   }
 }
+
+/* ---- row display ---- */
+const TYPE_LABELS: Record<string, string> = {
+  nextcloud: 'Nextcloud',
+  local: 'Local',
+}
+const typeLabel = (t: Target) => TYPE_LABELS[t.type] ?? 'Nextcloud'
+// A local row shows its directory where a Nextcloud row shows its host.
+const destination = (t: Target) => (t.type === 'local' ? '/' + t.rootDir : t.host)
 
 /* ---- inline delete confirmation ---- */
 const confirmingDelete = ref<string | null>(null)
@@ -139,8 +176,11 @@ async function confirmDelete(t: Target) {
       </template>
       <template v-else>
         <NuxtLink :to="`/app/backups/${t.id}`" class="target-link">
-          <span class="t-name">{{ t.name }}</span>
-          <span class="t-host tsp-muted">{{ t.host }}</span>
+          <span class="t-title">
+            <span class="t-name">{{ t.name }}</span>
+            <span class="t-type-badge" data-testid="target-type">{{ typeLabel(t) }}</span>
+          </span>
+          <span class="t-host tsp-muted">{{ destination(t) }}</span>
         </NuxtLink>
         <div class="t-actions">
           <button class="tsp-btn tsp-btn-sm" @click="openEdit(t)">Edit</button>
@@ -160,34 +200,73 @@ async function confirmDelete(t: Target) {
       <div class="tsp-card">
         <h2>{{ modal.id ? 'Edit Target' : 'Add Target' }}</h2>
 
+        <!-- Step 1: the type. Fixed once the target exists — the fields behind
+             it differ, so switching means delete and re-create. -->
+        <div v-if="!modal.id" class="field">
+          <span>Type</span>
+          <div class="type-choice" role="radiogroup" aria-label="Target type">
+            <button
+              type="button"
+              class="type-option"
+              role="radio"
+              :aria-checked="!isLocal"
+              :class="{ active: !isLocal }"
+              @click="chooseType('nextcloud')"
+            >
+              Nextcloud
+            </button>
+            <button
+              type="button"
+              class="type-option"
+              role="radio"
+              :aria-checked="isLocal"
+              :class="{ active: isLocal }"
+              @click="chooseType('local')"
+            >
+              Local directory
+            </button>
+          </div>
+        </div>
+
         <label class="field">
           <span>Name</span>
           <input v-model="form.name" class="tsp-input" type="text" autocomplete="off">
         </label>
-        <label class="field">
-          <span>Host</span>
-          <input
-            v-model="form.host"
-            class="tsp-input"
-            type="url"
-            placeholder="https://nextcloud.example.com"
-            autocomplete="off"
-          >
-        </label>
-        <label class="field">
-          <span>Username</span>
-          <input v-model="form.username" class="tsp-input" type="text" autocomplete="off">
-        </label>
-        <label class="field">
-          <span>Password</span>
-          <input
-            v-model="form.password"
-            class="tsp-input"
-            type="password"
-            :placeholder="modal.id ? 'Leave blank to keep current' : ''"
-            autocomplete="new-password"
-          >
-        </label>
+
+        <template v-if="!isLocal">
+          <label class="field">
+            <span>Host</span>
+            <input
+              v-model="form.host"
+              class="tsp-input"
+              type="url"
+              placeholder="https://nextcloud.example.com"
+              autocomplete="off"
+            >
+          </label>
+          <label class="field">
+            <span>Username</span>
+            <input v-model="form.username" class="tsp-input" type="text" autocomplete="off">
+          </label>
+          <label class="field">
+            <span>Password</span>
+            <input
+              v-model="form.password"
+              class="tsp-input"
+              type="password"
+              :placeholder="modal.id ? 'Leave blank to keep current' : ''"
+              autocomplete="new-password"
+            >
+          </label>
+        </template>
+
+        <p v-else class="local-note tsp-muted" data-testid="local-note">
+          A local target lives on the same machine as the data it protects. It
+          survives a bad migration or a broken container — not a dead disk or a
+          lost server. Keep an off-site target alongside it.
+          <br>
+          Pick the directory after saving, with <strong>Choose location</strong>.
+        </p>
 
         <p v-if="formError" class="test-err">{{ formError }}</p>
         <p v-if="modalTest" :class="modalTest.ok ? 'test-ok' : 'test-err'">
@@ -294,6 +373,54 @@ async function confirmDelete(t: Target) {
   margin: 10px 0 0;
   font-size: 0.9rem;
   color: var(--tsp-danger);
+}
+
+.t-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* Muted pill badge — TSP chip style, as used for job types. */
+.t-type-badge {
+  display: inline-block;
+  padding: 1px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  background: var(--tsp-border);
+  color: var(--tsp-text-muted);
+  flex-shrink: 0;
+}
+
+.type-choice {
+  display: flex;
+  gap: 8px;
+}
+
+.type-option {
+  flex: 1;
+  padding: 9px 12px;
+  border: 1px solid var(--tsp-border);
+  border-radius: var(--tsp-radius);
+  background: transparent;
+  color: var(--tsp-text-muted);
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.type-option.active {
+  border-color: var(--tsp-primary);
+  color: var(--tsp-primary);
+}
+
+.local-note {
+  margin: 0 0 0.9rem;
+  font-size: 0.82rem;
+  line-height: 1.5;
 }
 
 /* Modal */

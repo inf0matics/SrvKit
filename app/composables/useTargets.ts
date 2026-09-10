@@ -1,6 +1,8 @@
 export interface TargetSummary {
   id: string
   name: string
+  /** 'nextcloud' (WebDAV) or 'local' (a directory in the targets mount). */
+  type: string
   host: string
   username: string
   rootDir: string

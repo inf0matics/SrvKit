@@ -125,13 +125,19 @@ const TYPE_LABELS: Record<string, string> = {
 const typeLabel = (job: Job) => TYPE_LABELS[job.type] ?? 'Files'
 const fmtNext = (iso: string) => formatNextRun(new Date(iso), timezone.value)
 
-/** Full Nextcloud destination path: {host}/{root}/{subdir}/{name}[_date].tar.gz */
+/**
+ * Full destination path: {host}/{root}/{subdir}/{name}[_date].tar.gz on
+ * Nextcloud, or /{root}/{subdir}/… for a local directory, which has no host.
+ */
 function destPath(job: Job): string {
-  const host = props.target.host.replace(/^https?:\/\//, '').replace(/\/+$/, '')
+  const isLocal = props.target.type === 'local'
+  const host = isLocal
+    ? ''
+    : props.target.host.replace(/^https?:\/\//, '').replace(/\/+$/, '')
   const date = new Date().toISOString().slice(0, 10)
   const file = job.name + (job.dateSuffix ? `_${date}` : '') + '.tar.gz'
   const segs = [host, props.target.rootDir, job.subdirectory].filter(Boolean)
-  return [...segs, file].join('/')
+  return (isLocal ? '/' : '') + [...segs, file].join('/')
 }
 </script>
 
