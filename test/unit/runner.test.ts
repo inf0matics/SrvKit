@@ -299,3 +299,236 @@ test('a sqlite job writes a dated archive into a local target directory', async 
   assert.equal(written.length, 1)
   assert.match(written[0]!, /^LocalDB_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.tar\.gz$/)
 })
+
+// --- Retention: keep the newest N (spec 19) ---
+
+/** A files job writing into `<targets>/<rootDir>/<subdir>` on a local target. */
+function localRetentionJob(name: string, rootDir: string, keepVersions: number) {
+  mkdirSync(join(base, 'targets', rootDir), { recursive: true })
+  const targetId = store().createTarget({
+    name: `T-${rootDir}`,
+    type: 'local',
+    host: '',
+    username: '',
+    password: '',
+    rootDir,
+  }).id
+  return store().createJob({
+    targetId,
+    name,
+    type: 'files',
+    sourcePath: 'root',
+    includes: ['file.txt'],
+    output: 'single',
+    subdirectory: '',
+    dateSuffix: true,
+    timeSuffix: false,
+    keepVersions,
+    trigger: 'filewatcher',
+    container: '',
+    database: '',
+    dbUser: '',
+    dbPassword: '',
+    schedule: '',
+  }).id
+}
+
+/** Pre-existing archives from earlier runs. */
+function seed(rootDir: string, names: string[]) {
+  for (const n of names) writeFileSync(join(base, 'targets', rootDir, n), 'old')
+}
+
+test('a successful run trims the directory to the newest N archives', async () => {
+  const jobId2 = localRetentionJob('Keep7', 'keep7', 3)
+  seed('keep7', [
+    'Keep7_2026-01-01.tar.gz',
+    'Keep7_2026-01-02.tar.gz',
+    'Keep7_2026-01-03.tar.gz',
+    'Keep7_2026-01-04.tar.gz',
+  ])
+
+  await runBackup(jobId2)
+
+  const job = store().getJob(jobId2)
+  assert.equal(job?.lastStatus, 'success')
+  const left = readdirSync(join(base, 'targets', 'keep7')).sort()
+  assert.equal(left.length, 3)
+  // The archive this run wrote is today's, and is always among the newest.
+  const today = new Date().toISOString().slice(0, 10)
+  assert.ok(left.includes(`Keep7_${today}.tar.gz`))
+  // The two oldest are gone; the newest of the seeded ones survives.
+  assert.ok(!left.includes('Keep7_2026-01-01.tar.gz'))
+  assert.ok(!left.includes('Keep7_2026-01-02.tar.gz'))
+})
+
+test('retention leaves another job archives in the same directory alone', async () => {
+  const jobId2 = localRetentionJob('Mine', 'shared', 2)
+  seed('shared', [
+    'Mine_2026-01-01.tar.gz',
+    'Mine_2026-01-02.tar.gz',
+    'Mine_2026-01-03.tar.gz',
+    'Other_2026-01-01.tar.gz',
+    'Mine-old_2026-01-01.tar.gz',
+    'notes.txt',
+  ])
+
+  await runBackup(jobId2)
+
+  const left = readdirSync(join(base, 'targets', 'shared')).sort()
+  assert.ok(left.includes('Other_2026-01-01.tar.gz'))
+  assert.ok(left.includes('Mine-old_2026-01-01.tar.gz'))
+  assert.ok(left.includes('notes.txt'))
+  assert.equal(left.filter((f) => /^Mine_/.test(f)).length, 2)
+})
+
+test('keepVersions 0 deletes nothing', async () => {
+  const jobId2 = localRetentionJob('KeepAll', 'keepall', 0)
+  seed('keepall', ['KeepAll_2026-01-01.tar.gz', 'KeepAll_2026-01-02.tar.gz'])
+
+  await runBackup(jobId2)
+
+  assert.equal(store().getJob(jobId2)?.lastStatus, 'success')
+  const left = readdirSync(join(base, 'targets', 'keepall'))
+  assert.equal(left.length, 3) // both seeded + the new one
+})
+
+test('a failed run deletes nothing', async () => {
+  mkdirSync(join(base, 'sources', 'blank'), { recursive: true })
+  writeFileSync(join(base, 'sources', 'blank', 'nothing.txt'), '')
+  mkdirSync(join(base, 'targets', 'failrun'), { recursive: true })
+  const targetId2 = store().createTarget({
+    name: 'T-failrun',
+    type: 'local',
+    host: '',
+    username: '',
+    password: '',
+    rootDir: 'failrun',
+  }).id
+  const jobId2 = store().createJob({
+    targetId: targetId2,
+    name: 'Doomed',
+    type: 'files',
+    sourcePath: 'blank',
+    includes: ['nothing.txt'],
+    output: 'single',
+    subdirectory: '',
+    dateSuffix: true,
+    timeSuffix: false,
+    keepVersions: 2,
+    trigger: 'filewatcher',
+    container: '',
+    database: '',
+    dbUser: '',
+    dbPassword: '',
+    schedule: '',
+  }).id
+  seed('failrun', [
+    'Doomed_2026-01-01.tar.gz',
+    'Doomed_2026-01-02.tar.gz',
+    'Doomed_2026-01-03.tar.gz',
+  ])
+
+  await runBackup(jobId2)
+
+  // A failed backup must never be able to delete a good one.
+  assert.equal(store().getJob(jobId2)?.lastStatus, 'failed')
+  assert.equal(readdirSync(join(base, 'targets', 'failrun')).length, 3)
+})
+
+test('retention on a Nextcloud target lists and deletes over WebDAV', async () => {
+  const ncJobId = store().createJob({
+    targetId,
+    name: 'NCKeep',
+    type: 'files',
+    sourcePath: 'root',
+    includes: ['file.txt'],
+    output: 'single',
+    subdirectory: 'nc',
+    dateSuffix: true,
+    timeSuffix: false,
+    keepVersions: 2,
+    trigger: 'filewatcher',
+    container: '',
+    database: '',
+    dbUser: '',
+    dbPassword: '',
+    schedule: '',
+  }).id
+
+  const today = new Date().toISOString().slice(0, 10)
+  const listing = `<d:multistatus xmlns:d="DAV:">
+    <d:response><d:href>/remote.php/dav/files/alice/srvkit/nc/</d:href>
+      <d:propstat><d:prop><d:resourcetype><d:collection/></d:resourcetype></d:prop></d:propstat></d:response>
+    ${['NCKeep_2026-01-01.tar.gz', 'NCKeep_2026-01-02.tar.gz', 'NCKeep_2026-01-03.tar.gz', `NCKeep_${today}.tar.gz`]
+      .map(
+        (n) => `<d:response><d:href>/remote.php/dav/files/alice/srvkit/nc/${n}</d:href>
+      <d:propstat><d:prop><d:resourcetype/></d:prop></d:propstat></d:response>`,
+      )
+      .join('')}
+  </d:multistatus>`
+
+  const deleted: string[] = []
+  globalThis.fetch = (async (url: string, init: { method: string }) => {
+    if (init.method === 'PROPFIND') {
+      return new Response(listing, { status: 207 })
+    }
+    if (init.method === 'DELETE') {
+      deleted.push(decodeURIComponent(String(url).split('/').pop()!))
+      return new Response(null, { status: 204 })
+    }
+    return new Response('', { status: 201 }) // MKCOL / PUT
+  }) as unknown as typeof fetch
+
+  await runBackup(ncJobId)
+
+  assert.equal(store().getJob(ncJobId)?.lastStatus, 'success')
+  // Keeps today's archive plus the newest seeded one; the two oldest go.
+  assert.deepEqual(deleted.sort(), ['NCKeep_2026-01-01.tar.gz', 'NCKeep_2026-01-02.tar.gz'])
+})
+
+test('a cleanup failure leaves the run green and logs the reason', async () => {
+  const ncJobId = store().createJob({
+    targetId,
+    name: 'NCBroken',
+    type: 'files',
+    sourcePath: 'root',
+    includes: ['file.txt'],
+    output: 'single',
+    subdirectory: 'nc2',
+    dateSuffix: true,
+    timeSuffix: false,
+    keepVersions: 2,
+    trigger: 'filewatcher',
+    container: '',
+    database: '',
+    dbUser: '',
+    dbPassword: '',
+    schedule: '',
+  }).id
+
+  // The upload succeeds; only the cleanup listing fails.
+  globalThis.fetch = (async (_url: string, init: { method: string }) => {
+    if (init.method === 'PROPFIND') return new Response('', { status: 500 })
+    return new Response('', { status: 201 })
+  }) as unknown as typeof fetch
+
+  const logged: string[] = []
+  const realError = console.error
+  console.error = (...args: unknown[]) => {
+    logged.push(args.map(String).join(' '))
+  }
+  try {
+    await runBackup(ncJobId)
+  } finally {
+    console.error = realError
+  }
+
+  // The backup is safely uploaded — failing the run would alert about data
+  // that is fine.
+  const job = store().getJob(ncJobId)
+  assert.equal(job?.lastStatus, 'success')
+  assert.equal(job?.lastError, null)
+  const line = logged.find((l) => l.includes('NCBroken'))
+  assert.ok(line, `expected a log line naming the job, got: ${JSON.stringify(logged)}`)
+  assert.match(line!, /500/)
+})

@@ -10,12 +10,13 @@ import {
 } from 'node:fs'
 import { store } from './srvkit.ts'
 import { archiveFilename, decryptPassword, sourcesDir } from './backups.ts'
-import { driverForTarget } from './target-driver.ts'
+import { driverForTarget, type TargetDriver } from './target-driver.ts'
+import { archivesToDelete, MIN_KEEP_VERSIONS } from '../../lib/retention.ts'
 import { createArchive, createFileArchive, contentBytes } from '../../lib/archive.ts'
 import { backupSqliteFile } from '../../lib/sqlite-backup.ts'
 import { dockerAvailable, pgDump, mysqlDump } from './docker.ts'
 import { handleRunResult } from './alerts.ts'
-import type { RunResult } from '../../lib/store.ts'
+import type { RunResult, JobRecord } from '../../lib/store.ts'
 
 // In-memory set of jobs currently running. Runtime-only (a run interrupted by a
 // restart should not look "running" forever — startup clears this naturally).
@@ -23,6 +24,33 @@ const runningJobs = new Set<string>()
 
 export function isRunning(id: string): boolean {
   return runningJobs.has(id)
+}
+
+/**
+ * Delete this job's older archives, keeping the newest N. Retention is a
+ * cleanup step, not the backup: a failure here is logged and the run stays
+ * green, because the archive is safely written and failing the run would raise
+ * an alert about data that is fine. Nothing is retried — the next run trims to
+ * N anyway, since selection reduces to the target count rather than removing
+ * one extra file.
+ */
+async function pruneVersions(
+  job: JobRecord,
+  driver: TargetDriver,
+  dir: string,
+  currentArchive: string,
+): Promise<void> {
+  if (job.keepVersions < MIN_KEEP_VERSIONS) return
+  try {
+    const files = await driver.list(dir)
+    for (const name of archivesToDelete(files, job.name, job.keepVersions, currentArchive)) {
+      await driver.delete((dir ? dir + '/' : '') + name)
+    }
+  } catch (e) {
+    console.error(
+      `[backup] retention failed for job "${job.name}": ${(e as Error).message}`,
+    )
+  }
 }
 
 /**
@@ -117,11 +145,15 @@ export async function runBackup(jobId: string): Promise<void> {
     try {
       const body = readFileSync(tarPath)
       const dir = [target.rootDir, job.subdirectory].filter(Boolean).join('/')
-      const destPath =
-        (dir ? dir + '/' : '') +
-        archiveFilename(job.name, job.dateSuffix, job.timeSuffix)
-      await driverForTarget(target).upload(destPath, body)
+      const filename = archiveFilename(job.name, job.dateSuffix, job.timeSuffix)
+      const driver = driverForTarget(target)
+      await driver.upload((dir ? dir + '/' : '') + filename, body)
+      // Record the good backup before cleaning up: a crash during retention
+      // must not lose the record of an archive that is already safely written.
       await finish({ at, status: 'success', error: null, bytes })
+      // 3. Retention — never after a failed run: a failed backup must not be
+      //    able to delete a good one. Never throws.
+      await pruneVersions(job, driver, dir, filename)
     } catch (e) {
       await fail(`Upload failed: ${(e as Error).message}`, bytes)
     }
