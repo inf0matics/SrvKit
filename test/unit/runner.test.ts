@@ -1,6 +1,6 @@
 import { test, before, after, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
@@ -10,6 +10,7 @@ const base = mkdtempSync(join(tmpdir(), 'srvkit-runner-'))
 process.env.DATABASE_PATH = join(base, 'db.sqlite')
 process.env.ENCRYPTION_KEY = 'runner-test-key'
 process.env.BACKUP_SOURCES_DIR = join(base, 'sources')
+process.env.BACKUP_TARGETS_DIR = join(base, 'targets')
 
 const { store } = await import('../../server/utils/srvkit.ts')
 const { encryptPassword } = await import('../../server/utils/backups.ts')
@@ -171,4 +172,83 @@ test('a files job whose sources are all empty fails and uploads nothing', async 
     calls.find((c) => c.method === 'PUT'),
     undefined,
   )
+})
+
+// --- Local directory targets (spec 18) ---
+
+test('a files job writes its archive into a local target directory', async () => {
+  mkdirSync(join(base, 'targets', 'nas'), { recursive: true })
+  const localTargetId = store().createTarget({
+    name: 'Local',
+    type: 'local',
+    host: '',
+    username: '',
+    password: '',
+    rootDir: 'nas',
+  }).id
+  const localJobId = store().createJob({
+    targetId: localTargetId,
+    name: 'LocalJob',
+    type: 'files',
+    sourcePath: 'root',
+    includes: ['file.txt'],
+    output: 'single',
+    subdirectory: 'sub',
+    dateSuffix: false,
+    timeSuffix: false,
+    trigger: 'filewatcher',
+    container: '',
+    database: '',
+    dbUser: '',
+    dbPassword: '',
+    schedule: '',
+  }).id
+
+  // A local run must not touch the network at all.
+  globalThis.fetch = (async () => {
+    throw new Error('a local target must not make network requests')
+  }) as typeof fetch
+
+  await runBackup(localJobId)
+
+  const job = store().getJob(localJobId)
+  assert.equal(job?.lastStatus, 'success')
+  assert.equal(job?.lastError, null)
+  assert.equal(job?.lastBytes, 5) // 'hello'
+  // Same archive name it would have produced on Nextcloud.
+  assert.deepEqual(readdirSync(join(base, 'targets', 'nas', 'sub')), ['LocalJob.tar.gz'])
+})
+
+test('a local run fails cleanly when the target directory is not writable', async () => {
+  const brokenTargetId = store().createTarget({
+    name: 'Broken',
+    type: 'local',
+    host: '',
+    username: '',
+    password: '',
+    rootDir: '../outside',
+  }).id
+  const brokenJobId = store().createJob({
+    targetId: brokenTargetId,
+    name: 'BrokenJob',
+    type: 'files',
+    sourcePath: 'root',
+    includes: ['file.txt'],
+    output: 'single',
+    subdirectory: '',
+    dateSuffix: false,
+    timeSuffix: false,
+    trigger: 'filewatcher',
+    container: '',
+    database: '',
+    dbUser: '',
+    dbPassword: '',
+    schedule: '',
+  }).id
+
+  await runBackup(brokenJobId)
+
+  const job = store().getJob(brokenJobId)
+  assert.equal(job?.lastStatus, 'failed')
+  assert.match(job!.lastError!, /Upload failed/)
 })

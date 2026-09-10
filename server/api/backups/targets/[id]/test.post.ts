@@ -1,13 +1,13 @@
 import { store } from '../../../../utils/srvkit.ts'
-import { decryptPassword, testWebdav } from '../../../../utils/backups.ts'
+import { driverForTarget } from '../../../../utils/target-driver.ts'
 
-// Test connection: decrypt the stored password and run a WebDAV PROPFIND.
+// Test a stored target: a WebDAV PROPFIND, or a probe write into the local
+// directory — whichever this target's driver does.
 export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id')!
   const target = store().getTarget(id)
   if (!target) {
     throw createError({ statusCode: 404, statusMessage: 'Target not found' })
   }
-  const password = decryptPassword(target.password)
-  return testWebdav(target.host, target.username, password)
+  return driverForTarget(target).test()
 })

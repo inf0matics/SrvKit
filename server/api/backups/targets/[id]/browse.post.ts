@@ -1,11 +1,8 @@
 import { store } from '../../../../utils/srvkit.ts'
-import {
-  browseWebdav,
-  decryptPassword,
-  normalizeRoot,
-} from '../../../../utils/backups.ts'
+import { normalizeRoot } from '../../../../utils/backups.ts'
+import { driverForTarget } from '../../../../utils/target-driver.ts'
 
-// List sub-directories of a path on the target's share, for the location picker.
+// List sub-directories of a path on the target, for the location picker.
 export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id')!
   const target = store().getTarget(id)
@@ -14,6 +11,5 @@ export default defineEventHandler(async (event) => {
   }
   const body = await readBody<Record<string, unknown>>(event)
   const path = normalizeRoot(body?.path)
-  const password = decryptPassword(target.password)
-  return browseWebdav(target.host, target.username, password, path)
+  return driverForTarget(target).browse(path)
 })

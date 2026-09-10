@@ -253,6 +253,18 @@ export function isValidHost(host: string): boolean {
   return true
 }
 
+/**
+ * A target's type, defaulting to Nextcloud so a request from before local
+ * targets existed still means what it always did.
+ */
+export function parseTargetType(v: unknown): string {
+  const type = trimStr(v) || 'nextcloud'
+  if (type !== 'nextcloud' && type !== 'local') {
+    throw createError({ statusCode: 400, statusMessage: 'unsupported target type' })
+  }
+  return type
+}
+
 /** Trim whitespace and strip leading/trailing slashes for clean path joins. */
 export function normalizeRoot(root: unknown): string {
   return trimStr(root).replace(/^\/+|\/+$/g, '')

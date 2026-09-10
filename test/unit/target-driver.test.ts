@@ -154,3 +154,35 @@ test('nextcloud driver delete throws on a real failure', async () => {
   globalThis.fetch = (async () => new Response('', { status: 403 })) as unknown as typeof fetch
   await assert.rejects(() => driverFor(nextcloud).delete('srvkit/x.tar.gz'), /403/)
 })
+
+/* ---- validation used by the API ---- */
+
+const { parseTargetType } = await import('../../server/utils/backups.ts')
+const { isValidLocalRoot } = await import('../../server/utils/target-driver.ts')
+
+test('parseTargetType defaults to nextcloud', () => {
+  assert.equal(parseTargetType(undefined), 'nextcloud')
+  assert.equal(parseTargetType(''), 'nextcloud')
+  assert.equal(parseTargetType('nextcloud'), 'nextcloud')
+})
+
+test('parseTargetType accepts local', () => {
+  assert.equal(parseTargetType('local'), 'local')
+})
+
+test('parseTargetType rejects anything else', () => {
+  assert.throws(() => parseTargetType('s3'), /unsupported target type/i)
+  assert.throws(() => parseTargetType('../local'), /unsupported target type/i)
+})
+
+test('isValidLocalRoot accepts paths inside the targets mount', () => {
+  assert.equal(isValidLocalRoot(''), true)
+  assert.equal(isValidLocalRoot('nas'), true)
+  assert.equal(isValidLocalRoot('nas/db'), true)
+})
+
+test('isValidLocalRoot rejects paths escaping the targets mount', () => {
+  assert.equal(isValidLocalRoot('..'), false)
+  assert.equal(isValidLocalRoot('../../etc'), false)
+  assert.equal(isValidLocalRoot('nas/../../etc'), false)
+})

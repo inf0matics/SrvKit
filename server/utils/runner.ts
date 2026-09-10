@@ -9,12 +9,8 @@ import {
   statSync,
 } from 'node:fs'
 import { store } from './srvkit.ts'
-import {
-  archiveFilename,
-  decryptPassword,
-  sourcesDir,
-  uploadToWebdav,
-} from './backups.ts'
+import { archiveFilename, decryptPassword, sourcesDir } from './backups.ts'
+import { driverForTarget } from './target-driver.ts'
 import { createArchive, createFileArchive, contentBytes } from '../../lib/archive.ts'
 import { backupSqliteFile } from '../../lib/sqlite-backup.ts'
 import { dockerAvailable, pgDump, mysqlDump } from './docker.ts'
@@ -120,12 +116,11 @@ export async function runBackup(jobId: string): Promise<void> {
     // 2. Upload.
     try {
       const body = readFileSync(tarPath)
-      const password = decryptPassword(target.password)
       const dir = [target.rootDir, job.subdirectory].filter(Boolean).join('/')
       const destPath =
         (dir ? dir + '/' : '') +
         archiveFilename(job.name, job.dateSuffix, job.timeSuffix)
-      await uploadToWebdav(target.host, target.username, password, destPath, body)
+      await driverForTarget(target).upload(destPath, body)
       await finish({ at, status: 'success', error: null, bytes })
     } catch (e) {
       await fail(`Upload failed: ${(e as Error).message}`, bytes)

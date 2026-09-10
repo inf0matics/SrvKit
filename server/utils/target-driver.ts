@@ -9,6 +9,7 @@ import {
   type BrowseResult,
 } from './backups.ts'
 import {
+  resolveInBase,
   testLocalDir,
   browseLocalDir,
   uploadLocalFile,
@@ -96,4 +97,13 @@ export function driverForTarget(target: TargetRecord): TargetDriver {
     password: target.type === 'local' ? '' : decryptPassword(target.password),
     rootDir: target.rootDir,
   })
+}
+
+/**
+ * A local target's root must stay inside the targets mount. Rejecting an
+ * escape here is what stops an authenticated user from making SrvKit write
+ * anywhere the container can reach.
+ */
+export function isValidLocalRoot(rootDir: string): boolean {
+  return resolveInBase(targetsDir(), rootDir) !== null
 }
