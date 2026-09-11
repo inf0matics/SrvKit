@@ -804,11 +804,22 @@ test.describe.serial('backups', () => {
     expect(left).toContain('Nightly files.tar.gz')
   })
 
-  test('retention: running again on an already-trimmed directory changes nothing', async () => {
-    const before = nightlyFiles()
+  test('retention: running again holds the count instead of trimming further', async () => {
+    // Every run is its own file (keep-N forces the time suffix), so a second
+    // run adds one archive and drops the oldest — it does not leave the folder
+    // byte-identical. What must hold is the count: retention reduces to N and
+    // stops, and files that are not this job's archives are never touched.
+    const mine = () => nightlyFiles().filter((f) => /^Nightly files_/.test(f))
+    expect(mine()).toHaveLength(2)
+
     await page.getByRole('button', { name: 'Run job now' }).click()
     await expect(page.getByTestId('job-status')).toContainText('today')
-    await expect.poll(() => nightlyFiles(), { timeout: 5000 }).toEqual(before)
+    await expect.poll(() => mine().length, { timeout: 5000 }).toBe(2)
+
+    const left = nightlyFiles()
+    expect(left).toContain('Other job_2026-01-01.tar.gz')
+    expect(left).toContain('Nightly files-old_2026-01-01.tar.gz')
+    expect(left).toContain('Nightly files.tar.gz')
   })
 
   test('retention: keeping versions without a date suffix is refused', async () => {
