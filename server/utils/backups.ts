@@ -16,7 +16,6 @@ import { isValidCron } from '../../lib/cron.ts'
 import { resolveWithin, isSafeRelPath } from '../../lib/paths.ts'
 import {
   isValidRetention,
-  retentionMode,
   MIN_KEEP_VERSIONS,
   type RetentionColumns,
 } from '../../lib/retention.ts'
@@ -110,7 +109,6 @@ export function parseNewJob(body: Record<string, unknown> | null): JobInput {
     dateSuffix: false,
     timeSuffix: false,
     keepVersions: 0,
-    rotation: 'off',
     trigger: 'filewatcher',
     schedule: '',
     ...emptyPgFields,
@@ -146,7 +144,6 @@ export function parseJobInput(
       statusMessage: 'The sub-directory must stay inside the target root.',
     })
   }
-  const rotation = retentionMode(trimStr(body?.rotation))
   const dateSuffix = body?.dateSuffix === true
   const timeSuffix = body?.timeSuffix === true
   // Absent means an older client that predates retention: default it off. A
@@ -167,7 +164,7 @@ export function parseJobInput(
   // Unreachable through the form, but a stale client or a hand-crafted request
   // must not create a job that silently never cleans up, or one carrying a keep
   // count that its rotation ignores.
-  const columns = { rotation, dateSuffix, timeSuffix, keepVersions }
+  const columns = { dateSuffix, timeSuffix, keepVersions }
   if (!isValidRetention(columns)) {
     throw createError({ statusCode: 400, statusMessage: retentionProblem(columns) })
   }
@@ -264,7 +261,6 @@ export function parseJobInput(
     dateSuffix,
     timeSuffix,
     keepVersions,
-    rotation,
     trigger,
     schedule,
     ...pg,
@@ -276,11 +272,8 @@ function retentionProblem(cols: RetentionColumns): string {
   if (cols.timeSuffix && !cols.dateSuffix) {
     return 'The time can only be added to the filename together with the date.'
   }
-  if (cols.rotation === 'keep' && cols.keepVersions < MIN_KEEP_VERSIONS) {
+  if (cols.keepVersions > 0 && cols.keepVersions < MIN_KEEP_VERSIONS) {
     return `Keep at least ${MIN_KEEP_VERSIONS} versions, or turn rotation off.`
-  }
-  if (cols.rotation !== 'keep' && cols.keepVersions !== 0) {
-    return 'A versions-to-keep count needs the "keep the newest" rotation.'
   }
   return 'Keeping versions requires the date and time in the filename.'
 }

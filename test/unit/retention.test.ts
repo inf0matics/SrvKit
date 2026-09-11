@@ -164,19 +164,11 @@ const suffixes = (dateSuffix: boolean, timeSuffix: boolean) => ({ dateSuffix, ti
 
 test('Off leaves the filename suffixes to the user and never deletes', () => {
   assert.deepEqual(retentionColumns('off', 7, suffixes(false, false)), {
-    rotation: 'off',
     dateSuffix: false,
     timeSuffix: false,
     keepVersions: 0,
   })
-  assert.deepEqual(retentionColumns('off', 7, suffixes(true, false)), {
-    rotation: 'off',
-    dateSuffix: true,
-    timeSuffix: false,
-    keepVersions: 0,
-  })
   assert.deepEqual(retentionColumns('off', 7, suffixes(true, true)), {
-    rotation: 'off',
     dateSuffix: true,
     timeSuffix: true,
     keepVersions: 0,
@@ -185,22 +177,14 @@ test('Off leaves the filename suffixes to the user and never deletes', () => {
 
 test('a time suffix without a date is dropped — it cannot stand on its own', () => {
   assert.deepEqual(retentionColumns('off', 0, suffixes(false, true)), {
-    rotation: 'off',
     dateSuffix: false,
     timeSuffix: false,
     keepVersions: 0,
   })
 })
 
-test('both keep modes force date and time on, so every run is its own file', () => {
-  assert.deepEqual(retentionColumns('all', 7, suffixes(false, false)), {
-    rotation: 'all',
-    dateSuffix: true,
-    timeSuffix: true,
-    keepVersions: 0,
-  })
+test('keeping the newest N forces date and time on, so every run is its own file', () => {
   assert.deepEqual(retentionColumns('keep', 7, suffixes(false, false)), {
-    rotation: 'keep',
     dateSuffix: true,
     timeSuffix: true,
     keepVersions: 7,
@@ -212,47 +196,36 @@ test('keep below the minimum is raised to it, never silently disabled', () => {
   assert.equal(retentionColumns('keep', 0, suffixes(true, true)).keepVersions, 2)
 })
 
-test('the stored rotation is what the form reads back', () => {
-  assert.equal(retentionMode('off'), 'off')
-  assert.equal(retentionMode('all'), 'all')
-  assert.equal(retentionMode('keep'), 'keep')
+test('the keep count alone says which rotation a job has', () => {
+  // Nothing else is needed: a count of 0 means SrvKit deletes nothing, whatever
+  // the filename looks like. "Keep every version" is Off with both suffixes on.
+  assert.equal(retentionMode(0), 'off')
+  assert.equal(retentionMode(2), 'keep')
+  assert.equal(retentionMode(7), 'keep')
 })
 
-test('an unknown or missing rotation falls back to off, which deletes nothing', () => {
-  assert.equal(retentionMode(''), 'off')
-  assert.equal(retentionMode('nonsense'), 'off')
+test('a count below the minimum reads as off, the mode that deletes nothing', () => {
+  assert.equal(retentionMode(1), 'off')
+  assert.equal(retentionMode(-3), 'off')
 })
 
-test('every mode round-trips through the columns and back', () => {
-  for (const mode of ['off', 'all', 'keep'] as const) {
+test('both modes round-trip through the columns and back', () => {
+  for (const mode of ['off', 'keep'] as const) {
     const cols = retentionColumns(mode, 7, suffixes(true, true))
-    assert.equal(retentionMode(cols.rotation), mode, mode)
+    assert.equal(retentionMode(cols.keepVersions), mode, mode)
   }
 })
 
 /* ---- what the API must refuse ---- */
 
 const valid = (o: Partial<Parameters<typeof isValidRetention>[0]>) =>
-  isValidRetention({
-    rotation: 'off',
-    dateSuffix: false,
-    timeSuffix: false,
-    keepVersions: 0,
-    ...o,
-  })
+  isValidRetention({ dateSuffix: false, timeSuffix: false, keepVersions: 0, ...o })
 
 test('accepts every shape the form can produce', () => {
   assert.equal(valid({}), true)
   assert.equal(valid({ dateSuffix: true }), true)
   assert.equal(valid({ dateSuffix: true, timeSuffix: true }), true)
-  assert.equal(
-    valid({ rotation: 'all', dateSuffix: true, timeSuffix: true }),
-    true,
-  )
-  assert.equal(
-    valid({ rotation: 'keep', dateSuffix: true, timeSuffix: true, keepVersions: 2 }),
-    true,
-  )
+  assert.equal(valid({ dateSuffix: true, timeSuffix: true, keepVersions: 2 }), true)
 })
 
 test('rejects a time suffix without a date', () => {
@@ -260,22 +233,11 @@ test('rejects a time suffix without a date', () => {
 })
 
 test('rejects keeping versions without the dated filename that makes them', () => {
-  assert.equal(valid({ rotation: 'keep', keepVersions: 7 }), false)
-  assert.equal(
-    valid({ rotation: 'keep', dateSuffix: true, timeSuffix: true, keepVersions: 1 }),
-    false,
-  )
+  assert.equal(valid({ keepVersions: 7 }), false)
+  assert.equal(valid({ dateSuffix: true, keepVersions: 7 }), false)
 })
 
-test('rejects a keep count on a rotation that never deletes', () => {
-  // Otherwise a stale client could store a count that silently does nothing.
-  assert.equal(valid({ rotation: 'off', dateSuffix: true, keepVersions: 7 }), false)
-  assert.equal(
-    valid({ rotation: 'all', dateSuffix: true, timeSuffix: true, keepVersions: 7 }),
-    false,
-  )
-})
-
-test('rejects an unknown rotation outright', () => {
-  assert.equal(valid({ rotation: 'sometimes' }), false)
+test('rejects a keep count below the minimum', () => {
+  assert.equal(valid({ dateSuffix: true, timeSuffix: true, keepVersions: 1 }), false)
+  assert.equal(valid({ dateSuffix: true, timeSuffix: true, keepVersions: -1 }), false)
 })

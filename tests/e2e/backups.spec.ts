@@ -238,8 +238,9 @@ test.describe.serial('backups', () => {
     await expect(page).toHaveURL(/\/jobs\/[0-9a-f-]+\/edit$/)
     await expect(page.getByTestId('job-edit')).toBeVisible()
     await page.getByRole('button', { name: 'app.db', exact: true }).click()
-    // A managed rotation gives every run its own file: date and time.
-    await page.getByRole('radio', { name: 'Keep all versions' }).check()
+    // Every run its own file — Off with both suffixes on, no rotation needed.
+    await page.getByTestId('date-suffix').check()
+    await page.getByTestId('time-suffix').check()
     await page.getByLabel('Nextcloud subdirectory').fill('db')
     await expect(page.getByTestId('archive')).toContainText(
       /App DB_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.tar\.gz/,
@@ -717,14 +718,24 @@ test.describe.serial('backups', () => {
     await expect(page.getByTestId('time-suffix')).toBeDisabled()
   })
 
-  test('retention: a managed rotation fixes both suffixes on and locks them', async () => {
-    for (const name of [/Keep all versions/, /Keep the newest/]) {
-      await page.getByRole('radio', { name }).check()
-      await expect(page.getByTestId('date-suffix')).toBeChecked()
-      await expect(page.getByTestId('date-suffix')).toBeDisabled()
-      await expect(page.getByTestId('time-suffix')).toBeChecked()
-      await expect(page.getByTestId('time-suffix')).toBeDisabled()
-    }
+  test('retention: keeping the newest N fixes both suffixes on and locks them', async () => {
+    await page.getByRole('radio', { name: /Keep the newest/ }).check()
+    await expect(page.getByTestId('date-suffix')).toBeChecked()
+    await expect(page.getByTestId('date-suffix')).toBeDisabled()
+    await expect(page.getByTestId('time-suffix')).toBeChecked()
+    await expect(page.getByTestId('time-suffix')).toBeDisabled()
+
+    // Off hands them straight back, keeping whatever is set.
+    await page.getByRole('radio', { name: /^Off/ }).check()
+    await expect(page.getByTestId('date-suffix')).toBeEnabled()
+    await expect(page.getByTestId('time-suffix')).toBeEnabled()
+  })
+
+  test('retention: there is exactly one rotation choice per behaviour', async () => {
+    // "Keep every version" is Off with both suffixes on, not a third radio —
+    // it would store the same row and behave identically.
+    await expect(page.getByRole('radio')).toHaveCount(2)
+    await expect(page.getByTestId('retention')).not.toContainText('Keep all')
   })
 
   test('retention: choosing "keep the newest" dates the filename live', async () => {
@@ -747,6 +758,12 @@ test.describe.serial('backups', () => {
     await page.getByRole('button', { name: 'Edit job' }).click()
     await expect(page.getByRole('radio', { name: /Keep the newest/ })).toBeChecked()
     await expect(page.getByTestId('keep-count')).toHaveValue('2')
+    // On load, not after a click: the suffix state must match the rotation
+    // straight away, or the checkboxes contradict the filename below them.
+    await expect(page.getByTestId('date-suffix')).toBeChecked()
+    await expect(page.getByTestId('date-suffix')).toBeDisabled()
+    await expect(page.getByTestId('time-suffix')).toBeChecked()
+    await expect(page.getByTestId('time-suffix')).toBeDisabled()
     await page.getByRole('link', { name: 'Cancel' }).click()
     await expect(page).toHaveURL(/\/app\/backups\/[0-9a-f-]+$/)
   })
@@ -831,8 +848,11 @@ test.describe.serial('backups', () => {
     await expect(page.getByTestId('retention')).toContainText('already in that folder')
     await expect(page.getByTestId('retention')).toContainText('saving does')
 
+    // The sort order is named, because "newest" alone is ambiguous.
+    await expect(page.getByTestId('retention')).toContainText('date in the filename')
+
     // Not claimed in a mode that never deletes.
-    await page.getByRole('radio', { name: 'Keep all versions' }).check()
+    await page.getByRole('radio', { name: /^Off/ }).check()
     await expect(page.getByTestId('retention')).not.toContainText('already in that folder')
     await page.getByRole('radio', { name: /Keep the newest/ }).check()
   })
@@ -857,21 +877,9 @@ test.describe.serial('backups', () => {
       })
       expect(res.status(), `keepVersions ${JSON.stringify(bad)}`).toBe(400)
     }
-    // A count the rotation would ignore is refused rather than stored as a lie.
-    const lying = await page.request.put(`/api/backups/jobs/${job.id}`, {
-      data: { ...job, rotation: 'off', keepVersions: 7 },
-    })
-    expect(lying.status()).toBe(400)
-
     // Unset still works for a client that predates rotation: nothing managed.
     const ok = await page.request.put(`/api/backups/jobs/${job.id}`, {
-      data: {
-        ...job,
-        rotation: 'off',
-        dateSuffix: true,
-        timeSuffix: false,
-        keepVersions: undefined,
-      },
+      data: { ...job, dateSuffix: true, timeSuffix: false, keepVersions: undefined },
     })
     expect(ok.status()).toBe(200)
   })

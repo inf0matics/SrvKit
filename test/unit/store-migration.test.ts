@@ -101,7 +101,7 @@ test('an upgraded row keeps behaving as it did — a dated job is unmanaged', as
   const job = s.getJob('j1')!
   // One dated file per day and nothing ever deleted: SrvKit was not rotating
   // this job before the upgrade, and it must not start now.
-  assert.equal(retentionMode(job.rotation), 'off')
+  assert.equal(retentionMode(job.keepVersions), 'off')
   assert.equal(job.dateSuffix, true, 'its filename scheme is untouched')
   assert.equal(job.keepVersions, 0)
   s.close()
@@ -133,37 +133,6 @@ test('a target created after the upgrade can be a local one', () => {
   })
   assert.equal(local.type, 'local')
   assert.equal(s.listTargets().length, 2)
-  s.close()
-  rmSync(path, { force: true })
-})
-
-test('existing jobs get a rotation that matches what they already do', async () => {
-  const { DatabaseSync: DB } = await import('node:sqlite')
-  const path = previousRelease()
-  // Three shapes from before rotation existed, written with the old schema.
-  const db = new DB(path)
-  db.exec("ALTER TABLE jobs ADD COLUMN keep_versions INTEGER NOT NULL DEFAULT 0")
-  const ins = db.prepare(
-    `INSERT INTO jobs (id, target_id, name, type, created_at, date_suffix, time_suffix, keep_versions)
-     VALUES (?, 't1', ?, 'files', '2026-01-01', ?, ?, ?)`,
-  )
-  ins.run('j-plain', 'Plain', 0, 0, 0) // one static file
-  ins.run('j-dated', 'Dated', 1, 0, 0) // a file per day
-  ins.run('j-full', 'Full', 1, 1, 0) // a file per run
-  ins.run('j-keep', 'Keeper', 1, 1, 5) // already trimming
-  db.close()
-
-  const s = openStore(path)
-  // Nothing SrvKit manages -> off, and the suffixes are left exactly as they were.
-  assert.equal(s.getJob('j-plain')?.rotation, 'off')
-  assert.equal(s.getJob('j-dated')?.rotation, 'off')
-  assert.equal(s.getJob('j-dated')?.dateSuffix, true)
-  assert.equal(s.getJob('j-dated')?.timeSuffix, false)
-  // Already one file per run with no trimming — that is exactly "keep all".
-  assert.equal(s.getJob('j-full')?.rotation, 'all')
-  // Already trimming to a count.
-  assert.equal(s.getJob('j-keep')?.rotation, 'keep')
-  assert.equal(s.getJob('j-keep')?.keepVersions, 5)
   s.close()
   rmSync(path, { force: true })
 })

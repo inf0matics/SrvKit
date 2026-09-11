@@ -97,17 +97,23 @@ reset below.
    and writes a `tar.gz` to the target whenever they change (10s debounce). Use
    **Run Now** to trigger a backup immediately.
 3. **Backup rotation** — what SrvKit does with a job's older archives:
-   - **Off** — SrvKit manages nothing. Whether a run overwrites the last file or
-     writes a new one is decided by the two filename checkboxes below the box,
-     and nothing is ever deleted.
+   - **Off** — SrvKit deletes nothing. The two filename checkboxes below the box
+     decide whether a run overwrites the last file or adds another one, so
+     "keep every version forever" is Off with both of them ticked.
    - **Keep the newest N** — every run is its own file; after a successful run,
      everything older than the N newest is deleted. Minimum 2.
-   - **Keep all versions** — every run is its own file, nothing ever deleted.
 
-   Both managed rotations switch the date and time suffixes on and lock them: a
+   Keeping the newest N switches the date and time suffixes on and locks them: a
    version you cannot tell apart from the last one is not a version. Under Off
-   the two checkboxes are yours, and the time can only be added together with
-   the date.
+   the checkboxes are yours, and the time can only be added together with the
+   date.
+
+   **Newest is decided by the date in the filename**, never by the file's
+   timestamp — a modification time is rewritten by WebDAV uploads and by any
+   restore or copy, which would make the rotation delete near-randomly after you
+   move your backups. Only files matching that job's own
+   `<name>_YYYY-MM-DD[_HH-MM-SS].tar.gz` pattern are counted or removed;
+   anything else in the folder is invisible to it.
 
    Cleanup happens only after a *successful* run, so a failed backup can never
    delete a good one, and only among that job's own archives in its own output

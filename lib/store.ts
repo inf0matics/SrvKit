@@ -59,10 +59,12 @@ export interface JobInput {
   dateSuffix: boolean
   /** Append _HH-MM-SS to the archive filename. */
   timeSuffix: boolean
-  /** Keep only the newest N archives of this job. 0 = never delete anything. */
+  /**
+   * Keep only the newest N archives of this job, 0 to never delete anything.
+   * This is the whole rotation state: 0 is "off", and the filename suffixes
+   * decide on their own whether a run overwrites or adds a file.
+   */
   keepVersions: number
-  /** Backup rotation: 'off' (unmanaged), 'all' (a file per run), 'keep' (newest N). */
-  rotation: string
   /** What fires the job: 'filewatcher' or 'cron'. (Files = always filewatcher.) */
   trigger: string
   /** PostgreSQL: Docker container to run pg_dump in. */
@@ -192,7 +194,6 @@ interface JobRow {
   dateSuffix: number
   timeSuffix: number
   keepVersions: number
-  rotation: string
   trigger: string
   container: string
   database: string
@@ -276,7 +277,6 @@ export function openStore(path: string): Store {
        date_suffix INTEGER NOT NULL DEFAULT 0,
        time_suffix INTEGER NOT NULL DEFAULT 0,
        keep_versions INTEGER NOT NULL DEFAULT 0,
-       rotation TEXT NOT NULL DEFAULT 'off',
        "trigger" TEXT NOT NULL DEFAULT 'filewatcher',
        container TEXT NOT NULL DEFAULT '',
        database TEXT NOT NULL DEFAULT '',
@@ -316,17 +316,6 @@ export function openStore(path: string): Store {
   // 0 = no cleanup, so every job that predates retention keeps behaving as it did.
   if (!jobColNames.includes('keep_versions')) {
     db.exec('ALTER TABLE jobs ADD COLUMN keep_versions INTEGER NOT NULL DEFAULT 0')
-  }
-  // Give every existing job the rotation that describes what it already does,
-  // so nothing changes underneath a user on upgrade: a job already writing one
-  // file per run with no trimming IS "keep all"; anything else SrvKit was not
-  // managing, and its suffixes stay exactly as the old two checkboxes left them.
-  if (!jobColNames.includes('rotation')) {
-    db.exec("ALTER TABLE jobs ADD COLUMN rotation TEXT NOT NULL DEFAULT 'off'")
-    db.exec(`UPDATE jobs SET rotation = CASE
-               WHEN keep_versions >= 2 THEN 'keep'
-               WHEN date_suffix = 1 AND time_suffix = 1 THEN 'all'
-               ELSE 'off' END`)
   }
   if (jobColNames.includes('excludes') && !jobColNames.includes('includes')) {
     db.exec('ALTER TABLE jobs RENAME COLUMN excludes TO includes')
@@ -426,7 +415,7 @@ export function openStore(path: string): Store {
   const jobCols = `id, target_id AS targetId, name, type, source_path AS sourcePath,
                    includes, output, subdirectory, date_suffix AS dateSuffix,
                    time_suffix AS timeSuffix, keep_versions AS keepVersions,
-                   rotation, "trigger", container, database,
+                   "trigger", container, database,
                    db_user AS dbUser, db_password AS dbPassword, schedule,
                    active, alert_state AS alertState,
                    incident_since AS incidentSince, enabled, created_at AS createdAt,
@@ -440,16 +429,15 @@ export function openStore(path: string): Store {
   const insertJobStmt = db.prepare(
     `INSERT INTO jobs
        (id, target_id, name, type, source_path, includes, output, subdirectory,
-        date_suffix, time_suffix, keep_versions, rotation, "trigger", container,
-        database, db_user, db_password, schedule, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        date_suffix, time_suffix, keep_versions, "trigger", container, database,
+        db_user, db_password, schedule, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
   const updateJobStmt = db.prepare(
     `UPDATE jobs SET target_id = ?, name = ?, type = ?, source_path = ?,
        includes = ?, output = ?, subdirectory = ?, date_suffix = ?,
-       time_suffix = ?, keep_versions = ?, rotation = ?, "trigger" = ?,
-       container = ?, database = ?, db_user = ?, db_password = ?, schedule = ?
-     WHERE id = ?`,
+       time_suffix = ?, keep_versions = ?, "trigger" = ?, container = ?,
+       database = ?, db_user = ?, db_password = ?, schedule = ? WHERE id = ?`,
   )
   const setActiveStmt = db.prepare('UPDATE jobs SET active = ? WHERE id = ?')
   const setCleanupErrorStmt = db.prepare(
@@ -581,7 +569,6 @@ export function openStore(path: string): Store {
         input.dateSuffix ? 1 : 0,
         input.timeSuffix ? 1 : 0,
         input.keepVersions,
-        input.rotation,
         input.trigger,
         input.container,
         input.database,
@@ -622,7 +609,6 @@ export function openStore(path: string): Store {
           input.dateSuffix ? 1 : 0,
           input.timeSuffix ? 1 : 0,
           input.keepVersions,
-          input.rotation,
           input.trigger,
           input.container,
           input.database,

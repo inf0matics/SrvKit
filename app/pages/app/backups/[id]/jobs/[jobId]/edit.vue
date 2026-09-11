@@ -23,7 +23,6 @@ interface Job {
   dateSuffix: boolean
   timeSuffix: boolean
   keepVersions: number
-  rotation: string
   trigger: string
   container: string
   database: string
@@ -98,7 +97,7 @@ watch(
     form.subdirectory = j.subdirectory
     form.dateSuffix = j.dateSuffix
     form.timeSuffix = j.timeSuffix
-    form.retentionMode = retentionMode(j.rotation)
+    form.retentionMode = retentionMode(j.keepVersions)
     loadedMode.value = form.retentionMode
     loadedName.value = j.name
     // Keep a sensible number in the box even while another mode is selected.
@@ -169,12 +168,19 @@ const rotationManaged = computed(() => form.retentionMode !== 'off')
  * suffixes on and locks them. Driving the form state (rather than only the
  * checkbox's rendering) keeps what is shown and what is saved the same thing.
  */
-watch(rotationManaged, (managed) => {
-  if (managed) {
-    form.dateSuffix = true
-    form.timeSuffix = true
-  }
-})
+// Immediate, because the job is already loaded by the time this runs (the
+// useFetch above is awaited), so a lazy watcher would never see the initial
+// rotation and the checkboxes would contradict the filename below them.
+watch(
+  rotationManaged,
+  (managed) => {
+    if (managed) {
+      form.dateSuffix = true
+      form.timeSuffix = true
+    }
+  },
+  { immediate: true },
+)
 
 // A time on its own cannot order versions across days, so it goes with the date.
 watch(
@@ -234,7 +240,6 @@ async function save() {
         dateSuffix: retention.value.dateSuffix,
         timeSuffix: retention.value.timeSuffix,
         keepVersions: retention.value.keepVersions,
-        rotation: retention.value.rotation,
         trigger: form.trigger,
         container: form.container,
         database: form.database,
@@ -402,7 +407,7 @@ async function save() {
 
         <label class="radio">
           <input v-model="form.retentionMode" type="radio" name="retention" value="off">
-          <span>Off — SrvKit does not manage old versions</span>
+          <span>Off — SrvKit deletes nothing; the filename decides</span>
         </label>
 
         <label class="radio">
@@ -424,11 +429,6 @@ async function save() {
           </span>
         </label>
 
-        <label class="radio">
-          <input v-model="form.retentionMode" type="radio" name="retention" value="all">
-          <span>Keep all versions</span>
-        </label>
-
         <p v-if="form.retentionMode === 'keep'" class="tsp-muted hint">
           Older archives are removed after the next successful run — saving does
           not delete anything.
@@ -436,6 +436,10 @@ async function save() {
           <strong>Archives already in that folder count too</strong>, so the next
           run removes everything beyond the newest {{ keepCount }}, including
           versions written before this setting.
+          <br>
+          Newest is decided by the <strong>date in the filename</strong>, not by
+          the file's timestamp — so copying or restoring archives cannot change
+          which ones survive.
         </p>
 
         <p

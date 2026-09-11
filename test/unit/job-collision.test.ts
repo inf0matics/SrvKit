@@ -37,7 +37,6 @@ const body = (over: Record<string, unknown> = {}) => ({
   dateSuffix: true,
   timeSuffix: true,
   keepVersions: 2,
-  rotation: 'keep',
   ...over,
 })
 
@@ -103,15 +102,9 @@ test('an unset keepVersions still means rotation off (older clients)', () => {
   // undefined / null / '' are "not set", not a count that got discarded.
   for (const unset of [undefined, null, '']) {
     const input = parseJobInput(
-      body({
-        name: `unset-${String(unset)}`,
-        rotation: 'off',
-        timeSuffix: false,
-        keepVersions: unset,
-      }),
+      body({ name: `unset-${String(unset)}`, timeSuffix: false, keepVersions: unset }),
     )
     assert.equal(input.keepVersions, 0)
-    assert.equal(input.rotation, 'off')
   }
 })
 
@@ -142,24 +135,11 @@ test('keeping versions without the dated filename that makes them is refused', (
   )
 })
 
-test('a keep count on a rotation that never deletes is refused', () => {
-  assert.throws(
-    () => parseJobInput(body({ name: 'countoff', rotation: 'off', keepVersions: 7 })),
-    /rotation/i,
-  )
-})
-
 test('a time suffix without a date is refused', () => {
   assert.throws(
     () =>
       parseJobInput(
-        body({
-          name: 'timeonly',
-          rotation: 'off',
-          dateSuffix: false,
-          timeSuffix: true,
-          keepVersions: 0,
-        }),
+        body({ name: 'timeonly', dateSuffix: false, timeSuffix: true, keepVersions: 0 }),
       ),
     /together with the date/i,
   )
