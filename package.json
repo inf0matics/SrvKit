@@ -12,7 +12,9 @@
     "typecheck": "nuxt typecheck",
     "test:unit": "node --test \"test/unit/**/*.test.ts\"",
     "test:e2e": "playwright test",
-    "screenshots": "node scripts/screenshots/run.mjs"
+    "screenshots": "node scripts/screenshots/run.mjs",
+    "db:seed": "node --env-file=.env scripts/seed-dev.ts",
+    "dev:local": "npm run db:seed && nuxt dev --port 55385"
   },
   "devDependencies": {
     "@nuxt/eslint": "^1.16.0",
