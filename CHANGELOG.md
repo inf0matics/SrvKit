@@ -1,6 +1,53 @@
 # Changelog
 
 
+## v1.5.0
+
+[compare changes](https://github.com/inf0matics/SrvKit/compare/v1.4.0...v1.5.0)
+
+### 🚀 Enhancements
+
+- Add the local-directory filesystem layer for backup targets ([1ffe584](https://github.com/inf0matics/SrvKit/commit/1ffe584))
+- Reach every backup target through one driver interface ([d8db4c2](https://github.com/inf0matics/SrvKit/commit/d8db4c2))
+- Create, test and browse local directory backup targets ([486c975](https://github.com/inf0matics/SrvKit/commit/486c975))
+- Choose a target type in the UI and show local targets as paths ([19dd48c](https://github.com/inf0matics/SrvKit/commit/19dd48c))
+- Add the retention selection logic ([3f95ea1](https://github.com/inf0matics/SrvKit/commit/3f95ea1))
+- Store a job's keep-versions count ([e48757e](https://github.com/inf0matics/SrvKit/commit/e48757e))
+- Trim old archives after a successful backup run ([a7caa2a](https://github.com/inf0matics/SrvKit/commit/a7caa2a))
+- Choose what a run does as one decision, not two suffix checkboxes ([6a66c3f](https://github.com/inf0matics/SrvKit/commit/6a66c3f))
+- Warn before retention removes history, and cover the remaining gaps ([dbc8e19](https://github.com/inf0matics/SrvKit/commit/dbc8e19))
+- Rework the job form around backup rotation ([c93d393](https://github.com/inf0matics/SrvKit/commit/c93d393))
+
+### 🩹 Fixes
+
+- Never create the backup targets mount, and close the symlink escape ([9faf859](https://github.com/inf0matics/SrvKit/commit/9faf859))
+- Stop retention deleting another job's backups, and surface cleanup failures ([f531360](https://github.com/inf0matics/SrvKit/commit/f531360))
+- One destination formatter, and stop rewriting a legacy filename on save ([edea245](https://github.com/inf0matics/SrvKit/commit/edea245))
+- One containment guard for both mounts, and reject traversing paths ([8103097](https://github.com/inf0matics/SrvKit/commit/8103097))
+- Refuse an unusable keep count instead of silently keeping everything ([8815e06](https://github.com/inf0matics/SrvKit/commit/8815e06))
+- Flush archive writes, and sweep leaked e2e target directories ([48969f7](https://github.com/inf0matics/SrvKit/commit/48969f7))
+
+### 💅 Refactors
+
+- Drop "keep all versions", it was Off with both suffixes ticked ([3c54956](https://github.com/inf0matics/SrvKit/commit/3c54956))
+
+### 🏡 Chore
+
+- Add a dev seed so the app starts from a known state ([df990eb](https://github.com/inf0matics/SrvKit/commit/df990eb))
+
+### ✅ Tests
+
+- Fall back to a free port when 3100 is taken for e2e ([0b440d7](https://github.com/inf0matics/SrvKit/commit/0b440d7))
+- Cover local directory targets end to end, and document the mount ([4aa6bf9](https://github.com/inf0matics/SrvKit/commit/4aa6bf9))
+- A sqlite job produces the same dated archive on a local target ([f4b6a50](https://github.com/inf0matics/SrvKit/commit/f4b6a50))
+- Cover retention end to end, and document the three run modes ([a5e7a0c](https://github.com/inf0matics/SrvKit/commit/a5e7a0c))
+- Cover the in-place database upgrade path ([502205a](https://github.com/inf0matics/SrvKit/commit/502205a))
+- Enforce that client-imported lib modules stay framework-free ([3c3a1ce](https://github.com/inf0matics/SrvKit/commit/3c3a1ce))
+
+### ❤️ Contributors
+
+- Inf0matics <fil@thespielplatz.com>
+
 ## v1.4.0
 
 [compare changes](https://github.com/inf0matics/SrvKit/compare/v1.3.2...v1.4.0)
