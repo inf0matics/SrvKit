@@ -78,6 +78,7 @@ const base: Omit<JobInput, 'targetId' | 'name' | 'type' | 'sourcePath'> = {
   dateSuffix: false,
   timeSuffix: false,
   keepVersions: 0,
+  rotation: 'off',
   trigger: 'filewatcher',
   container: '',
   database: '',
@@ -119,6 +120,7 @@ const appDb = job({
   subdirectory: 'db',
   dateSuffix: true,
   keepVersions: 3,
+  rotation: 'keep',
   trigger: 'cron',
   schedule: '0 3 * * *',
 })
@@ -159,6 +161,7 @@ const stuck = job({
   subdirectory: 'nightly',
   dateSuffix: true,
   keepVersions: 2,
+  rotation: 'keep',
 })
 store.recordRun(stuck.id, {
   at: daysAgo(0).toISOString(),

@@ -158,72 +158,124 @@ test('running again on an already-trimmed directory deletes nothing', () => {
   assert.deepEqual(archivesToDelete(remaining, 'db', 2), [])
 })
 
-/* ---- the mode <-> column mapping, in both directions ---- */
+/* ---- rotation <-> column mapping, in both directions ---- */
 
-test('each mode maps onto the columns that implement it', () => {
-  assert.deepEqual(retentionColumns('overwrite', 7), { dateSuffix: false, keepVersions: 0 })
-  assert.deepEqual(retentionColumns('keep-all', 7), { dateSuffix: true, keepVersions: 0 })
-  assert.deepEqual(retentionColumns('keep-n', 7), { dateSuffix: true, keepVersions: 7 })
+const suffixes = (dateSuffix: boolean, timeSuffix: boolean) => ({ dateSuffix, timeSuffix })
+
+test('Off leaves the filename suffixes to the user and never deletes', () => {
+  assert.deepEqual(retentionColumns('off', 7, suffixes(false, false)), {
+    rotation: 'off',
+    dateSuffix: false,
+    timeSuffix: false,
+    keepVersions: 0,
+  })
+  assert.deepEqual(retentionColumns('off', 7, suffixes(true, false)), {
+    rotation: 'off',
+    dateSuffix: true,
+    timeSuffix: false,
+    keepVersions: 0,
+  })
+  assert.deepEqual(retentionColumns('off', 7, suffixes(true, true)), {
+    rotation: 'off',
+    dateSuffix: true,
+    timeSuffix: true,
+    keepVersions: 0,
+  })
 })
 
-test('keep-n below the minimum is raised to it, never silently disabled', () => {
-  assert.deepEqual(retentionColumns('keep-n', 1), { dateSuffix: true, keepVersions: 2 })
-  assert.deepEqual(retentionColumns('keep-n', 0), { dateSuffix: true, keepVersions: 2 })
+test('a time suffix without a date is dropped — it cannot stand on its own', () => {
+  assert.deepEqual(retentionColumns('off', 0, suffixes(false, true)), {
+    rotation: 'off',
+    dateSuffix: false,
+    timeSuffix: false,
+    keepVersions: 0,
+  })
 })
 
-test('stored columns render the mode they came from', () => {
-  assert.equal(retentionMode(false, 0), 'overwrite')
-  assert.equal(retentionMode(true, 0), 'keep-all')
-  assert.equal(retentionMode(true, 7), 'keep-n')
+test('both keep modes force date and time on, so every run is its own file', () => {
+  assert.deepEqual(retentionColumns('all', 7, suffixes(false, false)), {
+    rotation: 'all',
+    dateSuffix: true,
+    timeSuffix: true,
+    keepVersions: 0,
+  })
+  assert.deepEqual(retentionColumns('keep', 7, suffixes(false, false)), {
+    rotation: 'keep',
+    dateSuffix: true,
+    timeSuffix: true,
+    keepVersions: 7,
+  })
 })
 
-test('an existing job reads as the mode it already behaves like', () => {
-  // Every job that predates retention has keepVersions 0.
-  assert.equal(retentionMode(false, 0), 'overwrite', 'date suffix off = overwrite')
-  assert.equal(retentionMode(true, 0), 'keep-all', 'date suffix on = keep all')
+test('keep below the minimum is raised to it, never silently disabled', () => {
+  assert.equal(retentionColumns('keep', 1, suffixes(true, true)).keepVersions, 2)
+  assert.equal(retentionColumns('keep', 0, suffixes(true, true)).keepVersions, 2)
 })
 
-test('the unreachable combination is read as overwrite, which is what it does', () => {
-  // keepVersions >= 2 with no date suffix means one static filename: nothing
-  // ever accumulates, so nothing is ever deleted.
-  assert.equal(retentionMode(false, 7), 'overwrite')
+test('the stored rotation is what the form reads back', () => {
+  assert.equal(retentionMode('off'), 'off')
+  assert.equal(retentionMode('all'), 'all')
+  assert.equal(retentionMode('keep'), 'keep')
+})
+
+test('an unknown or missing rotation falls back to off, which deletes nothing', () => {
+  assert.equal(retentionMode(''), 'off')
+  assert.equal(retentionMode('nonsense'), 'off')
 })
 
 test('every mode round-trips through the columns and back', () => {
-  for (const mode of ['overwrite', 'keep-all', 'keep-n'] as const) {
-    const cols = retentionColumns(mode, 7)
-    assert.equal(retentionMode(cols.dateSuffix, cols.keepVersions), mode, mode)
+  for (const mode of ['off', 'all', 'keep'] as const) {
+    const cols = retentionColumns(mode, 7, suffixes(true, true))
+    assert.equal(retentionMode(cols.rotation), mode, mode)
   }
 })
 
 /* ---- what the API must refuse ---- */
 
-test('keeping versions without a date suffix is rejected', () => {
-  // Unreachable through the UI, but a stale client must not create a job that
-  // silently never cleans up.
-  assert.equal(isValidRetention(false, 0), true)
-  assert.equal(isValidRetention(true, 0), true)
-  assert.equal(isValidRetention(true, 2), true)
-  assert.equal(isValidRetention(false, 2), false)
-  assert.equal(isValidRetention(false, 7), false)
+const valid = (o: Partial<Parameters<typeof isValidRetention>[0]>) =>
+  isValidRetention({
+    rotation: 'off',
+    dateSuffix: false,
+    timeSuffix: false,
+    keepVersions: 0,
+    ...o,
+  })
+
+test('accepts every shape the form can produce', () => {
+  assert.equal(valid({}), true)
+  assert.equal(valid({ dateSuffix: true }), true)
+  assert.equal(valid({ dateSuffix: true, timeSuffix: true }), true)
+  assert.equal(
+    valid({ rotation: 'all', dateSuffix: true, timeSuffix: true }),
+    true,
+  )
+  assert.equal(
+    valid({ rotation: 'keep', dateSuffix: true, timeSuffix: true, keepVersions: 2 }),
+    true,
+  )
 })
 
-test('a keep count of 1 is rejected — that is overwriting under another name', () => {
-  assert.equal(isValidRetention(true, 1), false)
-  assert.equal(isValidRetention(true, -1), false)
+test('rejects a time suffix without a date', () => {
+  assert.equal(valid({ timeSuffix: true }), false)
 })
 
-test('a current archive missing from the listing keeps one extra, never one too few', () => {
-  // Read-after-write lag on the target: the archive this run just wrote is not
-  // in the listing yet. Erring toward keeping is the only safe direction.
-  const files = [
-    'db_2026-09-08.tar.gz',
-    'db_2026-09-09.tar.gz',
-    'db_2026-09-10.tar.gz',
-  ]
-  const deleted = archivesToDelete(files, 'db', 2, 'db_2026-09-11.tar.gz')
-  assert.deepEqual(deleted, ['db_2026-09-08.tar.gz'])
-  // Two listed survivors plus the unlisted new one = 3 on disk, not 2. The
-  // next run sees all four and trims to the configured count.
-  assert.equal(files.length - deleted.length, 2)
+test('rejects keeping versions without the dated filename that makes them', () => {
+  assert.equal(valid({ rotation: 'keep', keepVersions: 7 }), false)
+  assert.equal(
+    valid({ rotation: 'keep', dateSuffix: true, timeSuffix: true, keepVersions: 1 }),
+    false,
+  )
+})
+
+test('rejects a keep count on a rotation that never deletes', () => {
+  // Otherwise a stale client could store a count that silently does nothing.
+  assert.equal(valid({ rotation: 'off', dateSuffix: true, keepVersions: 7 }), false)
+  assert.equal(
+    valid({ rotation: 'all', dateSuffix: true, timeSuffix: true, keepVersions: 7 }),
+    false,
+  )
+})
+
+test('rejects an unknown rotation outright', () => {
+  assert.equal(valid({ rotation: 'sometimes' }), false)
 })

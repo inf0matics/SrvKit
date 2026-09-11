@@ -238,11 +238,11 @@ test.describe.serial('backups', () => {
     await expect(page).toHaveURL(/\/jobs\/[0-9a-f-]+\/edit$/)
     await expect(page.getByTestId('job-edit')).toBeVisible()
     await page.getByRole('button', { name: 'app.db', exact: true }).click()
-    // Dated files come from choosing a mode that keeps versions.
+    // A managed rotation gives every run its own file: date and time.
     await page.getByRole('radio', { name: 'Keep all versions' }).check()
     await page.getByLabel('Nextcloud subdirectory').fill('db')
     await expect(page.getByTestId('archive')).toContainText(
-      /App DB_\d{4}-\d{2}-\d{2}\.tar\.gz/,
+      /App DB_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.tar\.gz/,
     )
     await page.getByRole('button', { name: 'Save' }).click()
 
@@ -250,7 +250,7 @@ test.describe.serial('backups', () => {
     await expect(page).toHaveURL(/\/app\/backups\/[0-9a-f-]+$/)
     await expect(page.getByTestId('job-type')).toHaveText('SQLite')
     await expect(page.getByTestId('job-dest')).toContainText(
-      /\/srvkit\/db\/App DB_\d{4}-\d{2}-\d{2}\.tar\.gz/,
+      /\/srvkit\/db\/App DB_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.tar\.gz/,
     )
   })
 
@@ -689,29 +689,54 @@ test.describe.serial('backups', () => {
   const nightlyDir = () => join(TARGETS_DIR, 'disk2/nightly/sub')
   const nightlyFiles = () => readdirSync(nightlyDir()).sort()
 
-  test('retention: an existing job opens as the mode it already behaves like', async () => {
-    // "Nightly files" was saved with no date suffix — that is Overwrite.
+  test('retention: an existing job opens as the rotation it already has', async () => {
+    // "Nightly files" was saved with no suffixes — SrvKit manages nothing.
     await page.getByRole('button', { name: 'Edit job' }).click()
     await expect(page).toHaveURL(/\/jobs\/[0-9a-f-]+\/edit$/)
-    await expect(page.getByRole('radio', { name: /Overwrite/ })).toBeChecked()
-    // The time checkbox is not offered while nothing accumulates.
-    await expect(page.getByText('runs more than once a day')).toHaveCount(0)
+    await expect(page.getByRole('radio', { name: /^Off/ })).toBeChecked()
+    // Under Off the suffixes are the user's own, and both start unchecked.
+    await expect(page.getByTestId('date-suffix')).not.toBeChecked()
+    await expect(page.getByTestId('date-suffix')).toBeEnabled()
+    // A time on its own cannot order versions, so it waits for the date.
+    await expect(page.getByTestId('time-suffix')).toBeDisabled()
+  })
+
+  test('retention: under Off the time checkbox follows the date checkbox', async () => {
+    await page.getByTestId('date-suffix').check()
+    await expect(page.getByTestId('time-suffix')).toBeEnabled()
+    await expect(page.getByTestId('archive')).toContainText(
+      /Nightly files_\d{4}-\d{2}-\d{2}\.tar\.gz/,
+    )
+    await page.getByTestId('time-suffix').check()
+    await expect(page.getByTestId('archive')).toContainText(
+      /Nightly files_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.tar\.gz/,
+    )
+    // Dropping the date takes the time with it — it cannot stand alone.
+    await page.getByTestId('date-suffix').uncheck()
+    await expect(page.getByTestId('time-suffix')).not.toBeChecked()
+    await expect(page.getByTestId('time-suffix')).toBeDisabled()
+  })
+
+  test('retention: a managed rotation fixes both suffixes on and locks them', async () => {
+    for (const name of [/Keep all versions/, /Keep the newest/]) {
+      await page.getByRole('radio', { name }).check()
+      await expect(page.getByTestId('date-suffix')).toBeChecked()
+      await expect(page.getByTestId('date-suffix')).toBeDisabled()
+      await expect(page.getByTestId('time-suffix')).toBeChecked()
+      await expect(page.getByTestId('time-suffix')).toBeDisabled()
+    }
   })
 
   test('retention: choosing "keep the newest" dates the filename live', async () => {
-    await expect(page.getByTestId('archive')).toContainText(
-      '/disk2/nightly/sub/Nightly files.tar.gz',
-    )
     await page.getByRole('radio', { name: /Keep the newest/ }).check()
     await page.getByTestId('keep-count').fill('2')
 
-    // Dates are what make versions possible, so the mode switches them on.
+    // A managed rotation makes every run its own file: date AND time.
     await expect(page.getByTestId('archive')).toContainText(
-      /\/disk2\/nightly\/sub\/Nightly files_\d{4}-\d{2}-\d{2}\.tar\.gz/,
+      /\/disk2\/nightly\/sub\/Nightly files_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.tar\.gz/,
     )
     // Saving is not what deletes anything — say so.
     await expect(page.getByTestId('retention')).toContainText('saving does')
-    await expect(page.getByText('runs more than once a day')).toBeVisible()
 
     await page.getByRole('button', { name: 'Save' }).click()
     await expect(page).toHaveURL(/\/app\/backups\/[0-9a-f-]+$/)
@@ -729,7 +754,7 @@ test.describe.serial('backups', () => {
   test('retention: a successful run trims to N and touches nothing else', async () => {
     // Archives from earlier runs, plus files retention must not touch: another
     // job's archive, a prefix-overlapping name, and this job's own undated file
-    // from when it was still in Overwrite mode.
+    // from when its rotation was still off.
     writeFileSync(join(nightlyDir(), 'Nightly files_2026-01-01.tar.gz'), 'old')
     writeFileSync(join(nightlyDir(), 'Nightly files_2026-01-02.tar.gz'), 'old')
     writeFileSync(join(nightlyDir(), 'Nightly files_2026-01-03.tar.gz'), 'old')
@@ -741,12 +766,20 @@ test.describe.serial('backups', () => {
     await expect(page.getByTestId('job-status')).toContainText('today')
     await expect(page.getByTestId('job-error')).toHaveCount(0)
 
-    const today = new Date().toISOString().slice(0, 10)
+    // Two survive: the archive this run wrote (dated AND timed, because the
+    // rotation is managed) and the newest of the seeded date-only ones.
     await expect
-      .poll(() => nightlyFiles().filter((f) => /^Nightly files_/.test(f)), {
+      .poll(() => nightlyFiles().filter((f) => /^Nightly files_/.test(f)).length, {
         timeout: 5000,
       })
-      .toEqual([`Nightly files_${today}.tar.gz`, 'Nightly files_2026-01-03.tar.gz'].sort())
+      .toBe(2)
+    const today = new Date().toISOString().slice(0, 10)
+    expect(nightlyFiles()).toContain('Nightly files_2026-01-03.tar.gz')
+    expect(
+      nightlyFiles().some((f) =>
+        new RegExp(`^Nightly files_${today}_\\d{2}-\\d{2}-\\d{2}\\.tar\\.gz$`).test(f),
+      ),
+    ).toBe(true)
 
     const left = nightlyFiles()
     expect(left).toContain('Other job_2026-01-01.tar.gz')
@@ -765,10 +798,10 @@ test.describe.serial('backups', () => {
     const jobs = await page.request.get('/api/backups/jobs').then((r) => r.json())
     const job = jobs.find((j: { name: string }) => j.name === 'Nightly files')
     const res = await page.request.put(`/api/backups/jobs/${job.id}`, {
-      data: { ...job, dateSuffix: false, keepVersions: 7 },
+      data: { ...job, dateSuffix: false, timeSuffix: false, keepVersions: 7 },
     })
     expect(res.status()).toBe(400)
-    expect(await res.text()).toMatch(/date in the filename/i)
+    expect(await res.text()).toMatch(/date and time in the filename/i)
   })
 
 
@@ -824,9 +857,21 @@ test.describe.serial('backups', () => {
       })
       expect(res.status(), `keepVersions ${JSON.stringify(bad)}`).toBe(400)
     }
-    // Unset still means "retention off", so an older client keeps working.
+    // A count the rotation would ignore is refused rather than stored as a lie.
+    const lying = await page.request.put(`/api/backups/jobs/${job.id}`, {
+      data: { ...job, rotation: 'off', keepVersions: 7 },
+    })
+    expect(lying.status()).toBe(400)
+
+    // Unset still works for a client that predates rotation: nothing managed.
     const ok = await page.request.put(`/api/backups/jobs/${job.id}`, {
-      data: { ...job, dateSuffix: true, keepVersions: undefined },
+      data: {
+        ...job,
+        rotation: 'off',
+        dateSuffix: true,
+        timeSuffix: false,
+        keepVersions: undefined,
+      },
     })
     expect(ok.status()).toBe(200)
   })

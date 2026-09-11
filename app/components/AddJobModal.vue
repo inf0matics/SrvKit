@@ -115,6 +115,9 @@ async function create() {
 .overlay {
   position: fixed;
   inset: 0;
+  /* Without this the overlay paints in DOM order, so any positioned element in
+     a later sibling (the job rows below) shows straight through the modal. */
+  z-index: 100;
   background: rgba(0, 0, 0, 0.6);
   display: flex;
   align-items: center;

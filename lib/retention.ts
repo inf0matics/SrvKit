@@ -72,43 +72,75 @@ export function archivesToDelete(
 }
 
 /**
- * What a run does, as one decision. The two filename suffix columns are the
- * mechanism behind it, not a user-facing setting:
+ * Backup rotation: what SrvKit does with a job's older archives.
  *
- *   overwrite  — one static filename, replaced every run; nothing accumulates
- *   keep-all   — a dated file per run, nothing ever deleted
- *   keep-n     — a dated file per run, trimmed to the newest N after a success
+ *   off  — SrvKit does not manage versions. Whether a run overwrites the last
+ *          file or writes a new one is decided by the filename suffixes alone,
+ *          and nothing is ever deleted.
+ *   all  — every run is its own file (date and time), nothing is deleted.
+ *   keep — every run is its own file, trimmed to the newest N after a success.
+ *
+ * `off` and `all` store the same keep count (0) because neither deletes
+ * anything, so the choice itself is stored: it decides whether the suffixes
+ * belong to the user or are fixed by the rotation.
  */
-export type RetentionMode = 'overwrite' | 'keep-all' | 'keep-n'
+export type RetentionMode = 'off' | 'all' | 'keep'
 
-/** The columns that implement a mode. Dates are what make versions possible. */
+const MODES: readonly RetentionMode[] = ['off', 'all', 'keep']
+
+export interface RetentionColumns {
+  rotation: RetentionMode
+  dateSuffix: boolean
+  timeSuffix: boolean
+  keepVersions: number
+}
+
+/**
+ * The stored columns a rotation implies. Under `off` the suffixes are the
+ * user's own choice; both managed modes fix them on, because a version that
+ * cannot be told apart from the last one is not a version.
+ */
 export function retentionColumns(
   mode: RetentionMode,
   keepVersions: number,
-): { dateSuffix: boolean; keepVersions: number } {
-  if (mode === 'keep-n') {
-    return { dateSuffix: true, keepVersions: Math.max(keepVersions, MIN_KEEP_VERSIONS) }
+  suffixes: { dateSuffix: boolean; timeSuffix: boolean },
+): RetentionColumns {
+  if (mode === 'all' || mode === 'keep') {
+    return {
+      rotation: mode,
+      dateSuffix: true,
+      timeSuffix: true,
+      keepVersions: mode === 'keep' ? Math.max(keepVersions, MIN_KEEP_VERSIONS) : 0,
+    }
   }
-  return { dateSuffix: mode === 'keep-all', keepVersions: 0 }
+  // A time on its own cannot order versions across days, so it needs the date.
+  const dateSuffix = suffixes.dateSuffix
+  return {
+    rotation: 'off',
+    dateSuffix,
+    timeSuffix: dateSuffix && suffixes.timeSuffix,
+    keepVersions: 0,
+  }
+}
+
+/** The stored rotation, falling back to the mode that deletes nothing. */
+export function retentionMode(rotation: string): RetentionMode {
+  return MODES.includes(rotation as RetentionMode) ? (rotation as RetentionMode) : 'off'
 }
 
 /**
- * The mode stored columns render as. A job from before retention existed reads
- * as what it already does: date suffix off is *overwrite*, on is *keep all*.
+ * Whether a job's stored rotation makes sense. The form cannot produce these
+ * combinations, but a stale client or a hand-crafted request must not create a
+ * job that silently never cleans up — or one that claims a count it ignores.
  */
-export function retentionMode(dateSuffix: boolean, keepVersions: number): RetentionMode {
-  // Without a date suffix the filename is static, so nothing accumulates and a
-  // keep count could never do anything — that is overwriting.
-  if (!dateSuffix) return 'overwrite'
-  return keepVersions >= MIN_KEEP_VERSIONS ? 'keep-n' : 'keep-all'
-}
-
-/**
- * Whether a job's stored retention makes sense. The UI cannot produce a keep
- * count without a date suffix, but a stale client or a hand-crafted request
- * must not create a job that silently never cleans up.
- */
-export function isValidRetention(dateSuffix: boolean, keepVersions: number): boolean {
-  if (keepVersions === 0) return true
-  return dateSuffix && keepVersions >= MIN_KEEP_VERSIONS
+export function isValidRetention(cols: RetentionColumns): boolean {
+  if (!MODES.includes(cols.rotation)) return false
+  if (cols.timeSuffix && !cols.dateSuffix) return false
+  if (cols.rotation === 'keep') {
+    return cols.dateSuffix && cols.timeSuffix && cols.keepVersions >= MIN_KEEP_VERSIONS
+  }
+  // Nothing is deleted under off or all, so a keep count would be a lie.
+  if (cols.keepVersions !== 0) return false
+  if (cols.rotation === 'all') return cols.dateSuffix && cols.timeSuffix
+  return true
 }

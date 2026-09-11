@@ -14,7 +14,12 @@ import type { JobInput, JobRecord } from '../../lib/store.ts'
 import { isSqliteFile, isWalDatabase } from '../../lib/sqlite-backup.ts'
 import { isValidCron } from '../../lib/cron.ts'
 import { resolveWithin, isSafeRelPath } from '../../lib/paths.ts'
-import { isValidRetention, MIN_KEEP_VERSIONS } from '../../lib/retention.ts'
+import {
+  isValidRetention,
+  retentionMode,
+  MIN_KEEP_VERSIONS,
+  type RetentionColumns,
+} from '../../lib/retention.ts'
 import { store } from './srvkit.ts'
 
 /** Base directory holding the mounted backup sources. */
@@ -105,6 +110,7 @@ export function parseNewJob(body: Record<string, unknown> | null): JobInput {
     dateSuffix: false,
     timeSuffix: false,
     keepVersions: 0,
+    rotation: 'off',
     trigger: 'filewatcher',
     schedule: '',
     ...emptyPgFields,
@@ -140,6 +146,7 @@ export function parseJobInput(
       statusMessage: 'The sub-directory must stay inside the target root.',
     })
   }
+  const rotation = retentionMode(trimStr(body?.rotation))
   const dateSuffix = body?.dateSuffix === true
   const timeSuffix = body?.timeSuffix === true
   // Absent means an older client that predates retention: default it off. A
@@ -157,16 +164,12 @@ export function parseJobInput(
     }
     keepVersions = rawKeep as number
   }
-  // Unreachable through the UI, but a stale client or a hand-crafted request
-  // must not create a job that silently never cleans up.
-  if (!isValidRetention(dateSuffix, keepVersions)) {
-    throw createError({
-      statusCode: 400,
-      statusMessage:
-        keepVersions < MIN_KEEP_VERSIONS
-          ? `Keep at least ${MIN_KEEP_VERSIONS} versions, or choose overwrite.`
-          : 'Keeping versions requires the date in the filename.',
-    })
+  // Unreachable through the form, but a stale client or a hand-crafted request
+  // must not create a job that silently never cleans up, or one carrying a keep
+  // count that its rotation ignores.
+  const columns = { rotation, dateSuffix, timeSuffix, keepVersions }
+  if (!isValidRetention(columns)) {
+    throw createError({ statusCode: 400, statusMessage: retentionProblem(columns) })
   }
   // Archives are matched by job name, so two jobs writing the same names into
   // one folder cannot tell their histories apart and retention would delete the
@@ -261,10 +264,25 @@ export function parseJobInput(
     dateSuffix,
     timeSuffix,
     keepVersions,
+    rotation,
     trigger,
     schedule,
     ...pg,
   }
+}
+
+/** Why a stored rotation was refused, in the terms the form uses. */
+function retentionProblem(cols: RetentionColumns): string {
+  if (cols.timeSuffix && !cols.dateSuffix) {
+    return 'The time can only be added to the filename together with the date.'
+  }
+  if (cols.rotation === 'keep' && cols.keepVersions < MIN_KEEP_VERSIONS) {
+    return `Keep at least ${MIN_KEEP_VERSIONS} versions, or turn rotation off.`
+  }
+  if (cols.rotation !== 'keep' && cols.keepVersions !== 0) {
+    return 'A versions-to-keep count needs the "keep the newest" rotation.'
+  }
+  return 'Keeping versions requires the date and time in the filename.'
 }
 
 export function trimStr(v: unknown): string {

@@ -13,6 +13,7 @@ const sample = {
   dateSuffix: false,
   timeSuffix: false,
   keepVersions: 0,
+  rotation: 'off',
   trigger: 'filewatcher',
   container: '',
   database: '',

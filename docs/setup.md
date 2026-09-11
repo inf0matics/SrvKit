@@ -96,11 +96,18 @@ reset below.
    include, and a destination sub-directory. SrvKit watches the selected files
    and writes a `tar.gz` to the target whenever they change (10s debounce). Use
    **Run Now** to trigger a backup immediately.
-3. **Decide what each run does** — one choice on the job:
-   - **Overwrite** — one file, replaced every run. Nothing accumulates.
-   - **Keep the newest N** — a dated file per run; after a successful run,
+3. **Backup rotation** — what SrvKit does with a job's older archives:
+   - **Off** — SrvKit manages nothing. Whether a run overwrites the last file or
+     writes a new one is decided by the two filename checkboxes below the box,
+     and nothing is ever deleted.
+   - **Keep the newest N** — every run is its own file; after a successful run,
      everything older than the N newest is deleted. Minimum 2.
-   - **Keep all versions** — a dated file per run, nothing ever deleted.
+   - **Keep all versions** — every run is its own file, nothing ever deleted.
+
+   Both managed rotations switch the date and time suffixes on and lock them: a
+   version you cannot tell apart from the last one is not a version. Under Off
+   the two checkboxes are yours, and the time can only be added together with
+   the date.
 
    Cleanup happens only after a *successful* run, so a failed backup can never
    delete a good one, and only among that job's own archives in its own output

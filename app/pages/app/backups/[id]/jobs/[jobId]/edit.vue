@@ -23,6 +23,7 @@ interface Job {
   dateSuffix: boolean
   timeSuffix: boolean
   keepVersions: number
+  rotation: string
   trigger: string
   container: string
   database: string
@@ -65,9 +66,11 @@ const form = reactive({
   sourcePath: '',
   output: 'single',
   subdirectory: '',
+  // The filename suffixes are the user's own under Off, and fixed on under a
+  // managed rotation — either way the form holds what will be saved.
+  dateSuffix: false,
   timeSuffix: false,
-  // One decision about what a run does; the suffix columns are its mechanism.
-  retentionMode: 'overwrite' as RetentionMode,
+  retentionMode: 'off' as RetentionMode,
   keepVersions: 7,
   trigger: 'filewatcher',
   container: '',
@@ -79,8 +82,7 @@ const form = reactive({
 const includes = ref<string[]>([])
 // What the job looked like when it loaded, so an unrelated save cannot silently
 // rewrite a filename scheme the user never touched.
-const loadedMode = ref<RetentionMode>('overwrite')
-const loadedTimeSuffix = ref(false)
+const loadedMode = ref<RetentionMode>('off')
 const loadedName = ref('')
 const hasDbPassword = ref(false)
 const walDetected = ref(false)
@@ -94,9 +96,10 @@ watch(
     form.sourcePath = j.sourcePath
     form.output = j.output
     form.subdirectory = j.subdirectory
-    form.retentionMode = retentionMode(j.dateSuffix, j.keepVersions)
+    form.dateSuffix = j.dateSuffix
+    form.timeSuffix = j.timeSuffix
+    form.retentionMode = retentionMode(j.rotation)
     loadedMode.value = form.retentionMode
-    loadedTimeSuffix.value = j.timeSuffix
     loadedName.value = j.name
     // Keep a sensible number in the box even while another mode is selected.
     form.keepVersions = j.keepVersions || 7
@@ -158,19 +161,29 @@ const filteredContainers = computed(() =>
 
 const isLocalTarget = computed(() => target.value?.type === 'local')
 
-const keepsVersions = computed(() => form.retentionMode !== 'overwrite')
+/** Both managed rotations fix the filename suffixes; Off leaves them to the user. */
+const rotationManaged = computed(() => form.retentionMode !== 'off')
 
 /**
- * The stored columns the selected mode implements. The time toggle is only
- * offered in the two keep modes — in Overwrite the filename is static, and a
- * time suffix would make every run a new file nothing ever cleans up.
- *
- * The old UI had two independent checkboxes, so a job can already be stored
- * with the time suffix on and the date off. That job reads as Overwrite, where
- * the toggle is hidden, so clearing it unconditionally would silently change
- * its destination filename on any unrelated save. Only clear it when the user
- * actually chose Overwrite in this session.
+ * A managed rotation needs every run to be its own file, so it switches both
+ * suffixes on and locks them. Driving the form state (rather than only the
+ * checkbox's rendering) keeps what is shown and what is saved the same thing.
  */
+watch(rotationManaged, (managed) => {
+  if (managed) {
+    form.dateSuffix = true
+    form.timeSuffix = true
+  }
+})
+
+// A time on its own cannot order versions across days, so it goes with the date.
+watch(
+  () => form.dateSuffix,
+  (dated) => {
+    if (!dated) form.timeSuffix = false
+  },
+)
+
 /**
  * The count as a usable whole number. The field can hold an empty string or a
  * half-typed value, and the API refuses anything that is not a whole count —
@@ -183,15 +196,12 @@ const keepCount = computed(() => {
 
 /** Archives are matched by name, so a rename walks away from the old ones. */
 const renameOrphansHistory = computed(
-  () => keepsVersions.value && !!loadedName.value && form.name !== loadedName.value,
+  () => rotationManaged.value && !!loadedName.value && form.name !== loadedName.value,
 )
 
-const retention = computed(() => ({
-  ...retentionColumns(form.retentionMode, keepCount.value),
-  timeSuffix: keepsVersions.value
-    ? form.timeSuffix
-    : loadedMode.value === 'overwrite' && loadedTimeSuffix.value,
-}))
+const retention = computed(() =>
+  retentionColumns(form.retentionMode, keepCount.value, form),
+)
 
 // Full destination — the same formatter the job list uses, so the two pages
 // can never disagree about the filename a job produces.
@@ -224,6 +234,7 @@ async function save() {
         dateSuffix: retention.value.dateSuffix,
         timeSuffix: retention.value.timeSuffix,
         keepVersions: retention.value.keepVersions,
+        rotation: retention.value.rotation,
         trigger: form.trigger,
         container: form.container,
         database: form.database,
@@ -278,7 +289,8 @@ async function save() {
 
         <label class="field">
           <span>Output</span>
-          <select v-model="form.output" class="tsp-input">
+          <!-- One option today; a chooser with a single choice is just noise. -->
+          <select v-model="form.output" class="tsp-input" disabled>
             <option value="single">Single File</option>
           </select>
         </label>
@@ -386,25 +398,15 @@ async function save() {
       </label>
 
       <fieldset class="field retention" data-testid="retention">
-        <legend>Every run</legend>
+        <legend>Backup Rotation</legend>
 
         <label class="radio">
-          <input
-            v-model="form.retentionMode"
-            type="radio"
-            name="retention"
-            value="overwrite"
-          >
-          <span>Overwrite — always the same file</span>
+          <input v-model="form.retentionMode" type="radio" name="retention" value="off">
+          <span>Off — SrvKit does not manage old versions</span>
         </label>
 
         <label class="radio">
-          <input
-            v-model="form.retentionMode"
-            type="radio"
-            name="retention"
-            value="keep-n"
-          >
+          <input v-model="form.retentionMode" type="radio" name="retention" value="keep">
           <span>
             Keep the newest
             <input
@@ -416,32 +418,18 @@ async function save() {
               step="1"
               data-testid="keep-count"
               aria-label="Versions to keep"
-              @focus="form.retentionMode = 'keep-n'"
+              @focus="form.retentionMode = 'keep'"
             >
             versions
           </span>
         </label>
 
         <label class="radio">
-          <input
-            v-model="form.retentionMode"
-            type="radio"
-            name="retention"
-            value="keep-all"
-          >
+          <input v-model="form.retentionMode" type="radio" name="retention" value="all">
           <span>Keep all versions</span>
         </label>
 
-        <!-- Without this a second run on the same day overwrites the first
-             day's file: right for a nightly job, wrong for an hourly one. -->
-        <label v-if="keepsVersions" class="field toggle sub">
-          <input v-model="form.timeSuffix" type="checkbox">
-          <span>runs more than once a day (adds the time to the filename)</span>
-        </label>
-
-        <p class="archive tsp-muted sub" data-testid="archive">Archive: {{ archive }}</p>
-
-        <p v-if="form.retentionMode === 'keep-n'" class="tsp-muted sub hint">
+        <p v-if="form.retentionMode === 'keep'" class="tsp-muted hint">
           Older archives are removed after the next successful run — saving does
           not delete anything.
           <br>
@@ -452,13 +440,37 @@ async function save() {
 
         <p
           v-if="renameOrphansHistory"
-          class="tsp-muted sub hint"
+          class="tsp-muted hint"
           data-testid="rename-note"
         >
           Renaming leaves the existing “{{ loadedName }}” archives where they
           are — they are no longer counted or removed by this job.
         </p>
       </fieldset>
+
+      <!-- Outside the box on purpose: under a managed rotation these are what
+           makes each run its own version, so they are shown switched on and
+           locked rather than hidden. Under Off they are the user's to choose. -->
+      <label class="field toggle">
+        <input
+          v-model="form.dateSuffix"
+          type="checkbox"
+          :disabled="rotationManaged"
+          data-testid="date-suffix"
+        >
+        <span>Append date to filename (_YYYY-MM-DD)</span>
+      </label>
+      <label class="field toggle">
+        <input
+          v-model="form.timeSuffix"
+          type="checkbox"
+          :disabled="rotationManaged || !form.dateSuffix"
+          data-testid="time-suffix"
+        >
+        <span>Append time to filename (_HH-MM-SS)</span>
+      </label>
+
+      <p class="archive tsp-muted" data-testid="archive">Archive: {{ archive }}</p>
       <p v-if="saveError" class="err">{{ saveError }}</p>
 
       <div class="actions">
@@ -582,10 +594,6 @@ async function save() {
 .keep-count {
   width: 5.5rem;
   padding: 3px 6px;
-}
-
-.retention .sub {
-  margin-left: 24px;
 }
 
 .hint {

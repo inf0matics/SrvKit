@@ -35,7 +35,9 @@ const body = (over: Record<string, unknown> = {}) => ({
   includes: ['file.txt'],
   subdirectory: 'sub',
   dateSuffix: true,
+  timeSuffix: true,
   keepVersions: 2,
+  rotation: 'keep',
   ...over,
 })
 
@@ -97,11 +99,19 @@ test('an ordinary nested subdirectory is still fine', () => {
 
 /* ---- an invalid keep count must not silently become "keep all" ---- */
 
-test('an unset keepVersions still means retention off (older clients)', () => {
+test('an unset keepVersions still means rotation off (older clients)', () => {
   // undefined / null / '' are "not set", not a count that got discarded.
   for (const unset of [undefined, null, '']) {
-    const input = parseJobInput(body({ name: `unset-${String(unset)}`, keepVersions: unset }))
+    const input = parseJobInput(
+      body({
+        name: `unset-${String(unset)}`,
+        rotation: 'off',
+        timeSuffix: false,
+        keepVersions: unset,
+      }),
+    )
     assert.equal(input.keepVersions, 0)
+    assert.equal(input.rotation, 'off')
   }
 })
 
@@ -122,9 +132,35 @@ test('a keep count of 1 is rejected with a message about the count', () => {
   )
 })
 
-test('keeping versions without the date still names the date', () => {
+test('keeping versions without the dated filename that makes them is refused', () => {
   assert.throws(
-    () => parseJobInput(body({ name: 'nodate', dateSuffix: false, keepVersions: 7 })),
-    /date in the filename/i,
+    () =>
+      parseJobInput(
+        body({ name: 'nodate', dateSuffix: false, timeSuffix: false, keepVersions: 7 }),
+      ),
+    /date and time in the filename/i,
+  )
+})
+
+test('a keep count on a rotation that never deletes is refused', () => {
+  assert.throws(
+    () => parseJobInput(body({ name: 'countoff', rotation: 'off', keepVersions: 7 })),
+    /rotation/i,
+  )
+})
+
+test('a time suffix without a date is refused', () => {
+  assert.throws(
+    () =>
+      parseJobInput(
+        body({
+          name: 'timeonly',
+          rotation: 'off',
+          dateSuffix: false,
+          timeSuffix: true,
+          keepVersions: 0,
+        }),
+      ),
+    /together with the date/i,
   )
 })
