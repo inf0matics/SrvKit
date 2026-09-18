@@ -13,31 +13,55 @@ environment variables. This guide deploys it on a VPS behind
   just forward HTTPS to the container's port `3000`.
 - A DNS record pointing at the VPS (e.g. `srvkit.example.com`).
 
-## 1. compose.yml
+## 1. `.env` — the encryption key
+
+SrvKit's only required setting is `ENCRYPTION_KEY`, and it is a secret: it
+encrypts backup-target passwords at rest. It belongs in a `.env` file next to
+`compose.yml`, not inline in the compose file.
+
+Create the directory and the `.env` in one copy-paste:
+
+```bash
+mkdir -p /opt/srvkit && cd /opt/srvkit && { [ -e .env ] && echo "!! .env already exists — leaving it alone" || { umask 077; printf 'ENCRYPTION_KEY=%s\n' "$(openssl rand -base64 32)" > .env; chmod 600 .env; echo "OK  .env created with a fresh ENCRYPTION_KEY"; }; }
+```
+
+What it does: creates `/opt/srvkit`, generates a 256-bit random key with
+`openssl`, and writes it to a `.env` readable only by its owner (`umask 077` +
+`chmod 600`). It **refuses to overwrite an existing `.env`** — regenerating the
+key over a live install makes every stored target password undecryptable.
+
+⚠️ **Back up this file.** The key must stay stable for the life of the install.
+`.env` holds a secret — never commit it. Add any optional overrides from the
+[table below](#environment-variables) as further lines in the same file.
+
+## 2. compose.yml
 
 ```yaml
 services:
   srvkit:
-    image: inf0matics/srvkit:latest        # or pin a version, e.g. :v0.0.1
+    image: thespielplatz/srvkit:latest      # or pin a version, e.g. :v1.5.0
     container_name: srvkit                  # lets `docker exec srvkit …` work
     restart: unless-stopped
+    # Reads ./.env — ENCRYPTION_KEY and any optional overrides you put there.
+    env_file:
+      - .env
     environment:
-      # REQUIRED — encrypts backup-target passwords at rest. Use a long random
-      # value and NEVER change it, or existing secrets become unreadable.
-      ENCRYPTION_KEY: "change-me-to-a-long-random-secret"
-      # Optional overrides (defaults shown):
-      # DATABASE_PATH: "/data/srvkit.db"
-      # BACKUP_SOURCES_DIR: "/backups"
-      # BACKUP_TARGETS_DIR: "/backup-targets"
-      # SESSION_TTL: "86400"               # session inactivity timeout (seconds)
-      # TIP_JAR_URL: "https://thespielplatz.com/tip-jar"
-      # COOKIE_SECURE: leave UNSET behind TLS (Secure cookies are the default).
+      # Fail fast with a readable message if the .env is missing or the key is
+      # empty, instead of starting a container that cannot decrypt anything.
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?missing — run the .env command in step 1}
     volumes:
       - ./data:/data                        # password hash + targets/jobs DB
       # Mount anything you want to back up read-only under /backups/<name>.
       # Each sub-directory shows up as a source in the backup-job wizard:
       - /root:/backups/root:ro
       - /etc:/backups/etc:ro
+      # Host monitoring:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /etc/mtab:/host/etc/mtab:ro
+      - /:/host/root:ro
+      # Docker monitoring + database backup jobs:
+      - /var/run/docker.sock:/var/run/docker.sock
       # Destinations for local-directory targets — WRITABLE, note the missing
       # :ro. Ideally a different physical disk than the sources above.
       - /srv/backups:/backup-targets
@@ -54,6 +78,12 @@ networks:
     external: true
 ```
 
+Two things pull the key in, and they do different jobs: `env_file` hands the
+whole `.env` to the *container*, while `${ENCRYPTION_KEY:?…}` is substituted by
+*Compose itself* on the host — that is what turns a missing `.env` into an
+error at `docker compose up` rather than a container that boots and then fails
+on the first saved password.
+
 > **Without Traefik?** Drop the `labels`/`networks` blocks, put SrvKit behind
 > your own proxy, and (only for that proxy) expose the port, e.g.
 > `ports: ["127.0.0.1:3000:3000"]`. Terminate TLS at the proxy — over plain
@@ -66,7 +96,7 @@ Start it:
 docker compose up -d
 ```
 
-## 2. First start
+## 3. First start
 
 Open the service URL. On first start there is **no password** — SrvKit shows a
 one-time setup screen with a suggested 12-word passphrase. Accept it, regenerate
@@ -75,7 +105,7 @@ it, or type your own, then **Save**.
 ⚠️ **Write the passphrase down.** There is no recovery from the UI — only the CLI
 reset below.
 
-## 3. Configure backups
+## 4. Configure backups
 
 1. **Add a target** — the destination backups are written to. Two types:
    - **Nextcloud** — host, username, password, and a root folder picked via the
@@ -128,7 +158,7 @@ reset below.
 
 | Variable | Required | Default | Purpose |
 |---|---|---|---|
-| `ENCRYPTION_KEY` | **yes** | — | Encrypts stored target passwords. Keep stable. |
+| `ENCRYPTION_KEY` | **yes** | — | Encrypts stored target passwords. Keep stable. Lives in `.env` (step 1). |
 | `DATABASE_PATH` | no | `/data/srvkit.db` | SQLite DB location (on the volume). |
 | `BACKUP_SOURCES_DIR` | no | `/backups` | Base dir for mounted backup sources. |
 | `BACKUP_TARGETS_DIR` | no | `/backup-targets` | Base dir for local-directory targets (mount writable). |

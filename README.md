@@ -56,13 +56,26 @@ volumes:
 
 ## Quick start
 
+**1. Create the `.env` next to your `compose.yml`** — one copy-paste, generates the key:
+
+```bash
+[ -e .env ] && echo "!! .env already exists — leaving it alone" || { umask 077; printf 'ENCRYPTION_KEY=%s\n' "$(openssl rand -base64 32)" > .env; echo "OK  .env created with a fresh ENCRYPTION_KEY"; }
+```
+
+The key encrypts stored backup-target passwords. **Back the `.env` up and never
+change the key** — existing secrets become unreadable if you do. The guard above
+is why the command refuses to overwrite an existing `.env`.
+
+**2. `compose.yml`:**
+
 ```yaml
 services:
   srvkit:
-    image: inf0matics/srvkit:latest
+    image: thespielplatz/srvkit:latest
     restart: unless-stopped
+    env_file: [.env]
     environment:
-      ENCRYPTION_KEY: "change-me-to-a-long-random-secret"
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?missing — create the .env, see step 1}
     volumes:
       - ./data:/data
       - /proc:/host/proc:ro
@@ -84,11 +97,7 @@ networks:
     external: true
 ```
 
-Generate an encryption key:
-
-```bash
-echo "ENCRYPTION_KEY=$(openssl rand -base64 32)"
-```
+**3. `docker compose up -d`.**
 
 Open the service URL — on first start SrvKit shows a one-time passphrase setup screen.
 
