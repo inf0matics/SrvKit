@@ -405,11 +405,19 @@ test.describe.serial('backups', () => {
     await page.getByRole('button', { name: 'notes.txt', exact: true }).click()
     await page.getByRole('button', { name: 'Save' }).click()
     // Only the server can tell — and it names the field, so the source file is
-    // marked and the reason is reported once below the form.
+    // the one marked, and the reason is reported once below the form.
     await expect(page.getByTestId('save-error')).toContainText(
       'not a valid SQLite database',
     )
-    await expect(page.locator('.field.invalid')).toHaveCount(1)
+    const sourceField = page.locator('.field.invalid')
+    await expect(sourceField).toHaveCount(1)
+    await expect(sourceField).toContainText('Source file')
+
+    // The API judged the file that was sent; picking another one makes that
+    // verdict stale, so the mark and its wording both go.
+    await page.getByRole('button', { name: 'app.db', exact: true }).click()
+    await expect(page.locator('.field.invalid')).toHaveCount(0)
+    await expect(page.getByTestId('save-error')).toHaveCount(0)
   })
 
   test('detail: PostgreSQL create is disabled without the Docker socket', async () => {

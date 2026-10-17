@@ -133,6 +133,7 @@ watch(
       walDetected.value = false
     }
   },
+  { immediate: true },
 )
 
 // Running Docker containers for the PostgreSQL/MySQL container picker.
@@ -238,9 +239,12 @@ const serverField = ref('')
 
 const problems = computed(() => jobProblems(form, includes.value, hasDbPassword.value))
 
-// The API judged what was sent; any edit makes that verdict stale.
+// The API judged what was sent; any edit makes that verdict stale — the mark
+// and the wording both, or the report keeps accusing a field it no longer marks.
 watch([form, includes], () => {
+  if (!serverField.value) return
   serverField.value = ''
+  saveError.value = ''
 })
 
 /** The pre-check message to show under `field`, or '' while it is not at fault. */

@@ -7,7 +7,9 @@ import { cronIsValid } from './cron.ts'
  *
  * The API validates all of this too and is the authority — this only spares the
  * user a round trip and, more importantly, lets the answer point at a field.
- * Both sides raise the same `JOB_REFUSALS`, so neither can drift.
+ * Both sides raise the same `JOB_REFUSALS`, so the wording and the field names
+ * cannot drift; the conditions below mirror `parseJobInput` by hand and have to
+ * be changed with it.
  */
 const blank = (s: string) => !s.trim()
 

@@ -16,10 +16,19 @@ interface ApiError {
 const asApiError = (e: unknown): ApiError =>
   e && typeof e === 'object' ? (e as ApiError) : {}
 
+/**
+ * Nitro answers an unhandled failure with this fixed placeholder in place of a
+ * statusMessage. It says less than the caller's own wording, so it is treated
+ * as no message at all; an API that authors its own 5xx text still comes
+ * through, because it never phrases it this way.
+ */
+const GENERIC = 'Server Error'
+
 export function apiErrorMessage(e: unknown, fallback: string): string {
   const err = asApiError(e)
   const body = err.data && typeof err.data === 'object' ? err.data : undefined
-  return body?.statusMessage || err.statusMessage || fallback
+  const said = body?.statusMessage || err.statusMessage
+  return (said === GENERIC ? '' : said) || fallback
 }
 
 /**

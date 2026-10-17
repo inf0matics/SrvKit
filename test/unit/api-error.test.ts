@@ -41,6 +41,24 @@ test('falls back when the error carries no message at all', () => {
   assert.equal(apiErrorMessage({ data: '<html>502</html>' }, fallback), fallback)
 })
 
+/**
+ * Nitro's own error handler answers every unhandled failure with a body whose
+ * statusMessage is the fixed placeholder "Server Error" (and no `data`). Taking
+ * that as the message would replace each screen's own wording with the least
+ * useful string in the system.
+ */
+test('Nitro\'s generic placeholder is not a message', () => {
+  const unhandled = {
+    statusCode: 500,
+    statusMessage: '',
+    data: { error: true, statusCode: 500, statusMessage: 'Server Error' },
+  }
+  assert.equal(apiErrorMessage(unhandled, fallback), fallback)
+  // An API that authors its own 5xx wording still gets to say it.
+  const authored = { data: { statusCode: 502, statusMessage: 'The backup target is unreachable.' } }
+  assert.equal(apiErrorMessage(authored, fallback), 'The backup target is unreachable.')
+})
+
 test('picks up the offending field so the form can mark it', () => {
   const err = { data: { statusMessage: 'Select a container.', data: { field: 'container' } } }
   assert.equal(apiErrorField(err), 'container')
