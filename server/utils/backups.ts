@@ -1,6 +1,7 @@
 import { join, isAbsolute, normalize } from 'node:path'
 import { createError } from 'h3'
 import { encrypt, decrypt } from '../../lib/crypto.ts'
+import { JOB_REFUSALS, type JobRefusal } from '../../lib/jobRefusals.ts'
 import {
   listSources,
   listDbFiles,
@@ -124,6 +125,14 @@ export function publicJob(job: JobRecord): Omit<JobRecord, 'dbPassword'> & {
 }
 
 /**
+ * A refused field, as the client's `apiErrorField` expects it: the wording in
+ * `statusMessage`, the field it belongs to in `data`.
+ */
+export function refuseJobField({ field, message }: JobRefusal) {
+  return createError({ statusCode: 400, statusMessage: message, data: { field } })
+}
+
+/**
  * Full validation for saving (activating) a job from the edit page.
  * `excludeJobId` is the job being edited, so it does not collide with itself.
  */
@@ -139,10 +148,9 @@ export function parseJobInput(
   // of the configured root. The local driver would still refuse the write; a
   // WebDAV share would happily accept it anywhere in the linked account.
   if (!isSafeRelPath(subdirectory)) {
-    throw createError({
-      statusCode: 400,
-      statusMessage: 'The sub-directory must stay inside the target root.',
-      data: { field: 'subdirectory' },
+    throw refuseJobField({
+      field: 'subdirectory',
+      message: 'The sub-directory must stay inside the target root.',
     })
   }
   const dateSuffix = body?.dateSuffix === true
@@ -155,10 +163,9 @@ export function parseJobInput(
   let keepVersions = 0
   if (rawKeep !== undefined && rawKeep !== null && rawKeep !== '') {
     if (!Number.isInteger(rawKeep) || (rawKeep as number) < 0) {
-      throw createError({
-        statusCode: 400,
-        statusMessage: 'Versions to keep must be a whole number.',
-        data: { field: 'keepVersions' },
+      throw refuseJobField({
+        field: 'keepVersions',
+        message: 'Versions to keep must be a whole number.',
       })
     }
     keepVersions = rawKeep as number
@@ -183,10 +190,9 @@ export function parseJobInput(
         j.subdirectory === subdirectory,
     )
   if (twin) {
-    throw createError({
-      statusCode: 400,
-      statusMessage: 'Another job already writes this name to that folder.',
-      data: { field: 'name' },
+    throw refuseJobField({
+      field: 'name',
+      message: 'Another job already writes this name to that folder.',
     })
   }
 
@@ -207,50 +213,19 @@ export function parseJobInput(
     schedule = trimStr(body?.schedule)
     trigger = 'cron' // container DB dumps are always cron-triggered
     const password = typeof body?.dbPassword === 'string' ? body.dbPassword : ''
-    if (!pg.container) {
-      throw createError({
-        statusCode: 400,
-        statusMessage: 'Select a container.',
-        data: { field: 'container' },
-      })
-    }
-    if (!pg.database) {
-      throw createError({
-        statusCode: 400,
-        statusMessage: 'Database name is required.',
-        data: { field: 'database' },
-      })
-    }
-    if (!pg.dbUser) {
-      throw createError({
-        statusCode: 400,
-        statusMessage: 'Database user is required.',
-        data: { field: 'dbUser' },
-      })
-    }
-    if (!isValidCron(schedule)) {
-      throw createError({
-        statusCode: 400,
-        statusMessage: 'A valid cron schedule is required.',
-        data: { field: 'schedule' },
-      })
-    }
+    if (!pg.container) throw refuseJobField(JOB_REFUSALS.container)
+    if (!pg.database) throw refuseJobField(JOB_REFUSALS.database)
+    if (!pg.dbUser) throw refuseJobField(JOB_REFUSALS.dbUser)
+    if (!isValidCron(schedule)) throw refuseJobField(JOB_REFUSALS.schedule)
     // Empty = "keep the stored password"; the PUT handler resolves it.
     pg.dbPassword = password ? encryptPassword(password) : ''
   } else if (type === 'sqlite') {
     const abs = sourcePath ? resolveSourcePath(sourcePath) : null
-    if (!abs) {
-      throw createError({
-        statusCode: 400,
-        statusMessage: 'Select a source file.',
-        data: { field: 'sourcePath' },
-      })
-    }
+    if (!abs) throw refuseJobField(JOB_REFUSALS.sourceFile)
     if (!isSqliteFile(abs)) {
-      throw createError({
-        statusCode: 400,
-        statusMessage: 'The selected file is not a valid SQLite database.',
-        data: { field: 'sourcePath' },
+      throw refuseJobField({
+        field: 'sourcePath',
+        message: 'The selected file is not a valid SQLite database.',
       })
     }
     // WAL-mode databases can only be cron-triggered (the filewatcher is unreliable).
@@ -258,29 +233,11 @@ export function parseJobInput(
     trigger = wal || trimStr(body?.trigger) === 'cron' ? 'cron' : 'filewatcher'
     if (trigger === 'cron') {
       schedule = trimStr(body?.schedule)
-      if (!isValidCron(schedule)) {
-        throw createError({
-          statusCode: 400,
-          statusMessage: 'A valid cron schedule is required.',
-          data: { field: 'schedule' },
-        })
-      }
+      if (!isValidCron(schedule)) throw refuseJobField(JOB_REFUSALS.schedule)
     }
   } else {
-    if (!getSources().includes(sourcePath)) {
-      throw createError({
-        statusCode: 400,
-        statusMessage: 'Select a source directory.',
-        data: { field: 'sourcePath' },
-      })
-    }
-    if (includes.length === 0) {
-      throw createError({
-        statusCode: 400,
-        statusMessage: 'Select at least one file to back up.',
-        data: { field: 'includes' },
-      })
-    }
+    if (!getSources().includes(sourcePath)) throw refuseJobField(JOB_REFUSALS.sourceDir)
+    if (includes.length === 0) throw refuseJobField(JOB_REFUSALS.includes)
   }
 
   return {

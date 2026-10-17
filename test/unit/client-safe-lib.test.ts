@@ -15,7 +15,7 @@ const repo = join(dirname(fileURLToPath(import.meta.url)), '../..')
  *
  * Add a module to this list only when the client actually imports it.
  */
-const CLIENT_IMPORTED = ['lib/retention.ts']
+const CLIENT_IMPORTED = ['lib/retention.ts', 'lib/jobRefusals.ts']
 
 for (const rel of CLIENT_IMPORTED) {
   test(`${rel} stays free of Node built-ins so the client can import it`, () => {
@@ -34,13 +34,15 @@ test('the client imports only modules on that list', () => {
     'app/pages/app/backups/[id]/jobs/[jobId]/edit.vue',
     'app/components/TargetJobs.vue',
     'app/utils/targetPath.ts',
+    'app/utils/jobProblems.ts',
     'app/composables/useTargets.ts',
     'app/pages/app/backups/index.vue',
     'app/pages/app/backups/[id]/index.vue',
   ]
   for (const file of clientFiles) {
     const src = readFileSync(join(repo, file), 'utf8')
-    for (const m of src.matchAll(/from\s+['"]~~\/(lib\/[^'"]+)['"]/g)) {
+    // Both the Nuxt alias and a relative path reach the same modules.
+    for (const m of src.matchAll(/from\s+['"](?:~~\/|(?:\.\.\/)+)(lib\/[^'"]+)['"]/g)) {
       const imported = m[1]!.endsWith('.ts') ? m[1]! : `${m[1]}.ts`
       assert.ok(
         CLIENT_IMPORTED.includes(imported),

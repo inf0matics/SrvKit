@@ -1,5 +1,6 @@
 import { store } from '../../../../utils/srvkit.ts'
-import { parseJobInput, publicJob } from '../../../../utils/backups.ts'
+import { parseJobInput, publicJob, refuseJobField } from '../../../../utils/backups.ts'
+import { JOB_REFUSALS } from '../../../../../lib/jobRefusals.ts'
 import { registerJob, unregisterJob } from '../../../../utils/watcher.ts'
 import { registerCron, unregisterCron, usesCron } from '../../../../utils/scheduler.ts'
 
@@ -16,11 +17,7 @@ export default defineEventHandler(async (event) => {
   if (input.type === 'postgres' || input.type === 'mysql') {
     if (!input.dbPassword) input.dbPassword = existing.dbPassword
     if (!input.dbPassword) {
-      throw createError({
-        statusCode: 400,
-        statusMessage: 'Database password is required.',
-        data: { field: 'dbPassword' },
-      })
+      throw refuseJobField(JOB_REFUSALS.dbPassword)
     }
   }
   store().updateJob(id, input)

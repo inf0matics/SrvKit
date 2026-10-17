@@ -1,3 +1,4 @@
+import { JOB_REFUSALS, type JobRefusal } from '../../lib/jobRefusals.ts'
 import { cronIsValid } from './cron.ts'
 
 /**
@@ -6,14 +7,9 @@ import { cronIsValid } from './cron.ts'
  *
  * The API validates all of this too and is the authority — this only spares the
  * user a round trip and, more importantly, lets the answer point at a field.
- * The messages are therefore the API's own wording, verbatim; a unit test holds
- * the two together.
+ * Both sides raise the same `JOB_REFUSALS`, so neither can drift.
  */
-export interface JobProblem {
-  /** The key of the form field at fault — also what the API reports in `data.field`. */
-  field: string
-  message: string
-}
+const blank = (s: string) => !s.trim()
 
 /** The job form's fields, as far as validation is concerned. */
 export interface JobFormFields {
@@ -28,8 +24,6 @@ export interface JobFormFields {
   dbPassword: string
 }
 
-const blank = (s: string) => !s.trim()
-
 /**
  * In the order the form shows the fields, so "the first problem" is also the
  * topmost one on screen.
@@ -41,29 +35,27 @@ export function jobProblems(
   form: JobFormFields,
   includes: string[],
   hasStoredPassword: boolean,
-): JobProblem[] {
-  const problems: JobProblem[] = []
-  const miss = (field: string, message: string) => problems.push({ field, message })
+): JobRefusal[] {
+  const problems: JobRefusal[] = []
+  const miss = (r: JobRefusal) => problems.push(r)
 
-  if (blank(form.name)) miss('name', 'A job name is required.')
+  // The API phrases a missing name for API callers ("name and targetId are
+  // required"), which is no use under an input — hence the one local wording.
+  if (blank(form.name)) miss({ field: 'name', message: 'A job name is required.' })
 
   if (form.type === 'postgres' || form.type === 'mysql') {
-    if (blank(form.container)) miss('container', 'Select a container.')
-    if (blank(form.database)) miss('database', 'Database name is required.')
-    if (blank(form.dbUser)) miss('dbUser', 'Database user is required.')
-    if (blank(form.dbPassword) && !hasStoredPassword) {
-      miss('dbPassword', 'Database password is required.')
-    }
+    if (blank(form.container)) miss(JOB_REFUSALS.container)
+    if (blank(form.database)) miss(JOB_REFUSALS.database)
+    if (blank(form.dbUser)) miss(JOB_REFUSALS.dbUser)
+    if (blank(form.dbPassword) && !hasStoredPassword) miss(JOB_REFUSALS.dbPassword)
     // Container dumps are always cron-triggered.
-    if (!cronIsValid(form.schedule)) miss('schedule', 'A valid cron schedule is required.')
+    if (!cronIsValid(form.schedule)) miss(JOB_REFUSALS.schedule)
   } else if (form.type === 'sqlite') {
-    if (blank(form.sourcePath)) miss('sourcePath', 'Select a source file.')
-    if (form.trigger === 'cron' && !cronIsValid(form.schedule)) {
-      miss('schedule', 'A valid cron schedule is required.')
-    }
+    if (blank(form.sourcePath)) miss(JOB_REFUSALS.sourceFile)
+    if (form.trigger === 'cron' && !cronIsValid(form.schedule)) miss(JOB_REFUSALS.schedule)
   } else {
-    if (blank(form.sourcePath)) miss('sourcePath', 'Select a source directory.')
-    if (includes.length === 0) miss('includes', 'Select at least one file to back up.')
+    if (blank(form.sourcePath)) miss(JOB_REFUSALS.sourceDir)
+    if (includes.length === 0) miss(JOB_REFUSALS.includes)
   }
 
   return problems

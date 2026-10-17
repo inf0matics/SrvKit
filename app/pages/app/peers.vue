@@ -20,7 +20,7 @@ const busy = ref(false)
 const error = ref('')
 
 function errMsg(e: unknown): string {
-  return apiErrorMessage(e, 'Something went wrong')
+  return apiErrorMessage(e, (e as { message?: string })?.message || 'Something went wrong')
 }
 
 async function onConnect() {

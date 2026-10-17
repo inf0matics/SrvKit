@@ -42,8 +42,11 @@ const STATUS_LABEL: Record<string, string> = {
 // a state the server never stored, until a poll silently flips it back.
 const saveError = ref<string | null>(null)
 function reason(e: unknown): string {
-  const code = (e as { statusCode?: number })?.statusCode
-  return apiErrorMessage(e, code ? `HTTP ${code}` : 'unknown error')
+  const err = e as { statusCode?: number; message?: string }
+  // No API message means the request never got an answer — then the error's own
+  // text ("fetch failed") is the only thing that says anything.
+  const noAnswer = err?.statusCode ? `HTTP ${err.statusCode}` : err?.message
+  return apiErrorMessage(e, noAnswer || 'unknown error')
 }
 
 // Inline threshold editor.

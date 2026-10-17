@@ -238,6 +238,11 @@ const serverField = ref('')
 
 const problems = computed(() => jobProblems(form, includes.value, hasDbPassword.value))
 
+// The API judged what was sent; any edit makes that verdict stale.
+watch([form, includes], () => {
+  serverField.value = ''
+})
+
 /** The pre-check message to show under `field`, or '' while it is not at fault. */
 function fieldError(field: string): string {
   if (!checked.value) return ''
@@ -261,8 +266,11 @@ function fieldInvalid(field: string): boolean {
  * updates it instead of leaving the number from the failed attempt on screen.
  */
 const report = computed(() => {
+  // `checked` first: until Save has been pressed this must not depend on the
+  // form at all, or every keystroke re-runs a pre-check nothing is showing.
+  if (!checked.value) return saveError.value
   const n = problems.value.length
-  if (!checked.value || n === 0) return saveError.value
+  if (n === 0) return saveError.value
   return n === 1
     ? '1 field needs attention (highlighted above).'
     : `${n} fields need attention (highlighted above).`

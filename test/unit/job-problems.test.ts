@@ -1,11 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
-import { dirname, join } from 'node:path'
 import { jobProblems, type JobFormFields } from '../../app/utils/jobProblems.ts'
-
-const repo = join(dirname(fileURLToPath(import.meta.url)), '../..')
+import { JOB_REFUSALS } from '../../lib/jobRefusals.ts'
 
 const base: JobFormFields = {
   name: 'Nightly',
@@ -87,33 +83,17 @@ test('postgres: every missing field, in the order the form shows them', () => {
   // MySQL is the same container-dump flow.
   assert.deepEqual(jobProblems({ ...full, type: 'mysql' }, [], false), [])
   // Includes are irrelevant to a container dump.
-  assert.deepEqual(jobProblems(full, [], false), [])
+  assert.deepEqual(jobProblems(full, ['some-file'], false), [])
 })
 
 /**
- * The form pre-checks what the API also checks, so the two must not drift into
- * saying different things about the same missing field. The name is the one
- * exception: the API's `name and targetId are required` is an API-shaped
- * message that no form field should ever show.
+ * The form and the API raise the same refusals, so neither can word a field
+ * differently from the other — the entries themselves are shared, not copied.
  */
-test('every message the form shows is a message the API itself throws', () => {
-  const server = [
-    readFileSync(join(repo, 'server/utils/backups.ts'), 'utf8'),
-    readFileSync(join(repo, 'server/api/backups/jobs/[id]/index.put.ts'), 'utf8'),
-  ].join('\n')
-
-  const everyField = jobProblems(
-    { ...base, name: '', type: 'postgres' },
-    [],
-    false,
-  ).concat(jobProblems({ ...base, type: 'sqlite', trigger: 'cron' }, [], false))
-    .concat(jobProblems(base, [], false))
-
-  for (const { field, message } of everyField) {
-    if (field === 'name') continue
-    assert.ok(
-      server.includes(`'${message}'`),
-      `the API never throws “${message}” (field ${field}) — the two have drifted`,
-    )
-  }
+test('the problems are the shared refusals the API throws', () => {
+  const pg = jobProblems({ ...base, type: 'postgres' }, [], false)
+  assert.equal(pg[0], JOB_REFUSALS.container)
+  assert.equal(pg[4], JOB_REFUSALS.schedule)
+  assert.equal(jobProblems(base, [], false)[0], JOB_REFUSALS.sourceDir)
+  assert.equal(jobProblems({ ...base, type: 'sqlite' }, [], false)[0], JOB_REFUSALS.sourceFile)
 })
