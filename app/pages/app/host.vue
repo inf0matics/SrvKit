@@ -42,8 +42,8 @@ const STATUS_LABEL: Record<string, string> = {
 // a state the server never stored, until a poll silently flips it back.
 const saveError = ref<string | null>(null)
 function reason(e: unknown): string {
-  const d = e as { statusCode?: number; data?: { message?: string }; message?: string }
-  return d?.data?.message || (d?.statusCode ? `HTTP ${d.statusCode}` : d?.message) || 'unknown error'
+  const code = (e as { statusCode?: number })?.statusCode
+  return apiErrorMessage(e, code ? `HTTP ${code}` : 'unknown error')
 }
 
 // Inline threshold editor.

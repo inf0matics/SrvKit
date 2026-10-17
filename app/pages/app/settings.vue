@@ -48,7 +48,7 @@ async function save() {
     sharedServerName.value = serverName
     saved.value = true
   } catch (e: unknown) {
-    saveError.value = (e as { statusMessage?: string }).statusMessage || 'Could not save'
+    saveError.value = apiErrorMessage(e, 'Could not save')
   } finally {
     saving.value = false
   }

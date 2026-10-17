@@ -98,8 +98,7 @@ async function testForm() {
   } catch (e: unknown) {
     modalTest.value = {
       ok: false,
-      message:
-        (e as { statusMessage?: string }).statusMessage || 'Test request failed',
+      message: apiErrorMessage(e, 'Test request failed'),
     }
   } finally {
     modalTesting.value = false
@@ -121,8 +120,7 @@ async function save() {
     await refresh()
     modal.open = false
   } catch (e: unknown) {
-    formError.value =
-      (e as { statusMessage?: string }).statusMessage || 'Could not save target'
+    formError.value = apiErrorMessage(e, 'Could not save target')
   } finally {
     saving.value = false
   }

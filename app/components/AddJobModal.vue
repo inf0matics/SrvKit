@@ -51,8 +51,7 @@ async function create() {
     })
     await navigateTo(`/app/backups/${props.target.id}/jobs/${job.id}/edit`)
   } catch (e: unknown) {
-    error.value =
-      (e as { statusMessage?: string }).statusMessage || 'Could not create job'
+    error.value = apiErrorMessage(e, 'Could not create job')
     saving.value = false
   }
 }

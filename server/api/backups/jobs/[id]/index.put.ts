@@ -16,7 +16,11 @@ export default defineEventHandler(async (event) => {
   if (input.type === 'postgres' || input.type === 'mysql') {
     if (!input.dbPassword) input.dbPassword = existing.dbPassword
     if (!input.dbPassword) {
-      throw createError({ statusCode: 400, statusMessage: 'Database password is required.' })
+      throw createError({
+        statusCode: 400,
+        statusMessage: 'Database password is required.',
+        data: { field: 'dbPassword' },
+      })
     }
   }
   store().updateJob(id, input)

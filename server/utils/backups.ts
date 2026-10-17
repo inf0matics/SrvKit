@@ -142,6 +142,7 @@ export function parseJobInput(
     throw createError({
       statusCode: 400,
       statusMessage: 'The sub-directory must stay inside the target root.',
+      data: { field: 'subdirectory' },
     })
   }
   const dateSuffix = body?.dateSuffix === true
@@ -157,6 +158,7 @@ export function parseJobInput(
       throw createError({
         statusCode: 400,
         statusMessage: 'Versions to keep must be a whole number.',
+        data: { field: 'keepVersions' },
       })
     }
     keepVersions = rawKeep as number
@@ -184,6 +186,7 @@ export function parseJobInput(
     throw createError({
       statusCode: 400,
       statusMessage: 'Another job already writes this name to that folder.',
+      data: { field: 'name' },
     })
   }
 
@@ -205,28 +208,49 @@ export function parseJobInput(
     trigger = 'cron' // container DB dumps are always cron-triggered
     const password = typeof body?.dbPassword === 'string' ? body.dbPassword : ''
     if (!pg.container) {
-      throw createError({ statusCode: 400, statusMessage: 'Select a container.' })
+      throw createError({
+        statusCode: 400,
+        statusMessage: 'Select a container.',
+        data: { field: 'container' },
+      })
     }
     if (!pg.database) {
-      throw createError({ statusCode: 400, statusMessage: 'Database name is required.' })
+      throw createError({
+        statusCode: 400,
+        statusMessage: 'Database name is required.',
+        data: { field: 'database' },
+      })
     }
     if (!pg.dbUser) {
-      throw createError({ statusCode: 400, statusMessage: 'Database user is required.' })
+      throw createError({
+        statusCode: 400,
+        statusMessage: 'Database user is required.',
+        data: { field: 'dbUser' },
+      })
     }
     if (!isValidCron(schedule)) {
-      throw createError({ statusCode: 400, statusMessage: 'A valid cron schedule is required.' })
+      throw createError({
+        statusCode: 400,
+        statusMessage: 'A valid cron schedule is required.',
+        data: { field: 'schedule' },
+      })
     }
     // Empty = "keep the stored password"; the PUT handler resolves it.
     pg.dbPassword = password ? encryptPassword(password) : ''
   } else if (type === 'sqlite') {
     const abs = sourcePath ? resolveSourcePath(sourcePath) : null
     if (!abs) {
-      throw createError({ statusCode: 400, statusMessage: 'Select a source file.' })
+      throw createError({
+        statusCode: 400,
+        statusMessage: 'Select a source file.',
+        data: { field: 'sourcePath' },
+      })
     }
     if (!isSqliteFile(abs)) {
       throw createError({
         statusCode: 400,
         statusMessage: 'The selected file is not a valid SQLite database.',
+        data: { field: 'sourcePath' },
       })
     }
     // WAL-mode databases can only be cron-triggered (the filewatcher is unreliable).
@@ -235,17 +259,26 @@ export function parseJobInput(
     if (trigger === 'cron') {
       schedule = trimStr(body?.schedule)
       if (!isValidCron(schedule)) {
-        throw createError({ statusCode: 400, statusMessage: 'A valid cron schedule is required.' })
+        throw createError({
+          statusCode: 400,
+          statusMessage: 'A valid cron schedule is required.',
+          data: { field: 'schedule' },
+        })
       }
     }
   } else {
     if (!getSources().includes(sourcePath)) {
-      throw createError({ statusCode: 400, statusMessage: 'Select a source directory.' })
+      throw createError({
+        statusCode: 400,
+        statusMessage: 'Select a source directory.',
+        data: { field: 'sourcePath' },
+      })
     }
     if (includes.length === 0) {
       throw createError({
         statusCode: 400,
         statusMessage: 'Select at least one file to back up.',
+        data: { field: 'includes' },
       })
     }
   }

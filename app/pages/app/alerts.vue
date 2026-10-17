@@ -27,7 +27,7 @@ const status = reactive({
 })
 
 function errMsg(e: unknown): string {
-  return (e as { statusMessage?: string })?.statusMessage || 'Something went wrong'
+  return apiErrorMessage(e, 'Something went wrong')
 }
 
 async function load() {

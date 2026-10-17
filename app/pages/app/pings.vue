@@ -87,7 +87,7 @@ async function submit() {
     else if (formMode.value) await update(formMode.value, payload)
     closeForm()
   } catch (e) {
-    formError.value = (e as { data?: { message?: string } })?.data?.message ?? 'Could not save the ping.'
+    formError.value = apiErrorMessage(e, 'Could not save the ping.')
   }
 }
 
