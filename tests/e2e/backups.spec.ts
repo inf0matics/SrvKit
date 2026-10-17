@@ -129,6 +129,47 @@ test.describe.serial('backups', () => {
     await expect(page.getByRole('button', { name: 'Run job now' })).toBeDisabled()
   })
 
+  test('detail: a save that cannot go through marks the fields at fault', async () => {
+    await page.getByRole('button', { name: 'Edit job' }).click()
+    await expect(page).toHaveURL(/\/jobs\/[0-9a-f-]+\/edit$/)
+
+    // Nothing is marked before the first Save — the job is deliberately
+    // unconfigured at this point, so the form opens quiet.
+    await expect(page.locator('.field.invalid')).toHaveCount(0)
+    await expect(page.getByTestId('save-error')).toHaveCount(0)
+
+    // Save with the source and the file selection both still empty.
+    await page.getByRole('button', { name: 'Save' }).click()
+
+    // No request went out: still on the edit page, and the report says how
+    // many fields are at fault rather than only that saving failed.
+    await expect(page).toHaveURL(/\/jobs\/[0-9a-f-]+\/edit$/)
+    await expect(page.getByTestId('save-error')).toHaveText(
+      '2 fields need attention (highlighted above).',
+    )
+    await expect(page.locator('.field.invalid')).toHaveCount(2)
+    await expect(page.getByTestId('err-sourcePath')).toHaveText(
+      'Select a source directory.',
+    )
+    await expect(page.getByTestId('err-includes')).toHaveText(
+      'Select at least one file to back up.',
+    )
+    await expect(page.getByLabel('Source path')).toHaveAttribute('aria-invalid', 'true')
+
+    // Filling one in clears that field's mark and updates the count live.
+    await page.getByLabel('Source path').selectOption('root')
+    await expect(page.getByTestId('err-sourcePath')).toHaveCount(0)
+    await expect(page.getByLabel('Source path')).not.toHaveAttribute('aria-invalid', 'true')
+    await expect(page.getByTestId('save-error')).toHaveText(
+      '1 field needs attention (highlighted above).',
+    )
+    await expect(page.locator('.field.invalid')).toHaveCount(1)
+
+    // Leave the job unconfigured for the next test.
+    await page.getByRole('link', { name: 'Cancel' }).click()
+    await expect(page).toHaveURL(/\/app\/backups\/[0-9a-f-]+$/)
+  })
+
   test('detail: configure + save activates the job', async () => {
     await page.getByRole('button', { name: 'Edit job' }).click()
     await expect(page).toHaveURL(/\/jobs\/[0-9a-f-]+\/edit$/)
@@ -141,10 +182,12 @@ test.describe.serial('backups', () => {
     await page.getByRole('button', { name: 'Expand' }).first().click()
     await expect(page.getByText('app.conf')).toBeVisible()
 
-    // Saving with nothing selected is rejected.
+    // Saving with nothing selected is rejected — under the Files field itself.
     await page.getByLabel('Nextcloud subdirectory').fill('root')
     await page.getByRole('button', { name: 'Save' }).click()
-    await expect(page.getByText('Select at least one file to back up.')).toBeVisible()
+    await expect(page.getByTestId('err-includes')).toHaveText(
+      'Select at least one file to back up.',
+    )
 
     // Selecting a file inside a folder marks that folder as partially selected.
     const configsRow = page.locator('.row', { hasText: 'configs' })
@@ -361,7 +404,12 @@ test.describe.serial('backups', () => {
     await page.getByRole('button', { name: 'home', exact: true }).click()
     await page.getByRole('button', { name: 'notes.txt', exact: true }).click()
     await page.getByRole('button', { name: 'Save' }).click()
-    await expect(page.getByText('not a valid SQLite database')).toBeVisible()
+    // Only the server can tell — and it names the field, so the source file is
+    // marked and the reason is reported once below the form.
+    await expect(page.getByTestId('save-error')).toContainText(
+      'not a valid SQLite database',
+    )
+    await expect(page.locator('.field.invalid')).toHaveCount(1)
   })
 
   test('detail: PostgreSQL create is disabled without the Docker socket', async () => {

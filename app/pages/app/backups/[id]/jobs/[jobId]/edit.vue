@@ -223,9 +223,76 @@ const archive = computed(() =>
 const saving = ref(false)
 const saveError = ref('')
 
+/**
+ * Nothing is marked until Save has been pressed once. The page opens on a job
+ * that is deliberately incomplete — Add Job creates it with just a name — so
+ * marking from the start would flag fields the user has not reached yet.
+ */
+const checked = ref(false)
+/**
+ * The field an API refusal named, for the checks only the server can run (a
+ * file that turns out not to be a SQLite database, a name already writing to
+ * that folder). Cleared on the next attempt.
+ */
+const serverField = ref('')
+
+const problems = computed(() => jobProblems(form, includes.value, hasDbPassword.value))
+
+/** The pre-check message to show under `field`, or '' while it is not at fault. */
+function fieldError(field: string): string {
+  if (!checked.value) return ''
+  return problems.value.find((p) => p.field === field)?.message ?? ''
+}
+
+/**
+ * Whether to mark `field` red. A refusal from the API marks its field but keeps
+ * its wording in the one report below the form: the API can name a field this
+ * page has no message slot for, and a message shown nowhere is worse than one
+ * shown away from its input.
+ */
+function fieldInvalid(field: string): boolean {
+  return serverField.value === field || !!fieldError(field)
+}
+
+/**
+ * The one report beside Save: the pre-check count while the form is still
+ * incomplete (a count only — the detail sits under each field), otherwise
+ * whatever the API said. Derived rather than stored, so filling a field in
+ * updates it instead of leaving the number from the failed attempt on screen.
+ */
+const report = computed(() => {
+  const n = problems.value.length
+  if (!checked.value || n === 0) return saveError.value
+  return n === 1
+    ? '1 field needs attention (highlighted above).'
+    : `${n} fields need attention (highlighted above).`
+})
+
+/**
+ * The form is long and Save sits at the bottom, so a marked field can easily be
+ * off-screen. Bring the topmost one into view — `problems` is in form order, so
+ * the first match in document order is the first problem.
+ */
+async function revealFirstProblem() {
+  await nextTick()
+  const field = document.querySelector('.field.invalid')
+  if (!field) return
+  field.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  field
+    .querySelector<HTMLElement>('input:not([disabled]), select:not([disabled])')
+    ?.focus()
+}
+
 async function save() {
-  saving.value = true
+  checked.value = true
+  serverField.value = ''
   saveError.value = ''
+  // Don't send a request the API is certain to refuse — and say which fields.
+  if (problems.value.length) {
+    await revealFirstProblem()
+    return
+  }
+  saving.value = true
   try {
     await $fetch(`/api/backups/jobs/${jobId}`, {
       method: 'PUT',
@@ -250,8 +317,9 @@ async function save() {
     })
     await navigateTo(`/app/backups/${targetId}`)
   } catch (e: unknown) {
-    saveError.value =
-      (e as { statusMessage?: string }).statusMessage || 'Could not save job'
+    saveError.value = apiErrorMessage(e, 'Could not save job')
+    serverField.value = apiErrorField(e)
+    if (serverField.value) await revealFirstProblem()
   } finally {
     saving.value = false
   }
@@ -267,22 +335,38 @@ async function save() {
     <template v-if="job">
       <h1>Edit job</h1>
 
-      <label class="field">
+      <label class="field" :class="{ invalid: fieldInvalid('name') }">
         <span>Name</span>
-        <input v-model="form.name" class="tsp-input" type="text" autocomplete="off">
+        <input
+          v-model="form.name"
+          class="tsp-input"
+          type="text"
+          autocomplete="off"
+          :aria-invalid="fieldInvalid('name') || undefined"
+        >
+        <p v-if="fieldError('name')" class="field-err" data-testid="err-name">
+          {{ fieldError('name') }}
+        </p>
       </label>
 
       <!-- Files: source directory + file-tree selection -->
       <template v-if="form.type === 'files'">
-        <label class="field">
+        <label class="field" :class="{ invalid: fieldInvalid('sourcePath') }">
           <span>Source path</span>
-          <select v-model="form.sourcePath" class="tsp-input">
+          <select
+            v-model="form.sourcePath"
+            class="tsp-input"
+            :aria-invalid="fieldInvalid('sourcePath') || undefined"
+          >
             <option value="" disabled>Select a source directory…</option>
             <option v-for="s in sources" :key="s" :value="s">{{ s }}</option>
           </select>
+          <p v-if="fieldError('sourcePath')" class="field-err" data-testid="err-sourcePath">
+            {{ fieldError('sourcePath') }}
+          </p>
         </label>
 
-        <div class="field">
+        <div class="field" :class="{ invalid: fieldInvalid('includes') }">
           <span class="label">Files (nothing selected by default)</span>
           <FileTreeSelect
             v-if="form.sourcePath"
@@ -290,6 +374,9 @@ async function save() {
             :source-path="form.sourcePath"
           />
           <p v-else class="hint tsp-muted">Select a source directory first.</p>
+          <p v-if="fieldError('includes')" class="field-err" data-testid="err-includes">
+            {{ fieldError('includes') }}
+          </p>
         </div>
 
         <label class="field">
@@ -303,7 +390,7 @@ async function save() {
 
       <!-- SQLite: browse for the .db file -->
       <template v-else-if="form.type === 'sqlite'">
-        <div class="field">
+        <div class="field" :class="{ invalid: fieldInvalid('sourcePath') }">
           <span class="label">Source file</span>
           <FilePicker v-model="form.sourcePath" />
           <input
@@ -312,6 +399,9 @@ async function save() {
             placeholder="No file selected"
             readonly
           >
+          <p v-if="fieldError('sourcePath')" class="field-err" data-testid="err-sourcePath">
+            {{ fieldError('sourcePath') }}
+          </p>
         </div>
 
         <label class="field">
@@ -326,9 +416,16 @@ async function save() {
           a cron schedule is required.
         </p>
 
-        <div v-if="form.trigger === 'cron'" class="field">
+        <div
+          v-if="form.trigger === 'cron'"
+          class="field"
+          :class="{ invalid: fieldInvalid('schedule') }"
+        >
           <span class="label">Schedule (cron)</span>
           <CronField v-model="form.schedule" />
+          <p v-if="fieldError('schedule')" class="field-err" data-testid="err-schedule">
+            {{ fieldError('schedule') }}
+          </p>
         </div>
       </template>
 
@@ -339,9 +436,14 @@ async function save() {
           <code>/var/run/docker.sock</code> into SrvKit to run database backups.
         </p>
 
-        <div class="field">
+        <div class="field" :class="{ invalid: fieldInvalid('container') }">
           <span class="label">Container</span>
-          <select v-model="form.container" class="tsp-input" data-testid="pg-container">
+          <select
+            v-model="form.container"
+            class="tsp-input"
+            data-testid="pg-container"
+            :aria-invalid="fieldInvalid('container') || undefined"
+          >
             <option value="" disabled>Select a container…</option>
             <option
               v-if="form.container && !filteredContainers.some((c) => c.name === form.container)"
@@ -365,17 +467,38 @@ async function save() {
             <input v-model="showAllContainers" type="checkbox" data-testid="show-all-containers">
             <span>Show all containers</span>
           </label>
+          <p v-if="fieldError('container')" class="field-err" data-testid="err-container">
+            {{ fieldError('container') }}
+          </p>
         </div>
 
-        <label class="field">
+        <label class="field" :class="{ invalid: fieldInvalid('database') }">
           <span>Database</span>
-          <input v-model="form.database" class="tsp-input" type="text" autocomplete="off">
+          <input
+            v-model="form.database"
+            class="tsp-input"
+            type="text"
+            autocomplete="off"
+            :aria-invalid="fieldInvalid('database') || undefined"
+          >
+          <p v-if="fieldError('database')" class="field-err" data-testid="err-database">
+            {{ fieldError('database') }}
+          </p>
         </label>
-        <label class="field">
+        <label class="field" :class="{ invalid: fieldInvalid('dbUser') }">
           <span>User</span>
-          <input v-model="form.dbUser" class="tsp-input" type="text" autocomplete="off">
+          <input
+            v-model="form.dbUser"
+            class="tsp-input"
+            type="text"
+            autocomplete="off"
+            :aria-invalid="fieldInvalid('dbUser') || undefined"
+          >
+          <p v-if="fieldError('dbUser')" class="field-err" data-testid="err-dbUser">
+            {{ fieldError('dbUser') }}
+          </p>
         </label>
-        <label class="field">
+        <label class="field" :class="{ invalid: fieldInvalid('dbPassword') }">
           <span>Password</span>
           <input
             v-model="form.dbPassword"
@@ -383,15 +506,22 @@ async function save() {
             type="password"
             autocomplete="off"
             :placeholder="hasDbPassword ? '•••••••• (stored — leave blank to keep)' : 'Database password'"
+            :aria-invalid="fieldInvalid('dbPassword') || undefined"
           >
+          <p v-if="fieldError('dbPassword')" class="field-err" data-testid="err-dbPassword">
+            {{ fieldError('dbPassword') }}
+          </p>
         </label>
-        <div class="field">
+        <div class="field" :class="{ invalid: fieldInvalid('schedule') }">
           <span class="label">Schedule (cron)</span>
           <CronField v-model="form.schedule" />
+          <p v-if="fieldError('schedule')" class="field-err" data-testid="err-schedule">
+            {{ fieldError('schedule') }}
+          </p>
         </div>
       </template>
 
-      <label class="field">
+      <label class="field" :class="{ invalid: fieldInvalid('subdirectory') }">
         <span>{{ isLocalTarget ? 'Target subdirectory' : 'Nextcloud subdirectory' }}</span>
         <input
           v-model="form.subdirectory"
@@ -399,7 +529,11 @@ async function save() {
           type="text"
           placeholder="root"
           autocomplete="off"
+          :aria-invalid="fieldInvalid('subdirectory') || undefined"
         >
+        <p v-if="fieldError('subdirectory')" class="field-err" data-testid="err-subdirectory">
+          {{ fieldError('subdirectory') }}
+        </p>
       </label>
 
       <fieldset class="field retention" data-testid="retention">
@@ -475,7 +609,7 @@ async function save() {
       </label>
 
       <p class="archive tsp-muted" data-testid="archive">Archive: {{ archive }}</p>
-      <p v-if="saveError" class="err">{{ saveError }}</p>
+      <p v-if="report" class="err" data-testid="save-error">{{ report }}</p>
 
       <div class="actions">
         <NuxtLink :to="`/app/backups/${targetId}`" class="tsp-btn tsp-btn-sm">
@@ -613,6 +747,24 @@ async function save() {
 .err {
   color: var(--tsp-danger);
   font-size: 0.9rem;
+}
+
+/* A field at fault: red label, red border on an input that is its own, and the
+   reason right underneath. The components (file picker, cron field) carry inner
+   inputs that are not the thing at fault, so they are left alone. */
+.field.invalid > span,
+.field.invalid > .label {
+  color: var(--tsp-danger);
+}
+
+.field.invalid > .tsp-input {
+  border-color: var(--tsp-danger);
+}
+
+.field-err {
+  margin: 0.3rem 0 0;
+  font-size: 0.8rem;
+  color: var(--tsp-danger);
 }
 
 .actions {
