@@ -1,6 +1,35 @@
 # Changelog
 
 
+## v1.6.0
+
+[compare changes](https://github.com/inf0matics/SrvKit/compare/v1.5.0...v1.6.0)
+
+### 🚀 Enhancements
+
+- Mark the job fields a refused save is waiting on ([30565a3](https://github.com/inf0matics/SrvKit/commit/30565a3))
+
+### 🩹 Fixes
+
+- Surface the API's own message when a save is refused ([bf10768](https://github.com/inf0matics/SrvKit/commit/bf10768))
+- Keep a refusal's wording and its mark in step ([42ae50b](https://github.com/inf0matics/SrvKit/commit/42ae50b))
+
+### 💅 Refactors
+
+- Raise one shared set of job refusals, not two copies ([a28bfcd](https://github.com/inf0matics/SrvKit/commit/a28bfcd))
+
+### 📖 Documentation
+
+- Read ENCRYPTION_KEY from .env in the compose examples ([7596125](https://github.com/inf0matics/SrvKit/commit/7596125))
+
+### ✅ Tests
+
+- Assert the retention count, not a byte-identical folder ([e718ec2](https://github.com/inf0matics/SrvKit/commit/e718ec2))
+
+### ❤️ Contributors
+
+- Inf0matics <fil@thespielplatz.com>
+
 ## v1.5.0
 
 [compare changes](https://github.com/inf0matics/SrvKit/compare/v1.4.0...v1.5.0)
