@@ -10,7 +10,7 @@ await build({
   entryPoints: ['cli/srvkit.ts'],
   bundle: true,
   platform: 'node',
-  target: 'node24',
+  target: 'node26',
   format: 'esm',
   outfile: '.output/bin/srvkit.mjs',
   banner: { js: '#!/usr/bin/env node' },
