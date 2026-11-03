@@ -154,6 +154,12 @@ test('sidebar bottom nav: theme toggle persists, tip jar hidden, github + versio
     'href',
     /\/releases\/tag\/v\d+\.\d+\.\d+$/,
   )
+
+  // Leaving the shell returns to dark even with light still stored: the landing
+  // is always-dark, and only the shell may override the default.
+  await page.getByRole('button', { name: 'Logout' }).click()
+  await expect(page).toHaveURL(/\/$/)
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
 })
 
 test('sidebar bottom nav stays pinned when the content scrolls', async ({ page }) => {

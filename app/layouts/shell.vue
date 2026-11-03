@@ -72,25 +72,21 @@ async function logout() {
 /* ---- Theme (scoped to the app shell; the landing stays always-dark) ---- */
 const theme = ref<'dark' | 'light'>('dark')
 
-function applyTheme(t: 'dark' | 'light') {
-  theme.value = t
-  document.documentElement.dataset.theme = t
-}
+// unhead owns `data-theme`: nuxt.config sets the global default (dark) and this
+// layout-scoped entry outranks it while the shell is mounted. Writing the
+// attribute straight to documentElement instead loses the choice — unhead
+// re-applies its own value after hydration and the theme snaps back to dark.
+// Unmounting the shell (logout → landing) drops this entry, so the global
+// default takes over again and the landing stays dark on its own.
+useHead({ htmlAttrs: { 'data-theme': theme } })
 
 function toggleTheme() {
-  const next = theme.value === 'dark' ? 'light' : 'dark'
-  localStorage.setItem('srvkit-theme', next)
-  applyTheme(next)
+  theme.value = theme.value === 'dark' ? 'light' : 'dark'
+  localStorage.setItem('srvkit-theme', theme.value)
 }
 
 onMounted(() => {
-  const saved = localStorage.getItem('srvkit-theme')
-  applyTheme(saved === 'light' ? 'light' : 'dark')
-})
-
-onBeforeUnmount(() => {
-  // Leaving the shell (e.g. logout → landing) returns to the default dark theme.
-  document.documentElement.dataset.theme = 'dark'
+  theme.value = localStorage.getItem('srvkit-theme') === 'light' ? 'light' : 'dark'
 })
 </script>
 
