@@ -78,7 +78,13 @@ const theme = ref<'dark' | 'light'>('dark')
 // re-applies its own value after hydration and the theme snaps back to dark.
 // Unmounting the shell (logout → landing) drops this entry, so the global
 // default takes over again and the landing stays dark on its own.
-useHead({ htmlAttrs: { 'data-theme': theme } })
+//
+// tagPriority pins which entry wins, so it no longer rests on Nuxt happening to
+// push the config's head before ours. Beware the aliases: `htmlAttrs` merges
+// per attribute and the LAST sorted entry wins, so a higher weight wins and the
+// alias `'high'` (99) would lose to the config default (100) — reinstating the
+// exact bug above. Hence a number, not `'high'`.
+useHead({ htmlAttrs: { 'data-theme': theme, tagPriority: 101 } })
 
 function toggleTheme() {
   theme.value = theme.value === 'dark' ? 'light' : 'dark'

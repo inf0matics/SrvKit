@@ -162,6 +162,30 @@ test('sidebar bottom nav: theme toggle persists, tip jar hidden, github + versio
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
 })
 
+test('landing stays dark on a cold load with light stored', async ({ page }) => {
+  // A returning signed-out visitor still carries their shell theme in
+  // localStorage. The landing is always-dark, so a cold load must ignore it —
+  // the SPA logout path above covers the same invariant only on an unmount.
+  await page.addInitScript(() => localStorage.setItem('srvkit-theme', 'light'))
+  await page.goto('/')
+  await expect(page.getByPlaceholder('Passphrase')).toBeVisible()
+  // Guard the precondition: without the seeded value this test proves nothing.
+  expect(await page.evaluate(() => localStorage.getItem('srvkit-theme'))).toBe('light')
+
+  // Sample over time rather than asserting once: a retrying assertion passes on
+  // the first match, so it would miss the shell's theme landing here a frame
+  // late and would not catch a dark-then-light flip at all.
+  const seen = await page.evaluate(async () => {
+    const themes: string[] = []
+    for (let i = 0; i < 8; i++) {
+      themes.push(document.documentElement.dataset.theme ?? '')
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    }
+    return [...new Set(themes)]
+  })
+  expect(seen).toEqual(['dark'])
+})
+
 test('sidebar bottom nav stays pinned when the content scrolls', async ({ page }) => {
   await page.goto('/')
   await page.getByPlaceholder('Passphrase').fill(PASSWORD)
