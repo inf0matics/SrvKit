@@ -19,11 +19,17 @@ export function sessionTtlSeconds(): number {
   return Number.isFinite(v) && v > 0 ? v : 86_400
 }
 
+/** Login attempts allowed per minute per IP — 10 default, via LOGIN_RATE_LIMIT. */
+export function loginRateLimit(): number {
+  const v = Number(process.env.LOGIN_RATE_LIMIT)
+  return Number.isFinite(v) && v > 0 ? v : 10
+}
+
 /**
- * Login rate limit: max 10 attempts per minute per IP. Module-level so the
- * window is shared across all requests in this single-container process.
+ * Login rate limit, per IP per minute. Module-level so the window is shared
+ * across all requests in this single-container process.
  */
-export const loginRateLimiter = createRateLimiter(10, 60_000)
+export const loginRateLimiter = createRateLimiter(loginRateLimit(), 60_000)
 
 /**
  * Pairing rate limit: max 20 attempts per 10 minutes per IP. The unauthenticated

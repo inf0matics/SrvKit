@@ -21,6 +21,13 @@ function resolvePort(): number {
 }
 
 const PORT = resolvePort()
+// Every login in a run shares one per-IP, per-minute budget, and the whole
+// suite finishes well inside that minute. At the production default of 10 the
+// suite sat exactly at the cap, so adding a single login anywhere made two
+// unrelated specs fail at their login step with a misleading timeout. Give e2e
+// headroom; the rate-limit spec reads this number so it still proves the 429.
+const LOGIN_RATE_LIMIT = '20'
+process.env.LOGIN_RATE_LIMIT = LOGIN_RATE_LIMIT
 // The DB is keyed by port so two e2e runs on different ports don't wipe each
 // other's state (the server boots by deleting it, see the command below).
 const DB = `./.data/e2e-${PORT}.db`
@@ -57,6 +64,7 @@ export default defineConfig({
       PORT: String(PORT),
       DATABASE_PATH: DB,
       COOKIE_SECURE: 'false', // plain http in e2e
+      LOGIN_RATE_LIMIT,
       ENCRYPTION_KEY: 'e2e-encryption-key',
       BACKUP_SOURCES_DIR: './tests/fixtures/sources',
       BACKUP_TARGETS_DIR: TARGETS,

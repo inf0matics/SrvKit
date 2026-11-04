@@ -8,6 +8,40 @@ test.describe.configure({ mode: 'serial' })
 
 const PASSWORD = 'correct horse battery staple e2e'
 
+/** Every distinct `data-theme` seen over ~400ms, in the order it appeared. */
+async function themesOver(page: import('@playwright/test').Page): Promise<string[]> {
+  return page.evaluate(async () => {
+    const themes: string[] = []
+    for (let i = 0; i < 8; i++) {
+      themes.push(document.documentElement.dataset.theme ?? '')
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    }
+    return [...new Set(themes)]
+  })
+}
+
+/**
+ * Assert the theme ends on `want` and then holds it. A retrying assertion
+ * passes on the first match, so it would accept a value that flips back a
+ * moment later; sampling twice pins the end state and its stability.
+ *
+ * It deliberately tolerates whatever precedes `want`. A full load renders the
+ * SSR default first and only corrects after hydration, so a stored light theme
+ * genuinely shows one dark frame — a known rough edge, not a regression, and
+ * not something these tests should pretend away. Where nothing may ever differ,
+ * assert on `themesOver` directly instead.
+ */
+async function expectThemeSettlesOn(page: import('@playwright/test').Page, want: string) {
+  expect((await themesOver(page)).at(-1), 'theme should settle on ' + want).toBe(want)
+  expect(await themesOver(page), 'theme should then hold ' + want).toEqual([want])
+}
+
+async function login(page: import('@playwright/test').Page) {
+  await page.getByPlaceholder('Passphrase').fill(PASSWORD)
+  await page.getByRole('button', { name: 'Login', exact: true }).click()
+  await expect(page).toHaveURL(/\/app\/dashboard$/)
+}
+
 test('first start shows the setup screen with a regenerable suggestion', async ({ page }) => {
   await page.goto('/')
   // Setup mode is identified by the suggestion + Save button (hero heading is
@@ -139,7 +173,7 @@ test('sidebar bottom nav: theme toggle persists, tip jar hidden, github + versio
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
   await expect(page.getByRole('button', { name: 'Dark mode' })).toBeVisible()
   await page.reload()
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
+  await expectThemeSettlesOn(page, 'light')
 
   // Tip Jar hidden when TIP_JAR_URL is unset (the e2e default).
   await expect(page.getByRole('link', { name: 'Tip Jar' })).toHaveCount(0)
@@ -159,7 +193,7 @@ test('sidebar bottom nav: theme toggle persists, tip jar hidden, github + versio
   // is always-dark, and only the shell may override the default.
   await page.getByRole('button', { name: 'Logout' }).click()
   await expect(page).toHaveURL(/\/$/)
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
+  await expectThemeSettlesOn(page, 'dark')
 })
 
 test('landing stays dark on a cold load with light stored', async ({ page }) => {
@@ -172,18 +206,30 @@ test('landing stays dark on a cold load with light stored', async ({ page }) => 
   // Guard the precondition: without the seeded value this test proves nothing.
   expect(await page.evaluate(() => localStorage.getItem('srvkit-theme'))).toBe('light')
 
-  // Sample over time rather than asserting once: a retrying assertion passes on
-  // the first match, so it would miss the shell's theme landing here a frame
-  // late and would not catch a dark-then-light flip at all.
-  const seen = await page.evaluate(async () => {
-    const themes: string[] = []
-    for (let i = 0; i < 8; i++) {
-      themes.push(document.documentElement.dataset.theme ?? '')
-      await new Promise((resolve) => setTimeout(resolve, 50))
-    }
-    return [...new Set(themes)]
-  })
-  expect(seen).toEqual(['dark'])
+  expect(await themesOver(page)).toEqual(['dark'])
+})
+
+test('the shell re-applies the stored theme when it remounts without a reload', async ({
+  page,
+}) => {
+  // Logout -> login in one page session remounts the shell without a new
+  // document, so the layout must re-run its mount hook, re-read localStorage
+  // and push a fresh head entry that again outranks the global dark default.
+  // Nothing covered that: the reload case gets a fresh document, and the
+  // logout case only checks the unmount. Going back through history does not
+  // reach it either — /app redirects straight back into the shell.
+  await page.addInitScript(() => localStorage.setItem('srvkit-theme', 'light'))
+  await page.goto('/')
+  await login(page)
+  await expectThemeSettlesOn(page, 'light')
+
+  await page.getByRole('button', { name: 'Logout' }).click()
+  await expect(page).toHaveURL(/\/$/)
+  await expectThemeSettlesOn(page, 'dark')
+
+  // The second mount is the one at risk — no reload, so no fresh head state.
+  await login(page)
+  await expectThemeSettlesOn(page, 'light')
 })
 
 test('sidebar bottom nav stays pinned when the content scrolls', async ({ page }) => {
