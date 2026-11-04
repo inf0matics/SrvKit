@@ -2,10 +2,10 @@ import { execFileSync } from 'node:child_process'
 import { defineConfig } from '@playwright/test'
 
 // E2E always runs its own production server and never reuses the dev server.
-// It prefers 3100 but takes any free port when something already holds it:
-// other tsp.tools services default to 3100 too, and parallel Claude Code
-// sessions run e2e against this repo. A busy port is someone else's running
-// work — step around it, never clear it out of the way.
+// The port is OS-assigned rather than a fixed default, so it is one no other
+// tsp.tools service or parallel Claude Code session is aiming for — see
+// scripts/e2e-port.mjs for why that matters. A busy port is someone else's
+// running work — step around it, never clear it out of the way.
 // Playwright loads this config in the runner and again in each worker, so the
 // port must be chosen once and inherited — picking again per load would point
 // the tests at a different port than the server bound.
@@ -15,9 +15,7 @@ function resolvePort(): number {
   const picked = Number(
     execFileSync(process.execPath, ['scripts/e2e-port.mjs'], { encoding: 'utf8' }).trim(),
   )
-  if (picked !== 3100) {
-    console.log(`[e2e] port 3100 is busy — using ${picked} instead`)
-  }
+  console.log(`[e2e] using port ${picked}`)
   process.env.E2E_RESOLVED_PORT = String(picked)
   return picked
 }

@@ -5,9 +5,13 @@ import { test, expect, type Page } from '@playwright/test'
 //   <baseURL>/           → 200 (public landing)  → OK   vs expected 200
 //   <baseURL>/nope-404   → 404 (unknown route)   → CRIT vs expected 200
 const PASSWORD = 'correct horse battery staple e2e'
-// Not hardcoded: the e2e port falls back off 3100 when something already holds
-// it, and the resolved value reaches the workers (see playwright.config.ts).
-const BASE = `http://localhost:${process.env.E2E_RESOLVED_PORT || 3100}`
+// The e2e port is OS-assigned per run, and the resolved value reaches the
+// workers via the environment (see playwright.config.ts). There is no sensible
+// default to fall back on, so fail loudly rather than quietly probing a port
+// this run never bound.
+const RESOLVED_PORT = process.env.E2E_RESOLVED_PORT
+if (!RESOLVED_PORT) throw new Error('E2E_RESOLVED_PORT is unset — run via playwright.config.ts')
+const BASE = `http://localhost:${RESOLVED_PORT}`
 const OK_URL = `${BASE}/`
 const BAD_URL = `${BASE}/nope-404-xyz`
 
