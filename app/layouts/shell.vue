@@ -70,7 +70,19 @@ async function logout() {
 }
 
 /* ---- Theme (scoped to the app shell; the landing stays always-dark) ---- */
-const theme = ref<'dark' | 'light'>('dark')
+
+// A cookie, not localStorage, so the server already knows the choice while it
+// renders. localStorage can only be read after the bundle runs, which left the
+// first paint showing the dark default and the choice arriving a frame later —
+// a visible flash for light-mode users. It also made SSR and the client
+// disagree about this toggle's own label and icon, since they read this ref.
+// Reading it server-side removes both.
+const theme = useCookie<'dark' | 'light'>('srvkit-theme', {
+  default: () => 'dark',
+  sameSite: 'lax',
+  // A display preference, so it may outlive the session; no secrets in it.
+  maxAge: 60 * 60 * 24 * 365,
+})
 
 // unhead owns `data-theme`: nuxt.config sets the global default (dark) and this
 // layout-scoped entry outranks it while the shell is mounted. Writing the
@@ -87,13 +99,9 @@ const theme = ref<'dark' | 'light'>('dark')
 useHead({ htmlAttrs: { 'data-theme': theme, tagPriority: 101 } })
 
 function toggleTheme() {
+  // useCookie persists the change; nothing else to write.
   theme.value = theme.value === 'dark' ? 'light' : 'dark'
-  localStorage.setItem('srvkit-theme', theme.value)
 }
-
-onMounted(() => {
-  theme.value = localStorage.getItem('srvkit-theme') === 'light' ? 'light' : 'dark'
-})
 </script>
 
 <template>

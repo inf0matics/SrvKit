@@ -25,15 +25,26 @@ async function themesOver(page: import('@playwright/test').Page): Promise<string
  * passes on the first match, so it would accept a value that flips back a
  * moment later; sampling twice pins the end state and its stability.
  *
- * It deliberately tolerates whatever precedes `want`. A full load renders the
- * SSR default first and only corrects after hydration, so a stored light theme
- * genuinely shows one dark frame — a known rough edge, not a regression, and
- * not something these tests should pretend away. Where nothing may ever differ,
- * assert on `themesOver` directly instead.
+ * It tolerates whatever precedes `want`, which is right for an in-page
+ * transition: entering the shell from the always-dark landing can show the
+ * previous theme for a frame before the layout mounts. A full document load
+ * may not — the server knows the stored choice, so assert on `themesOver`
+ * directly there.
  */
 async function expectThemeSettlesOn(page: import('@playwright/test').Page, want: string) {
   expect((await themesOver(page)).at(-1), 'theme should settle on ' + want).toBe(want)
   expect(await themesOver(page), 'theme should then hold ' + want).toEqual([want])
+}
+
+// The e2e port is per-run, so derive the origin rather than hardcoding it.
+const PORT = process.env.E2E_RESOLVED_PORT
+if (!PORT) throw new Error('E2E_RESOLVED_PORT is unset — run via playwright.config.ts')
+
+/** Seed the stored theme the way the app stores it: a cookie the server reads. */
+async function storeTheme(page: import('@playwright/test').Page, value: 'dark' | 'light') {
+  await page.context().addCookies([
+    { name: 'srvkit-theme', value, url: `http://localhost:${PORT}` },
+  ])
 }
 
 async function login(page: import('@playwright/test').Page) {
@@ -173,7 +184,9 @@ test('sidebar bottom nav: theme toggle persists, tip jar hidden, github + versio
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
   await expect(page.getByRole('button', { name: 'Dark mode' })).toBeVisible()
   await page.reload()
-  await expectThemeSettlesOn(page, 'light')
+  // A full load must be light from the first sample: the server read the
+  // cookie, so there is no dark frame to tolerate here.
+  expect(await themesOver(page)).toEqual(['light'])
 
   // Tip Jar hidden when TIP_JAR_URL is unset (the e2e default).
   await expect(page.getByRole('link', { name: 'Tip Jar' })).toHaveCount(0)
@@ -200,11 +213,12 @@ test('landing stays dark on a cold load with light stored', async ({ page }) => 
   // A returning signed-out visitor still carries their shell theme in
   // localStorage. The landing is always-dark, so a cold load must ignore it —
   // the SPA logout path above covers the same invariant only on an unmount.
-  await page.addInitScript(() => localStorage.setItem('srvkit-theme', 'light'))
+  await storeTheme(page, 'light')
   await page.goto('/')
   await expect(page.getByPlaceholder('Passphrase')).toBeVisible()
   // Guard the precondition: without the seeded value this test proves nothing.
-  expect(await page.evaluate(() => localStorage.getItem('srvkit-theme'))).toBe('light')
+  const cookies = await page.context().cookies()
+  expect(cookies.find((c) => c.name === 'srvkit-theme')?.value).toBe('light')
 
   expect(await themesOver(page)).toEqual(['dark'])
 })
@@ -218,7 +232,7 @@ test('the shell re-applies the stored theme when it remounts without a reload', 
   // Nothing covered that: the reload case gets a fresh document, and the
   // logout case only checks the unmount. Going back through history does not
   // reach it either — /app redirects straight back into the shell.
-  await page.addInitScript(() => localStorage.setItem('srvkit-theme', 'light'))
+  await storeTheme(page, 'light')
   await page.goto('/')
   await login(page)
   await expectThemeSettlesOn(page, 'light')
@@ -230,6 +244,35 @@ test('the shell re-applies the stored theme when it remounts without a reload', 
   // The second mount is the one at risk — no reload, so no fresh head state.
   await login(page)
   await expectThemeSettlesOn(page, 'light')
+})
+
+test('a stored light theme is applied before the first paint', async ({ page }) => {
+  // SSR cannot know the stored choice, so the first HTML always carries the
+  // dark default. What must not happen is a painted dark frame: the choice has
+  // to land while the head is still being parsed. The first requestAnimationFrame
+  // callback runs before the first paint, so the value there is what the user
+  // would actually see.
+  await page.addInitScript(() => {
+    const w = window as unknown as { __themeAtFirstFrame?: string }
+    requestAnimationFrame(() => {
+      w.__themeAtFirstFrame = document.documentElement.dataset.theme ?? ''
+    })
+  })
+  await storeTheme(page, 'light')
+
+  await page.goto('/')
+  await login(page)
+  await expectThemeSettlesOn(page, 'light')
+
+  // Reload so the measurement covers a full document load of a shell route,
+  // which is where the flash was visible.
+  await page.reload()
+  await expect(page.getByRole('button', { name: 'Dark mode' })).toBeVisible()
+
+  const atFirstFrame = await page.evaluate(
+    () => (window as unknown as { __themeAtFirstFrame?: string }).__themeAtFirstFrame,
+  )
+  expect(atFirstFrame, 'no dark frame may be painted for a stored light theme').toBe('light')
 })
 
 test('sidebar bottom nav stays pinned when the content scrolls', async ({ page }) => {
