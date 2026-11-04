@@ -374,7 +374,15 @@ test.describe.serial('backups', () => {
   })
 
   test('settings: the failure-repeat interval defaults to 24 h and persists', async () => {
+    // Wait for the page's own GET before reading the select. The component
+    // initialises repeatHours to 24 itself, so asserting straight after the
+    // click would match that local default and pass without ever seeing what
+    // the server sent.
+    const loaded = page.waitForResponse(
+      (r) => r.url().includes('/api/settings/general') && r.request().method() === 'GET',
+    )
     await page.locator('.nav-bottom').getByRole('link', { name: 'Settings' }).click()
+    await loaded
     await expect(page.getByTestId('repeat-hours')).toHaveValue('24')
 
     await page.getByTestId('repeat-hours').selectOption('0') // off

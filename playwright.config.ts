@@ -38,6 +38,14 @@ const TARGETS = `./.data/e2e-targets-${PORT}`
 
 export default defineConfig({
   testDir: './tests/e2e',
+  // Most values in this app arrive from a client fetch after mount, so the
+  // assertions wait on the network. The 5s default suits an idle CI box; this
+  // suite also runs on a dev machine alongside other work (see the port note
+  // above), where a load average in the twenties pushed a settings field past
+  // 5s and read as a flaky suite. A retrying assertion resolves the moment it
+  // is true, so a longer ceiling costs nothing when things pass — it only makes
+  // a genuine failure take longer to report.
+  expect: { timeout: 10_000 },
   // Auth flow mutates shared server state (the SQLite DB), so run serially.
   workers: 1,
   use: {
