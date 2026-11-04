@@ -1,6 +1,31 @@
 # Changelog
 
 
+## v1.7.0
+
+[compare changes](https://github.com/inf0matics/SrvKit/compare/v1.6.0...v1.7.0)
+
+### 🩹 Fixes
+
+- **ui:** Let unhead own data-theme so the theme survives a reload ([bb25408](https://github.com/inf0matics/SrvKit/commit/bb25408))
+- **ui:** Pin the theme's head priority and cover the cold-load landing ([2d8c71e](https://github.com/inf0matics/SrvKit/commit/2d8c71e))
+- **test:** Stop aiming the e2e port at the one port everyone contends ([69a9b34](https://github.com/inf0matics/SrvKit/commit/69a9b34))
+- **ui:** Read the theme from a cookie so it is right in the first paint ([7814896](https://github.com/inf0matics/SrvKit/commit/7814896))
+
+### 🏡 Chore
+
+- Move the toolchain to Node 26 ([0a043fe](https://github.com/inf0matics/SrvKit/commit/0a043fe))
+
+### ✅ Tests
+
+- Cover the filewatcher, which nothing exercised ([adfb6b3](https://github.com/inf0matics/SrvKit/commit/adfb6b3))
+- Close the theme gaps, and the login budget that blocked them ([9b7efe6](https://github.com/inf0matics/SrvKit/commit/9b7efe6))
+- Give network-bound assertions room, and stop one passing vacuously ([8b49fcd](https://github.com/inf0matics/SrvKit/commit/8b49fcd))
+
+### ❤️ Contributors
+
+- Inf0matics <fil@thespielplatz.com>
+
 ## v1.6.0
 
 [compare changes](https://github.com/inf0matics/SrvKit/compare/v1.5.0...v1.6.0)
