@@ -3,6 +3,9 @@
   "version": "1.7.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=26"
+  },
   "scripts": {
     "dev": "node scripts/dev.mjs nuxt dev",
     "build": "nuxt build && node scripts/build-cli.mjs",
