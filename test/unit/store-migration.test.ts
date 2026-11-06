@@ -136,3 +136,44 @@ test('a target created after the upgrade can be a local one', () => {
   s.close()
   rmSync(path, { force: true })
 })
+
+/** The `peers` table exactly as peer heartbeat v1 shipped it. */
+const PREVIOUS_PEERS_SCHEMA = `
+  CREATE TABLE config (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+  CREATE TABLE peers (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    token TEXT NOT NULL,
+    ip TEXT NOT NULL DEFAULT '',
+    last_seen TEXT NOT NULL,
+    alert_state TEXT NOT NULL DEFAULT 'ok',
+    created_at TEXT NOT NULL
+  );
+`
+
+test('a paired peer survives the heartbeat-tuning upgrade', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'srvkit-peers-upgrade-'))
+  const path = join(dir, 'srvkit.db')
+  const db = new DatabaseSync(path)
+  db.exec(PREVIOUS_PEERS_SCHEMA)
+  db.prepare(
+    `INSERT INTO peers (id, name, token, ip, last_seen, alert_state, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  ).run('p1', 'server1', 'enc', '203.0.113.7', '2026-11-06T20:04:00Z', 'ok', '2026-06-28')
+  db.close()
+
+  const s = openStore(path)
+  const peer = s.listPeers()[0]!
+  assert.equal(peer.name, 'server1', 'the pairing is untouched')
+  assert.equal(peer.token, 'enc')
+  assert.equal(peer.ip, '203.0.113.7')
+  assert.equal(peer.lastSeen, '2026-11-06T20:04:00Z')
+  assert.equal(peer.intervalSec, 0, 'interval unknown until it pings the new build')
+  assert.equal(peer.alertRef, null)
+  assert.equal(peer.alertMsgId, null)
+  assert.equal(peer.incidentSince, null)
+  s.close()
+
+  openStore(path).close() // second open must not re-run ADD COLUMN
+  rmSync(dir, { recursive: true, force: true })
+})

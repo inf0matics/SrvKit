@@ -29,6 +29,7 @@ const {
   buildReminderMessage,
   getRepeatHours,
   setRepeatHours,
+  dispatch,
 } = await import('../../server/utils/alerts.ts')
 
 let jobId = ''
@@ -398,4 +399,31 @@ test('buildReminderMessage pluralises days and runs', () => {
   })
   assert.match(text, /Backup "Shlink DB" still failing — 26 days, 26 runs\./)
   assert.match(text, /Last successful run: 2026-08-12T03:12:44Z/)
+})
+
+test('dispatch hands back the Telegram message id a recovery can reply to', async () => {
+  globalThis.fetch = (async (url: string, init: { body: string }) => {
+    calls.push({
+      url: String(url),
+      text: (JSON.parse(init.body) as { text: string }).text,
+      parseMode: undefined,
+      body: JSON.parse(init.body) as Record<string, unknown>,
+      headers: {},
+    })
+    return { ok: true, status: 200, json: async () => ({ result: { message_id: 4711 } }) } as Response
+  }) as typeof fetch
+
+  const refs = await dispatch('alert')
+  assert.equal(refs.telegramMessageId, 4711)
+
+  await dispatch('recovered', { replyTo: refs })
+  const reply = calls[1]!.body.reply_parameters as { message_id: number; allow_sending_without_reply: boolean }
+  assert.equal(reply.message_id, 4711)
+  assert.equal(reply.allow_sending_without_reply, true, 'a deleted alert must not swallow the recovery')
+})
+
+test('dispatch without a reply target sends a plain message', async () => {
+  const refs = await dispatch('alert') // shared mock returns no message id
+  assert.equal(refs.telegramMessageId, undefined)
+  assert.equal(calls[0]!.body.reply_parameters, undefined)
 })

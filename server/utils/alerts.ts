@@ -157,18 +157,30 @@ export function saveTalkSettings(input: Record<string, unknown>): void {
 
 // --- Delivery ---
 
-/** Send a Telegram message; throws with a useful detail on failure. */
+/**
+ * Send a Telegram message and return its message id (null when the API answers
+ * without one), so a later message can be threaded under this one.
+ * `replyToMessageId` makes this message a reply; `allow_sending_without_reply`
+ * keeps it deliverable if the original was deleted in the meantime.
+ */
 export async function sendTelegram(
   token: string,
   chatId: string,
   text: string,
-): Promise<void> {
+  replyToMessageId?: number,
+): Promise<number | null> {
   // Plain text (no parse_mode): alert text contains arbitrary error output and
   // the [server|SrvKit] prefix, which would break Markdown/HTML entity parsing.
   const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ chat_id: chatId, text }),
+    body: JSON.stringify({
+      chat_id: chatId,
+      text,
+      ...(replyToMessageId
+        ? { reply_parameters: { message_id: replyToMessageId, allow_sending_without_reply: true } }
+        : {}),
+    }),
   })
   if (!res.ok) {
     let detail = ''
@@ -178,6 +190,12 @@ export async function sendTelegram(
       /* non-JSON error body */
     }
     throw new Error(detail || `Telegram returned ${res.status}`)
+  }
+  try {
+    const sent = (await res.json()) as { result?: { message_id?: number } }
+    return sent.result?.message_id ?? null
+  } catch {
+    return null // delivered, but we cannot thread a recovery under it
   }
 }
 
@@ -281,14 +299,26 @@ export function buildReminderMessage(prefix: string, ctx: ReminderContext): stri
   )
 }
 
-async function dispatchTelegram(text: string): Promise<void> {
+/**
+ * Per-channel handles on a sent message, so a follow-up (a recovery closing the
+ * alert that opened an incident) can be threaded under it. Telegram returns a
+ * message id; Nextcloud Talk's bot API accepts `replyTo` but does not hand back
+ * the id of a message it posted, so there the shared incident reference in the
+ * text is the link.
+ */
+export interface DispatchRefs {
+  telegramMessageId?: number
+}
+
+async function dispatchTelegram(text: string, replyTo?: number): Promise<number | null> {
   const token = getToken()
   const chatId = getChatId()
-  if (!telegramEnabled() || !token || !chatId) return // channel off / unconfigured
+  if (!telegramEnabled() || !token || !chatId) return null // channel off / unconfigured
   try {
-    await sendTelegram(token, chatId, text)
+    return await sendTelegram(token, chatId, text, replyTo)
   } catch (e) {
     console.error('[alerts] Telegram delivery failed:', (e as Error).message)
+    return null
   }
 }
 
@@ -306,10 +336,18 @@ async function dispatchTalk(text: string): Promise<void> {
 
 /**
  * Fan a message out to every enabled + configured channel. Channels are
- * independent — one failing (or unconfigured) never blocks the other. Never throws.
+ * independent — one failing (or unconfigured) never blocks the other. Never
+ * throws. Returns the refs a follow-up message can reply to.
  */
-export async function dispatch(text: string): Promise<void> {
-  await Promise.all([dispatchTelegram(text), dispatchTalk(text)])
+export async function dispatch(
+  text: string,
+  opts: { replyTo?: DispatchRefs | null } = {},
+): Promise<DispatchRefs> {
+  const [telegramMessageId] = await Promise.all([
+    dispatchTelegram(text, opts.replyTo?.telegramMessageId),
+    dispatchTalk(text),
+  ])
+  return telegramMessageId === null ? {} : { telegramMessageId }
 }
 
 /**

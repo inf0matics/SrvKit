@@ -42,3 +42,32 @@ test('alert state + delete', () => {
   assert.equal(s.deletePeer(p.id), false)
   s.close()
 })
+
+test('markPeerSeen records the interval the peer reports', () => {
+  const s = openStore(':memory:')
+  const p = s.createPeer('s', 'tok', '')
+  assert.equal(p.intervalSec, 0, 'unknown until the peer reports one')
+  s.markPeerSeen(p.id, 's1', 60)
+  assert.equal(s.listPeers()[0]!.intervalSec, 60)
+  // A legacy peer that reports nothing must not wipe what we already know.
+  s.markPeerSeen(p.id, 's1', 0)
+  assert.equal(s.listPeers()[0]!.intervalSec, 60)
+  s.close()
+})
+
+test('an open incident stores its reference, message id and start', () => {
+  const s = openStore(':memory:')
+  const p = s.createPeer('s', 'tok', '')
+  assert.equal(p.alertRef, null)
+  s.setPeerIncident(p.id, { ref: 'a1b2c3', msgId: '4711', since: '2026-11-06T20:15:00Z' })
+  const open = s.listPeers()[0]!
+  assert.equal(open.alertRef, 'a1b2c3')
+  assert.equal(open.alertMsgId, '4711')
+  assert.equal(open.incidentSince, '2026-11-06T20:15:00Z')
+  s.setPeerIncident(p.id, null)
+  const closed = s.listPeers()[0]!
+  assert.equal(closed.alertRef, null)
+  assert.equal(closed.alertMsgId, null)
+  assert.equal(closed.incidentSince, null)
+  s.close()
+})

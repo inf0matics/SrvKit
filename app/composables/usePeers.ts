@@ -6,6 +6,8 @@ export interface PeerView {
   lastSeen: string
   status: PeerStatus
   lastSeenAgoMs: number
+  /** Cadence the peer reports; 0 means it has not told us (older build). */
+  intervalSec: number
 }
 
 export interface PendingKey {
@@ -19,11 +21,18 @@ export interface OutgoingView {
   ok: boolean | null
 }
 
+export interface TimingView {
+  intervalSec: number
+  missThreshold: number
+  windowMs: number
+}
+
 interface PeersData {
   peers: PeerView[]
   status: PeerStatus | null
   pending: PendingKey | null
   outgoing: OutgoingView | null
+  timing: TimingView
   ipAllowlist: boolean
 }
 
@@ -36,6 +45,7 @@ export function usePeers() {
   const status = useState<PeerStatus | null>('peers-status', () => null)
   const pending = useState<PendingKey | null>('peers-pending', () => null)
   const outgoing = useState<OutgoingView | null>('peers-outgoing', () => null)
+  const timing = useState<TimingView | null>('peers-timing', () => null)
   const ipAllowlist = useState<boolean>('peers-ip-allowlist', () => false)
 
   function apply(d: PeersData) {
@@ -43,6 +53,7 @@ export function usePeers() {
     status.value = d.status
     pending.value = d.pending
     outgoing.value = d.outgoing
+    timing.value = d.timing
     ipAllowlist.value = d.ipAllowlist
   }
 
@@ -76,6 +87,15 @@ export function usePeers() {
     await refresh()
   }
 
+  /** Save send interval and/or miss threshold; the server clamps the values. */
+  async function setTiming(input: { intervalSec?: number; missThreshold?: number }) {
+    const r = await $fetch<{ timing: TimingView }>('/api/peers/timing', {
+      method: 'POST',
+      body: input,
+    })
+    timing.value = r.timing
+  }
+
   async function setSecurity(enabled: boolean) {
     const r = await $fetch<{ ipAllowlist: boolean }>('/api/peers/security', {
       method: 'POST',
@@ -89,12 +109,14 @@ export function usePeers() {
     status,
     pending,
     outgoing,
+    timing,
     ipAllowlist,
     refresh,
     connect,
     pair,
     removePeer,
     removeOutgoing,
+    setTiming,
     setSecurity,
   }
 }

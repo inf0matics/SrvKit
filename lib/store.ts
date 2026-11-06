@@ -143,8 +143,23 @@ export interface PeerRecord {
   ip: string
   /** ISO timestamp of the most recent ping received. */
   lastSeen: string
+  /** Send interval the peer reports (seconds); 0 until it reports one. */
+  intervalSec: number
   alertState: 'ok' | 'failed'
+  /** Short reference shared by the open alert and its recovery; null when OK. */
+  alertRef: string | null
+  /** Channel message id of the open alert, so the recovery can reply to it. */
+  alertMsgId: string | null
+  /** ISO timestamp the open incident started; null when OK. */
+  incidentSince: string | null
   createdAt: string
+}
+
+/** The bookkeeping that lets a recovery message find its alert. */
+export interface PeerIncident {
+  ref: string
+  msgId: string | null
+  since: string
 }
 
 export interface Store {
@@ -173,9 +188,12 @@ export interface Store {
   recordRun(id: string, run: RunResult): void
   listPeers(): PeerRecord[]
   createPeer(name: string, token: string, ip: string): PeerRecord
-  markPeerSeen(id: string, name: string): void
+  /** Stamp a received ping. `intervalSec` 0 leaves a known interval in place. */
+  markPeerSeen(id: string, name: string, intervalSec?: number): void
   setPeerLastSeen(id: string, iso: string): void
   setPeerAlertState(id: string, state: 'ok' | 'failed'): void
+  /** Open an incident (ref + channel message id + start), or close it with null. */
+  setPeerIncident(id: string, incident: PeerIncident | null): void
   deletePeer(id: string): boolean
   getConfig(key: string): string | null
   setConfig(key: string, value: string): void
@@ -362,7 +380,11 @@ export function openStore(path: string): Store {
        token TEXT NOT NULL,
        ip TEXT NOT NULL DEFAULT '',
        last_seen TEXT NOT NULL,
+       interval_sec INTEGER NOT NULL DEFAULT 0,
        alert_state TEXT NOT NULL DEFAULT 'ok',
+       alert_ref TEXT,
+       alert_msg_id TEXT,
+       incident_since TEXT,
        created_at TEXT NOT NULL
      )`,
   )
@@ -371,6 +393,12 @@ export function openStore(path: string): Store {
   ).map((c) => c.name)
   if (!peerColNames.includes('ip')) {
     db.exec("ALTER TABLE peers ADD COLUMN ip TEXT NOT NULL DEFAULT ''")
+  }
+  if (!peerColNames.includes('interval_sec')) {
+    db.exec('ALTER TABLE peers ADD COLUMN interval_sec INTEGER NOT NULL DEFAULT 0')
+  }
+  for (const col of ['alert_ref', 'alert_msg_id', 'incident_since'] as const) {
+    if (!peerColNames.includes(col)) db.exec(`ALTER TABLE peers ADD COLUMN ${col} TEXT`)
   }
 
   const getStmt = db.prepare('SELECT value FROM config WHERE key = ?')
@@ -468,14 +496,22 @@ export function openStore(path: string): Store {
 
   // --- Peers ---
   const peerCols = `id, name, token, ip, last_seen AS lastSeen,
-                    alert_state AS alertState, created_at AS createdAt`
+                    interval_sec AS intervalSec, alert_state AS alertState,
+                    alert_ref AS alertRef, alert_msg_id AS alertMsgId,
+                    incident_since AS incidentSince, created_at AS createdAt`
   const listPeersStmt = db.prepare(`SELECT ${peerCols} FROM peers ORDER BY created_at`)
   const insertPeerStmt = db.prepare(
     `INSERT INTO peers (id, name, token, ip, last_seen, alert_state, created_at)
      VALUES (?, ?, ?, ?, ?, 'ok', ?)`,
   )
+  // interval_sec 0 means "the peer did not say" — keep whatever we already know.
   const markPeerSeenStmt = db.prepare(
-    'UPDATE peers SET last_seen = ?, name = ? WHERE id = ?',
+    `UPDATE peers SET last_seen = ?, name = ?,
+       interval_sec = CASE WHEN ? > 0 THEN ? ELSE interval_sec END
+     WHERE id = ?`,
+  )
+  const setPeerIncidentStmt = db.prepare(
+    'UPDATE peers SET alert_ref = ?, alert_msg_id = ?, incident_since = ? WHERE id = ?',
   )
   const setPeerLastSeenStmt = db.prepare('UPDATE peers SET last_seen = ? WHERE id = ?')
   const setPeerAlertStateStmt = db.prepare('UPDATE peers SET alert_state = ? WHERE id = ?')
@@ -667,11 +703,32 @@ export function openStore(path: string): Store {
       const id = randomUUID()
       const now = new Date().toISOString()
       insertPeerStmt.run(id, name, token, ip, now, now)
-      return { id, name, token, ip, lastSeen: now, alertState: 'ok', createdAt: now }
+      return {
+        id,
+        name,
+        token,
+        ip,
+        lastSeen: now,
+        intervalSec: 0,
+        alertState: 'ok',
+        alertRef: null,
+        alertMsgId: null,
+        incidentSince: null,
+        createdAt: now,
+      }
     },
 
-    markPeerSeen(id: string, name: string) {
-      markPeerSeenStmt.run(new Date().toISOString(), name, id)
+    markPeerSeen(id: string, name: string, intervalSec = 0) {
+      markPeerSeenStmt.run(new Date().toISOString(), name, intervalSec, intervalSec, id)
+    },
+
+    setPeerIncident(id: string, incident: PeerIncident | null) {
+      setPeerIncidentStmt.run(
+        incident?.ref ?? null,
+        incident?.msgId ?? null,
+        incident?.since ?? null,
+        id,
+      )
     },
 
     setPeerLastSeen(id: string, iso: string) {

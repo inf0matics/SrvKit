@@ -166,6 +166,8 @@ reset below.
 | `COOKIE_SECURE` | no | `true` | Secure session cookie. Leave unset behind TLS. |
 | `TIP_JAR_URL` | no | — | Sidebar Tip-Jar link; hidden when unset. |
 | `PORT` | no | `3000` | Port the app listens on. |
+| `HEARTBEAT_INTERVAL_SEC` | no | `300` | Peer-heartbeat send interval (30–3600). Overridden by Peers → Heartbeat timing. |
+| `HEARTBEAT_MISS_THRESHOLD` | no | `2` | Missed heartbeats in a row before alerting (1–10). Overridden in the UI. |
 
 ## Reset the password (CLI)
 

@@ -2,8 +2,18 @@ import { randomBytes } from 'node:crypto'
 
 // Pure heartbeat helpers (no DB / no network) so they're unit-testable.
 
-/** Miss window: a peer silent longer than this is CRIT. Mirrors the ping interval ×5. */
-export const PEER_SILENCE_MS = 5 * 60 * 1000
+/** Heartbeat cadence shipped by v1 — still the default, so nothing changes untuned. */
+export const DEFAULT_PING_INTERVAL_SEC = 300
+/** Consecutive missed heartbeats before the receiver alerts. */
+export const DEFAULT_MISS_THRESHOLD = 2
+/** Watchdog cadence, and the grace added to every silence window. */
+export const WATCHDOG_TICK_MS = 60 * 1000
+/** Bounds for a configured send interval (seconds). */
+export const MIN_PING_INTERVAL_SEC = 30
+export const MAX_PING_INTERVAL_SEC = 3600
+/** Bounds for the configured miss threshold. */
+export const MIN_MISS_THRESHOLD = 1
+export const MAX_MISS_THRESHOLD = 10
 export const PAIRING_KEY_TTL_MS = 10 * 60 * 1000
 
 export type PeerStatus = 'ok' | 'crit'
@@ -34,9 +44,118 @@ export function formatKey(key: string): string {
   return k.length === 8 ? `${k.slice(0, 4)}-${k.slice(4)}` : k
 }
 
+function clampInt(value: unknown, min: number, max: number, fallback: number): number {
+  const n = Math.round(Number(value))
+  if (!Number.isFinite(n)) return fallback
+  return Math.min(max, Math.max(min, n))
+}
+
+/** Send interval in seconds, clamped to a range that still makes sense to poll. */
+export function normalizePingInterval(sec: unknown): number {
+  return clampInt(
+    sec === '' || sec === null ? undefined : sec,
+    MIN_PING_INTERVAL_SEC,
+    MAX_PING_INTERVAL_SEC,
+    DEFAULT_PING_INTERVAL_SEC,
+  )
+}
+
+/** How many consecutive heartbeats may go missing before we alert. */
+export function normalizeMissThreshold(n: unknown): number {
+  return clampInt(
+    n === '' || n === null ? undefined : n,
+    MIN_MISS_THRESHOLD,
+    MAX_MISS_THRESHOLD,
+    DEFAULT_MISS_THRESHOLD,
+  )
+}
+
+/**
+ * Silence a peer is allowed before it counts as CRIT: the missed heartbeats the
+ * threshold permits, plus one watchdog tick of grace. Without that grace a
+ * heartbeat arriving a few seconds late lands in the next tick as a miss —
+ * which is how v1 (window === interval, no grace) turned a one-second DNS
+ * hiccup at the hoster into a page.
+ */
+export function silenceWindowMs(intervalSec: number, threshold: number): number {
+  return intervalSec * 1000 * threshold + WATCHDOG_TICK_MS
+}
+
+/** The window applied to a peer that reports no interval of its own. */
+export const DEFAULT_SILENCE_WINDOW_MS = silenceWindowMs(
+  DEFAULT_PING_INTERVAL_SEC,
+  DEFAULT_MISS_THRESHOLD,
+)
+
 /** CRIT once a peer has been silent beyond the window, else OK. */
-export function peerStatus(lastSeenMs: number, nowMs: number, windowMs = PEER_SILENCE_MS): PeerStatus {
+export function peerStatus(
+  lastSeenMs: number,
+  nowMs: number,
+  windowMs = DEFAULT_SILENCE_WINDOW_MS,
+): PeerStatus {
   return nowMs - lastSeenMs > windowMs ? 'crit' : 'ok'
+}
+
+/** Short tag shared by an alert and its recovery, for channels without replies. */
+export function generateIncidentRef(): string {
+  return randomBytes(3).toString('hex')
+}
+
+/** Coarse duration for message text: minutes, then hours + minutes. */
+export function formatSilence(ms: number): string {
+  const minutes = Math.max(1, Math.round(Math.max(0, ms) / 60_000))
+  if (minutes < 60) return `${minutes} min`
+  const hours = Math.floor(minutes / 60)
+  const rest = minutes % 60
+  return rest ? `${hours} h ${rest} min` : `${hours} h`
+}
+
+/** Interval as the message should read it: whole minutes where it divides. */
+export function formatInterval(sec: number): string {
+  return sec % 60 === 0 ? `${sec / 60} min` : `${sec} s`
+}
+
+/** `2026-11-06 20:04 UTC` — unambiguous without assuming the reader's zone. */
+export function formatTimestamp(ms: number): string {
+  return `${new Date(ms).toISOString().slice(0, 16).replace('T', ' ')} UTC`
+}
+
+export interface PeerSilentContext {
+  name: string
+  /** Interval this peer reports (or the configured default). */
+  intervalSec: number
+  lastSeenMs: number
+  nowMs: number
+  threshold: number
+  ref: string | null
+}
+
+const refTag = (ref: string | null) => (ref ? ` [#${ref}]` : '')
+
+/**
+ * What the receiver can state by itself: how many intervals went missing, when
+ * the last heartbeat landed, and the reference its recovery will carry. The
+ * cause of the silence is the sender's to report (spec 21).
+ */
+export function buildPeerSilentMessage(prefix: string, ctx: PeerSilentContext): string {
+  const silentMs = ctx.nowMs - ctx.lastSeenMs
+  const missed = Math.max(ctx.threshold, Math.floor(silentMs / (ctx.intervalSec * 1000)))
+  return (
+    `⚠️ ${prefix} ${ctx.name} has not reported in — ${missed} missed heartbeats ` +
+    `(every ${formatInterval(ctx.intervalSec)}).\n` +
+    `Last heartbeat: ${formatTimestamp(ctx.lastSeenMs)} (${formatSilence(silentMs)} ago).` +
+    refTag(ctx.ref)
+  )
+}
+
+export function buildPeerRecoveredMessage(
+  prefix: string,
+  ctx: { name: string; silentMs: number; ref: string | null },
+): string {
+  return (
+    `✅ ${prefix} ${ctx.name} is back online — silent for ${formatSilence(ctx.silentMs)}.` +
+    refTag(ctx.ref)
+  )
 }
 
 /** Aggregate for the sidebar badge: crit if any peer is silent, else ok. */

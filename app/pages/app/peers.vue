@@ -2,8 +2,20 @@
 definePageMeta({ middleware: 'auth', layout: 'shell' })
 usePageTitle('Peers')
 
-const { peers, pending, outgoing, ipAllowlist, refresh, connect, pair, removePeer, removeOutgoing, setSecurity } =
-  usePeers()
+const {
+  peers,
+  pending,
+  outgoing,
+  timing,
+  ipAllowlist,
+  refresh,
+  connect,
+  pair,
+  removePeer,
+  removeOutgoing,
+  setTiming,
+  setSecurity,
+} = usePeers()
 
 let timer: ReturnType<typeof setInterval> | undefined
 onMounted(() => {
@@ -70,6 +82,59 @@ async function copyKey() {
   }
 }
 
+// The intervals worth offering. Any value the server accepts (30..3600 s) still
+// works — an ENV-set one is added to the list below rather than dropped.
+const INTERVAL_CHOICES = [
+  { value: 60, label: '1 min' },
+  { value: 120, label: '2 min' },
+  { value: 300, label: '5 min' },
+  { value: 600, label: '10 min' },
+  { value: 900, label: '15 min' },
+]
+
+/** An interval set via ENV need not be one of the offered choices. */
+const intervalChoices = computed(() => {
+  const current = timing.value?.intervalSec
+  if (!current || INTERVAL_CHOICES.some((o) => o.value === current)) return INTERVAL_CHOICES
+  return [...INTERVAL_CHOICES, { value: current, label: `${current} s` }].sort(
+    (a, b) => a.value - b.value,
+  )
+})
+
+// Local edit state for the two fields. Binding them straight to `timing` would
+// let a re-render — a save of the other field, or the 10s poll — reset the DOM
+// value under the cursor, because Vue re-applies a `value` prop whenever it
+// differs from what is in the input.
+const intervalInput = ref(0)
+const thresholdInput = ref(0)
+
+// Follow the server per field, and only when that field's stored value actually
+// changed: the first load, and a value the server clamped. Watching both
+// together would make saving one field reset the other mid-edit, and the 10s
+// poll re-applies an unchanged value on every tick.
+watch(
+  () => timing.value?.intervalSec,
+  (sec) => {
+    if (sec) intervalInput.value = sec
+  },
+  { immediate: true },
+)
+watch(
+  () => timing.value?.missThreshold,
+  (n) => {
+    if (n) thresholdInput.value = n
+  },
+  { immediate: true },
+)
+
+const timingSummary = computed(() => {
+  if (!timing.value) return ''
+  const { missThreshold, windowMs } = timing.value
+  const mins = Math.round(windowMs / 60_000)
+  const beats = missThreshold === 1 ? 'heartbeat' : 'heartbeats'
+  return `Alerts after ${missThreshold} missed ${beats} — about ${mins} min of silence. A peer that reports its own interval is judged by that instead.`
+})
+
 function fmtAgo(ms: number): string {
   const s = Math.max(0, Math.round(ms / 1000))
   if (s < 60) return `${s}s ago`
@@ -79,6 +144,15 @@ function fmtAgo(ms: number): string {
 function expiresInMin(expiresAt: number): number {
   return Math.max(0, Math.round((expiresAt - Date.now()) / 60_000))
 }
+async function onInterval() {
+  await setTiming({ intervalSec: intervalInput.value })
+}
+
+/** The server clamps; the watch above writes the accepted value back into the field. */
+async function onThreshold() {
+  await setTiming({ missThreshold: thresholdInput.value })
+}
+
 function outgoingStatusText(o: { lastSentAt: number | null; ok: boolean | null }): string {
   if (o.lastSentAt === null) return 'not sent yet'
   return o.ok ? `✓ last sent ${fmtAgo(Date.now() - o.lastSentAt)}` : '✗ last send failed'
@@ -172,6 +246,40 @@ function outgoingStatusText(o: { lastSentAt: number | null; ok: boolean | null }
       </div>
     </section>
 
+    <section v-if="timing" class="card" data-testid="timing">
+      <h2>Heartbeat timing</h2>
+      <div class="timing-row">
+        <label for="hb-interval">Send interval</label>
+        <select
+          id="hb-interval"
+          v-model.number="intervalInput"
+          class="tsp-input"
+          data-testid="hb-interval"
+          @change="onInterval"
+        >
+          <option v-for="o in intervalChoices" :key="o.value" :value="o.value">
+            {{ o.label }}
+          </option>
+        </select>
+      </div>
+      <div class="timing-row">
+        <label for="hb-threshold">Alert after</label>
+        <input
+          id="hb-threshold"
+          v-model.number="thresholdInput"
+          class="tsp-input narrow"
+          type="number"
+          min="1"
+          max="10"
+          data-testid="hb-threshold"
+          @change="onThreshold"
+          @keyup.enter="onThreshold"
+        >
+        <span class="muted">missed heartbeats</span>
+      </div>
+      <p class="muted" data-testid="hb-summary">{{ timingSummary }}</p>
+    </section>
+
     <section class="card" data-testid="security">
       <h2>Security</h2>
       <div class="sec-row">
@@ -217,14 +325,16 @@ function outgoingStatusText(o: { lastSentAt: number | null; ok: boolean | null }
       <p>
         <strong>Pairing.</strong> Enter the other SrvKit's domain and hit Connect — it shows a
         one-time key (valid 10&nbsp;minutes). Copy that key back here and Confirm. From then on this
-        instance sends a heartbeat to that server every 5&nbsp;minutes; the key is discarded and
-        pings use a permanent token.
+        instance sends a heartbeat to that server on the interval set above; the key is discarded
+        and pings use a permanent token.
       </p>
       <p>
-        <strong>Monitored peers</strong> are the servers that ping <em>this</em> one — if any stops
-        reporting for more than 5&nbsp;minutes, this instance sends an alert (and a recovery
-        message when it returns). <strong>Outgoing heartbeat</strong> is where this server sends its
-        own ping, so the peer can alert on <em>your</em> downtime.
+        <strong>Monitored peers</strong> are the servers that ping <em>this</em> one — once a peer
+        misses the configured number of heartbeats in a row, this instance sends an alert, and a
+        recovery when it returns (threaded under the alert where the channel supports replies).
+        Each heartbeat carries the sender's own interval, so a peer pinging more often is noticed
+        sooner. <strong>Outgoing heartbeat</strong> is where this server sends its own ping, so the
+        peer can alert on <em>your</em> downtime.
       </p>
       <p>
         Pairing sets up <strong>one direction</strong> (the peer watches you). For mutual
@@ -364,6 +474,26 @@ function outgoingStatusText(o: { lastSentAt: number | null; ok: boolean | null }
 
 .out-row code {
   font-family: ui-monospace, Menlo, Consolas, monospace;
+}
+
+.timing-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  font-size: 0.9rem;
+}
+
+.timing-row label {
+  min-width: 8rem;
+}
+
+.timing-row .tsp-input {
+  max-width: 10rem;
+}
+
+.timing-row .narrow {
+  max-width: 5rem;
 }
 
 .sec-row {

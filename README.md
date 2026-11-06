@@ -46,7 +46,7 @@ volumes:
 
 ![PostgreSQL Job](docs/screenshots/backup-job-postgresql.png)
 
-**Peer Heartbeat** — SrvKit instances watch each other. If one server goes silent, the other sends an alert — even if the silent server is completely down. Setup is a simple one-time key exchange: enter the peer's domain, copy the key shown on the other side, done.
+**Peer Heartbeat** — SrvKit instances watch each other. If one server goes silent, the other sends an alert — even if the silent server is completely down. Setup is a simple one-time key exchange: enter the peer's domain, copy the key shown on the other side, done. Send interval and how many heartbeats may go missing before an alert (default: 2) are configurable under Peers → Heartbeat timing or via `HEARTBEAT_INTERVAL_SEC` / `HEARTBEAT_MISS_THRESHOLD`, so a short network hiccup doesn't page you. The recovery message is threaded under the alert it closes.
 
 ![Peer Heartbeat](docs/screenshots/peer-heartbeat.png)
 
