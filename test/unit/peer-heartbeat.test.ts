@@ -17,6 +17,11 @@ import {
   DEFAULT_PING_INTERVAL_SEC,
   DEFAULT_MISS_THRESHOLD,
   DEFAULT_SILENCE_WINDOW_MS,
+  classifySendError,
+  classifyHttpStatus,
+  appendFailure,
+  MAX_JOURNAL_ENTRIES,
+  type SendFailure,
 } from '../../lib/peer-heartbeat.ts'
 
 test('pairing key is 8 unambiguous alphanumeric chars', () => {
@@ -158,4 +163,92 @@ test('normalizeDomain accepts http(s) origins and rejects junk', () => {
   assert.equal(normalizeDomain('ftp://x'), null)
   assert.equal(normalizeDomain('not a url'), null)
   assert.equal(normalizeDomain(''), null)
+})
+
+test('classifySendError names the failure a human would act on', () => {
+  const wrap = (code: string) => Object.assign(new TypeError('fetch failed'), { cause: { code } })
+  const host = 'srvkit.services.tsp.tools'
+
+  assert.deepEqual(classifySendError(wrap('ENOTFOUND'), host), {
+    reason: 'dns',
+    detail: `DNS lookup failed for ${host}`,
+  })
+  // A hoster's resolver under load returns EAI_AGAIN, not ENOTFOUND.
+  assert.equal(classifySendError(wrap('EAI_AGAIN'), host).reason, 'dns')
+  assert.deepEqual(classifySendError(wrap('ECONNREFUSED'), host), {
+    reason: 'refused',
+    detail: `Connection refused by ${host}`,
+  })
+  assert.equal(classifySendError(wrap('ERR_TLS_CERT_ALTNAME_INVALID'), host).reason, 'tls')
+  assert.equal(classifySendError(wrap('CERT_HAS_EXPIRED'), host).reason, 'tls')
+  assert.equal(
+    classifySendError(Object.assign(new Error('x'), { name: 'TimeoutError' }), host).reason,
+    'timeout',
+  )
+  assert.equal(
+    classifySendError(Object.assign(new Error('x'), { name: 'AbortError' }), host).reason,
+    'timeout',
+  )
+  assert.equal(classifySendError(new TypeError('fetch failed'), host).reason, 'unreachable')
+})
+
+test('classifyHttpStatus reports a non-2xx answer as its own cause', () => {
+  assert.deepEqual(classifyHttpStatus(502, 'peer.example.com'), {
+    reason: 'http',
+    detail: 'peer.example.com answered HTTP 502',
+  })
+  assert.equal(classifyHttpStatus(401, 'h').detail, 'h answered HTTP 401 — re-pair this peer')
+  assert.equal(classifyHttpStatus(403, 'h').detail, 'h answered HTTP 403 — re-pair this peer')
+})
+
+test('the journal keeps only the most recent attempts', () => {
+  let journal: SendFailure[] = []
+  for (let i = 0; i < MAX_JOURNAL_ENTRIES + 5; i++) {
+    journal = appendFailure(journal, { at: `2026-11-06T20:${String(i).padStart(2, '0')}:00Z`, reason: 'dns', detail: 'd' })
+  }
+  assert.equal(journal.length, MAX_JOURNAL_ENTRIES)
+  assert.equal(journal[0]!.at, '2026-11-06T20:05:00Z', 'the oldest entries fall off the front')
+  assert.equal(journal.at(-1)!.at, `2026-11-06T20:${MAX_JOURNAL_ENTRIES + 4}:00Z`)
+})
+
+test('a recovery names the cause the sender back-filled', () => {
+  const text = buildPeerRecoveredMessage('[p]', {
+    name: 'server1',
+    silentMs: 12 * 60_000,
+    ref: 'a1b2c3',
+    misses: [
+      { at: '2026-11-06T20:09:00Z', reason: 'dns', detail: 'DNS lookup failed for srvkit.tsp.tools' },
+      { at: '2026-11-06T20:14:00Z', reason: 'dns', detail: 'DNS lookup failed for srvkit.tsp.tools' },
+      { at: '2026-11-06T20:19:00Z', reason: 'dns', detail: 'DNS lookup failed for srvkit.tsp.tools' },
+    ],
+  })
+  assert.match(text, /silent for 12 min/)
+  assert.match(text, /3 attempts failed: DNS lookup failed for srvkit\.tsp\.tools/)
+  assert.match(text, /20:09, 20:14, 20:19/)
+})
+
+test('a recovery lists distinct causes separately', () => {
+  const text = buildPeerRecoveredMessage('[p]', {
+    name: 's1',
+    silentMs: 60_000,
+    ref: null,
+    misses: [
+      { at: '2026-11-06T20:09:00Z', reason: 'dns', detail: 'DNS lookup failed for a' },
+      { at: '2026-11-06T20:14:00Z', reason: 'timeout', detail: 'No response from a within 8s' },
+    ],
+  })
+  assert.match(text, /2 attempts failed/)
+  assert.match(text, /DNS lookup failed for a \(20:09\)/)
+  assert.match(text, /No response from a within 8s \(20:14\)/)
+})
+
+test('a recovery with nothing back-filled says so rather than guessing', () => {
+  const text = buildPeerRecoveredMessage('[p]', {
+    name: 's1',
+    silentMs: 12 * 60_000,
+    ref: 'a1b2c3',
+    misses: [],
+  })
+  assert.match(text, /s1 is back online/)
+  assert.match(text, /Cause not reported by the peer/)
 })

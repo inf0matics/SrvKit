@@ -71,3 +71,26 @@ test('an open incident stores its reference, message id and start', () => {
   assert.equal(closed.incidentSince, null)
   s.close()
 })
+
+test('a delivered failure report is stored and can be consumed', () => {
+  const s = openStore(':memory:')
+  const p = s.createPeer('s', 'tok', '')
+  assert.equal(p.lastReport, null)
+  assert.equal(p.lastSuccessAt, null)
+
+  const misses = [{ at: '2026-11-06T20:09:00Z', reason: 'dns' as const, detail: 'DNS lookup failed for a' }]
+  s.setPeerReport(p.id, { misses, lastSuccessAt: '2026-11-06T20:04:00Z' })
+  const stored = s.listPeers()[0]!
+  assert.deepEqual(JSON.parse(stored.lastReport!), misses)
+  assert.equal(stored.lastSuccessAt, '2026-11-06T20:04:00Z')
+
+  // Consumed once the recovery has told the story.
+  s.setPeerReport(p.id, null)
+  assert.equal(s.listPeers()[0]!.lastReport, null)
+  assert.equal(
+    s.listPeers()[0]!.lastSuccessAt,
+    '2026-11-06T20:04:00Z',
+    'the last good heartbeat is history, not part of the incident',
+  )
+  s.close()
+})

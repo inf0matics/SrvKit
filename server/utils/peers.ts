@@ -2,7 +2,7 @@ import { timingSafeEqual } from 'node:crypto'
 import { store } from './srvkit.ts'
 import { dispatch, messagePrefix, getServerName } from './alerts.ts'
 import { encryptPassword, decryptPassword } from './backups.ts'
-import type { PeerRecord } from '../../lib/store.ts'
+import type { PeerRecord, PeerReport } from '../../lib/store.ts'
 import {
   generatePairingKey,
   generatePeerToken,
@@ -17,9 +17,13 @@ import {
   buildPeerSilentMessage,
   buildPeerRecoveredMessage,
   PAIRING_KEY_TTL_MS,
+  classifySendError,
+  classifyHttpStatus,
+  appendFailure,
   DEFAULT_PING_INTERVAL_SEC,
   DEFAULT_MISS_THRESHOLD,
   type PeerStatus,
+  type SendFailure,
 } from '../../lib/peer-heartbeat.ts'
 
 // Pairing key (receiver side) + outgoing target (sender side) live in the kv
@@ -29,6 +33,7 @@ const OUT_KEY = 'heartbeat_out'
 const IP_CHECK_KEY = 'heartbeat_ip_check'
 const INTERVAL_KEY = 'heartbeat_interval_sec'
 const THRESHOLD_KEY = 'heartbeat_miss_threshold'
+const JOURNAL_KEY = 'heartbeat_journal'
 
 /**
  * Timing resolution, same ladder as `alerts_repeat_hours`: the value set in the
@@ -157,11 +162,21 @@ export function recordPeerPing(
   name: string,
   ip: string,
   intervalSec = 0,
+  report?: PeerReport,
 ): PingResult {
   const peer = findPeerByToken(token)
   if (!peer) return 'unknown'
   if (ipCheckEnabled() && peer.ip && peer.ip !== ip) return 'ip-mismatch'
-  store().markPeerSeen(peer.id, name || peer.name, intervalSec > 0 ? normalizePingInterval(intervalSec) : 0)
+  store().markPeerSeen(
+    peer.id,
+    name || peer.name,
+    intervalSec > 0 ? normalizePingInterval(intervalSec) : 0,
+  )
+  // Only a report with something in it is worth keeping; an empty one on every
+  // ordinary heartbeat would overwrite a backlog the recovery has not told yet.
+  if (report && (report.misses.length || report.lastSuccessAt)) {
+    store().setPeerReport(peer.id, report)
+  }
   return 'ok'
 }
 
@@ -171,8 +186,49 @@ interface StoredOutgoing {
   domain: string
   token: string
 }
-let lastSentAt: number | null = null
-let lastSendOk: boolean | null = null
+/**
+ * Send state lives in the `config` table rather than in process memory: the
+ * failures of a silent stretch have to outlive a restart to be back-filled at
+ * all, and the Peers page no longer claims "not sent yet" after every deploy.
+ */
+interface Journal {
+  lastSentAt: number | null
+  lastSendOk: boolean | null
+  /** Undelivered failures, oldest first. */
+  misses: SendFailure[]
+  /** ISO timestamp of the last heartbeat that landed. */
+  lastSuccessAt: string | null
+}
+const EMPTY_JOURNAL: Journal = {
+  lastSentAt: null,
+  lastSendOk: null,
+  misses: [],
+  lastSuccessAt: null,
+}
+
+function loadJournal(): Journal {
+  try {
+    const raw = JSON.parse(store().getConfig(JOURNAL_KEY) || 'null') as Partial<Journal> | null
+    if (!raw) return { ...EMPTY_JOURNAL }
+    return {
+      lastSentAt: typeof raw.lastSentAt === 'number' ? raw.lastSentAt : null,
+      lastSendOk: typeof raw.lastSendOk === 'boolean' ? raw.lastSendOk : null,
+      misses: Array.isArray(raw.misses) ? raw.misses : [],
+      lastSuccessAt: typeof raw.lastSuccessAt === 'string' ? raw.lastSuccessAt : null,
+    }
+  } catch {
+    return { ...EMPTY_JOURNAL }
+  }
+}
+
+function saveJournal(journal: Journal): void {
+  store().setConfig(JOURNAL_KEY, JSON.stringify(journal))
+}
+
+/** The failures waiting to be back-filled — for tests and the Peers page. */
+export function sendJournal(): SendFailure[] {
+  return loadJournal().misses
+}
 
 function getStoredOutgoing(): StoredOutgoing | null {
   try {
@@ -186,14 +242,12 @@ export function setOutgoing(domain: string, rawToken: string): void {
 }
 export function clearOutgoing(): void {
   store().setConfig(OUT_KEY, '')
-  lastSentAt = null
-  lastSendOk = null
+  store().setConfig(JOURNAL_KEY, '')
 }
 
-/** Test/observability hook. */
+/** Test hook: drop anything cached in this process (simulates a restart). */
 export function resetPeerRuntime(): void {
-  lastSentAt = null
-  lastSendOk = null
+  /* nothing is cached in memory any more — send state lives in the DB */
 }
 
 /**
@@ -205,17 +259,34 @@ export const SEND_RETRY_DELAYS_MS = [5_000, 20_000]
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
-async function attemptPing(domain: string, token: string, intervalSec: number): Promise<boolean> {
+/** The host a cause names, so the message says where the lookup failed. */
+function hostOf(domain: string): string {
+  try {
+    return new URL(domain).host
+  } catch {
+    return domain
+  }
+}
+
+/**
+ * One attempt. Returns null when it landed, else the cause — which only the
+ * sender can see, and only at this moment.
+ */
+async function attemptPing(
+  domain: string,
+  token: string,
+  body: Record<string, unknown>,
+): Promise<Omit<SendFailure, 'at'> | null> {
   try {
     const res = await fetch(`${domain}/api/heartbeat/ping`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-      body: JSON.stringify({ name: getServerName() || 'SrvKit', intervalSec }),
+      body: JSON.stringify(body),
       signal: AbortSignal.timeout(8000),
     })
-    return res.ok
-  } catch {
-    return false
+    return res.ok ? null : classifyHttpStatus(res.status, hostOf(domain))
+  } catch (e) {
+    return classifySendError(e, hostOf(domain))
   }
 }
 
@@ -229,30 +300,75 @@ export async function sendPing(
 ): Promise<void> {
   const out = getStoredOutgoing()
   if (!out) return
+  const journal = loadJournal()
   let token: string
   try {
     token = decryptPassword(out.token)
   } catch {
-    lastSendOk = false // token unreadable (e.g. key rotated) — re-pair needed
-    lastSentAt = now
+    // Token unreadable (e.g. ENCRYPTION_KEY rotated) — re-pairing is the fix,
+    // and saying so beats another "could not reach" on the peer's side.
+    saveJournal({
+      ...journal,
+      lastSentAt: now,
+      lastSendOk: false,
+      misses: appendFailure(journal.misses, {
+        at: new Date(now).toISOString(),
+        reason: 'unreachable',
+        detail: `Stored peer token could not be read — re-pair ${hostOf(out.domain)}`,
+      }),
+    })
     return
   }
+
   const delays = opts.retryDelays ?? SEND_RETRY_DELAYS_MS
-  const intervalSec = getPingIntervalSec()
+  // The pending failures ride along: the receiver saw nothing, so this is the
+  // only chance to tell it why.
+  const body = {
+    name: getServerName() || 'SrvKit',
+    intervalSec: getPingIntervalSec(),
+    lastSuccessAt: journal.lastSuccessAt,
+    misses: journal.misses,
+  }
+
+  let cause: Omit<SendFailure, 'at'>
   for (let attempt = 0; ; attempt++) {
-    if (await attemptPing(out.domain, token, intervalSec)) {
-      lastSendOk = true
-      lastSentAt = now
+    const failure = await attemptPing(out.domain, token, body)
+    if (!failure) {
+      const at = new Date(now).toISOString()
+      // Delivered — drop the backlog so it is never reported twice.
+      saveJournal({ lastSentAt: now, lastSendOk: true, misses: [], lastSuccessAt: at })
       return
     }
+    cause = failure
     if (attempt >= delays.length) break
     await sleep(delays[attempt]!)
   }
-  lastSendOk = false
-  lastSentAt = now
+
+  // One entry per tick, not per retry: a tick is one missed heartbeat.
+  saveJournal({
+    ...journal,
+    lastSentAt: now,
+    lastSendOk: false,
+    misses: appendFailure(journal.misses, { at: new Date(now).toISOString(), ...cause }),
+  })
 }
 
 // --- Watchdog (receiver B) ---
+
+/**
+ * The failures the peer back-filled for *this* incident. A report that predates
+ * it belongs to an older gap, and pinning it on this one would be a plausible,
+ * confident lie.
+ */
+function incidentMisses(peer: PeerRecord, sinceMs: number): SendFailure[] {
+  if (!peer.lastReport) return []
+  try {
+    const all = JSON.parse(peer.lastReport) as SendFailure[]
+    return Array.isArray(all) ? all.filter((m) => Date.parse(m.at) >= sinceMs) : []
+  } catch {
+    return []
+  }
+}
 
 /** The cadence to judge a peer by: the one it reports, else our own default. */
 function effectiveInterval(peer: PeerRecord, globalIntervalSec: number): number {
@@ -293,11 +409,13 @@ export async function checkPeers(now = Date.now()): Promise<void> {
       const msgId = peer.alertMsgId ? Number(peer.alertMsgId) : NaN
       store().setPeerAlertState(peer.id, 'ok')
       store().setPeerIncident(peer.id, null)
+      store().setPeerReport(peer.id, null) // consumed by this message
       await dispatch(
         buildPeerRecoveredMessage(prefix, {
           name: peer.name,
           silentMs: seen - sinceMs,
           ref: peer.alertRef,
+          misses: incidentMisses(peer, sinceMs),
         }),
         { replyTo: Number.isFinite(msgId) ? { telegramMessageId: msgId } : null },
       )
@@ -344,7 +462,20 @@ export function pendingView(now = Date.now()): { key: string; expiresAt: number 
   return p ? { key: formatKey(p.key), expiresAt: p.expiresAt } : null
 }
 
-export function outgoingView(): { domain: string; lastSentAt: number | null; ok: boolean | null } | null {
+export function outgoingView(): {
+  domain: string
+  lastSentAt: number | null
+  ok: boolean | null
+  /** Why the last attempt failed, so the page says more than "failed". */
+  lastError: string | null
+} | null {
   const out = getStoredOutgoing()
-  return out ? { domain: out.domain, lastSentAt, ok: lastSendOk } : null
+  if (!out) return null
+  const journal = loadJournal()
+  return {
+    domain: out.domain,
+    lastSentAt: journal.lastSentAt,
+    ok: journal.lastSendOk,
+    lastError: journal.lastSendOk === false ? journal.misses.at(-1)?.detail ?? null : null,
+  }
 }

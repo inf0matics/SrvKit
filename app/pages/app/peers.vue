@@ -153,9 +153,11 @@ async function onThreshold() {
   await setTiming({ missThreshold: thresholdInput.value })
 }
 
-function outgoingStatusText(o: { lastSentAt: number | null; ok: boolean | null }): string {
+function outgoingStatusText(o: OutgoingView): string {
   if (o.lastSentAt === null) return 'not sent yet'
-  return o.ok ? `✓ last sent ${fmtAgo(Date.now() - o.lastSentAt)}` : '✗ last send failed'
+  if (o.ok) return `✓ last sent ${fmtAgo(Date.now() - o.lastSentAt)}`
+  // The reason is the point: a DNS blip and a dead peer need different answers.
+  return o.lastError ? `✗ last send failed — ${o.lastError}` : '✗ last send failed'
 }
 </script>
 

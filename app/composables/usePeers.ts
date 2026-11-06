@@ -19,6 +19,8 @@ export interface OutgoingView {
   domain: string
   lastSentAt: number | null
   ok: boolean | null
+  /** Why the last attempt failed; null while sends are landing. */
+  lastError: string | null
 }
 
 export interface TimingView {

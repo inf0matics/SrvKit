@@ -172,6 +172,8 @@ test('a paired peer survives the heartbeat-tuning upgrade', () => {
   assert.equal(peer.alertRef, null)
   assert.equal(peer.alertMsgId, null)
   assert.equal(peer.incidentSince, null)
+  assert.equal(peer.lastReport, null)
+  assert.equal(peer.lastSuccessAt, null)
   s.close()
 
   openStore(path).close() // second open must not re-run ADD COLUMN

@@ -28,6 +28,7 @@ const {
   sendPing,
   outgoingView,
   resetPeerRuntime,
+  sendJournal,
 } = await import('../../server/utils/peers.ts')
 const {
   PAIRING_KEY_TTL_MS,
@@ -43,6 +44,8 @@ let sent: string[] = []
 let requests: { url: string; body: Record<string, unknown> }[] = []
 /** Per-test hook: return false to make the heartbeat POST fail. */
 let pingSucceeds: () => boolean = () => true
+/** Per-test hook: how the heartbeat POST fails (thrown error, or an HTTP code). */
+let pingFailure: { throws?: unknown; status?: number } = {}
 let telegramMessageId: number | null = null
 
 function mockFetch() {
@@ -50,7 +53,12 @@ function mockFetch() {
     const body = init?.body ? (JSON.parse(init.body) as Record<string, unknown>) : {}
     requests.push({ url: String(url), body })
     if (String(url).includes('/api/heartbeat/ping')) {
-      if (!pingSucceeds()) throw new TypeError('fetch failed')
+      if (!pingSucceeds()) {
+        if (pingFailure.status) {
+          return { ok: false, status: pingFailure.status, json: async () => ({}) } as Response
+        }
+        throw pingFailure.throws ?? new TypeError('fetch failed')
+      }
       return { ok: true, status: 200, json: async () => ({}) } as Response
     }
     sent.push(body.text as string)
@@ -68,12 +76,14 @@ beforeEach(() => {
   sent = []
   requests = []
   pingSucceeds = () => true
+  pingFailure = {}
   telegramMessageId = null
   resetPeerRuntime()
   for (const p of store().listPeers()) store().deletePeer(p.id)
   store().setConfig('heartbeat_pending', '')
   store().setConfig('heartbeat_out', '')
   store().setConfig('heartbeat_ip_check', '')
+  store().setConfig('heartbeat_journal', '')
   store().setConfig('heartbeat_interval_sec', '')
   store().setConfig('heartbeat_miss_threshold', '')
   delete process.env.HEARTBEAT_INTERVAL_SEC
@@ -277,4 +287,121 @@ test('listPeerViews aggregates worst status; null with no peers', () => {
   assert.equal(listPeerViews(NOW).status, 'ok')
   store().setPeerLastSeen(peer.id, new Date(NOW - DEFAULT_SILENCE_WINDOW_MS - 1).toISOString())
   assert.equal(listPeerViews(NOW).status, 'crit')
+})
+
+const dnsError = () =>
+  Object.assign(new TypeError('fetch failed'), { cause: { code: 'ENOTFOUND' } })
+
+test('a failed send records why, and survives a restart', async () => {
+  setOutgoing('https://peer.example.com', 'raw-token')
+  pingSucceeds = () => false
+  pingFailure = { throws: dnsError() }
+
+  await sendPing(NOW, { retryDelays: [0] })
+  const [entry, ...rest] = sendJournal()
+  assert.equal(rest.length, 0, 'one entry per tick, not per retry')
+  assert.equal(entry!.reason, 'dns')
+  assert.match(entry!.detail, /DNS lookup failed for peer\.example\.com/)
+
+  // The journal lives in the config table, so the Peers page keeps telling the
+  // truth after a container restart (v1 kept this in a process variable).
+  resetPeerRuntime()
+  assert.equal(sendJournal().length, 1)
+  assert.equal(outgoingView()!.ok, false)
+  assert.match(outgoingView()!.lastError!, /DNS lookup failed/)
+})
+
+test('a non-2xx answer is recorded as its own cause', async () => {
+  setOutgoing('https://peer.example.com', 'raw-token')
+  pingSucceeds = () => false
+  pingFailure = { status: 401 }
+
+  await sendPing(NOW, { retryDelays: [] })
+  const entry = sendJournal()[0]!
+  assert.equal(entry.reason, 'http')
+  assert.match(entry.detail, /answered HTTP 401 — re-pair this peer/)
+})
+
+test('a successful send back-fills the failures and clears the journal', async () => {
+  setOutgoing('https://peer.example.com', 'raw-token')
+  await sendPing(NOW, { retryDelays: [] }) // one that lands, to anchor the gap
+
+  pingSucceeds = () => false
+  pingFailure = { throws: dnsError() }
+  await sendPing(NOW + 300_000, { retryDelays: [] })
+  await sendPing(NOW + 600_000, { retryDelays: [] })
+  assert.equal(sendJournal().length, 2)
+
+  pingSucceeds = () => true
+  await sendPing(NOW + 900_000, { retryDelays: [] })
+
+  const ping = requests.filter((r) => r.url.includes('/api/heartbeat/ping')).at(-1)!
+  const misses = ping.body.misses as { reason: string; at: string }[]
+  assert.equal(misses.length, 2)
+  assert.equal(misses[0]!.reason, 'dns')
+  assert.equal(misses[0]!.at, new Date(NOW + 300_000).toISOString())
+  assert.equal(
+    ping.body.lastSuccessAt,
+    new Date(NOW).toISOString(),
+    'the last heartbeat that landed before the gap, which is what dates it',
+  )
+  assert.equal(sendJournal().length, 0, 'delivered, so not reported twice')
+
+  // The next heartbeat reports the one that just landed.
+  await sendPing(NOW + 1_200_000, { retryDelays: [] })
+  const next = requests.filter((r) => r.url.includes('/api/heartbeat/ping')).at(-1)!
+  assert.equal(next.body.lastSuccessAt, new Date(NOW + 900_000).toISOString())
+  assert.deepEqual(next.body.misses, [])
+})
+
+test('the receiver keeps a delivered report and the recovery tells the story', async () => {
+  const raw = pairPeer('a', createPendingKey(NOW).key, '1.2.3.4', NOW)!
+  const peer = store().listPeers()[0]!
+  store().setPeerLastSeen(peer.id, new Date(NOW - 20 * 60_000).toISOString())
+  await checkPeers(NOW)
+  assert.equal(sent.length, 1)
+
+  // The peer comes back and tells us what happened while it was quiet.
+  recordPeerPing(raw, 'server1', '1.2.3.4', 300, {
+    lastSuccessAt: new Date(NOW - 20 * 60_000).toISOString(),
+    misses: [
+      { at: new Date(NOW - 15 * 60_000).toISOString(), reason: 'dns', detail: 'DNS lookup failed for b' },
+      { at: new Date(NOW - 10 * 60_000).toISOString(), reason: 'dns', detail: 'DNS lookup failed for b' },
+    ],
+  })
+  await checkPeers(NOW)
+
+  assert.equal(sent.length, 2)
+  assert.match(sent[1]!, /is back online/)
+  assert.match(sent[1]!, /2 attempts failed: DNS lookup failed for b/)
+  assert.equal(store().listPeers()[0]!.lastReport, null, 'consumed by the recovery')
+  assert.equal(store().listPeers()[0]!.lastSuccessAt, new Date(NOW - 20 * 60_000).toISOString())
+})
+
+test('a peer that reports nothing gets an honest recovery, not a guess', async () => {
+  const raw = pairPeer('a', createPendingKey(NOW).key, '1.2.3.4', NOW)!
+  const peer = store().listPeers()[0]!
+  store().setPeerLastSeen(peer.id, new Date(NOW - 20 * 60_000).toISOString())
+  await checkPeers(NOW)
+
+  recordPeerPing(raw, 'server1', '1.2.3.4') // legacy sender: name only
+  await checkPeers(NOW)
+  assert.match(sent[1]!, /Cause not reported by the peer/)
+})
+
+test('a report from before the incident is not pinned on it', async () => {
+  const raw = pairPeer('a', createPendingKey(NOW).key, '1.2.3.4', NOW)!
+  const peer = store().listPeers()[0]!
+  // A stale report, delivered long before this incident began.
+  recordPeerPing(raw, 'server1', '1.2.3.4', 300, {
+    lastSuccessAt: null,
+    misses: [{ at: new Date(NOW - 10 * 3600_000).toISOString(), reason: 'tls', detail: 'TLS error' }],
+  })
+  store().setPeerLastSeen(peer.id, new Date(NOW - 20 * 60_000).toISOString())
+  await checkPeers(NOW)
+  store().setPeerLastSeen(peer.id, new Date(NOW).toISOString())
+  await checkPeers(NOW)
+
+  assert.match(sent[1]!, /Cause not reported by the peer/)
+  assert.doesNotMatch(sent[1]!, /TLS error/)
 })

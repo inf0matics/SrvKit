@@ -152,7 +152,17 @@ export interface PeerRecord {
   alertMsgId: string | null
   /** ISO timestamp the open incident started; null when OK. */
   incidentSince: string | null
+  /** Send failures the peer back-filled (JSON array); null once consumed. */
+  lastReport: string | null
+  /** Last heartbeat the sender itself counted as successful, as it reported it. */
+  lastSuccessAt: string | null
   createdAt: string
+}
+
+/** What a sender back-fills about a stretch we heard nothing in. */
+export interface PeerReport {
+  misses: { at: string; reason: string; detail: string }[]
+  lastSuccessAt: string | null
 }
 
 /** The bookkeeping that lets a recovery message find its alert. */
@@ -194,6 +204,12 @@ export interface Store {
   setPeerAlertState(id: string, state: 'ok' | 'failed'): void
   /** Open an incident (ref + channel message id + start), or close it with null. */
   setPeerIncident(id: string, incident: PeerIncident | null): void
+  /**
+   * Store a report the peer delivered, or clear the pending one with null —
+   * `last_success_at` is kept either way, it is history rather than incident
+   * state.
+   */
+  setPeerReport(id: string, report: PeerReport | null): void
   deletePeer(id: string): boolean
   getConfig(key: string): string | null
   setConfig(key: string, value: string): void
@@ -385,6 +401,8 @@ export function openStore(path: string): Store {
        alert_ref TEXT,
        alert_msg_id TEXT,
        incident_since TEXT,
+       last_report TEXT,
+       last_success_at TEXT,
        created_at TEXT NOT NULL
      )`,
   )
@@ -397,7 +415,13 @@ export function openStore(path: string): Store {
   if (!peerColNames.includes('interval_sec')) {
     db.exec('ALTER TABLE peers ADD COLUMN interval_sec INTEGER NOT NULL DEFAULT 0')
   }
-  for (const col of ['alert_ref', 'alert_msg_id', 'incident_since'] as const) {
+  for (const col of [
+    'alert_ref',
+    'alert_msg_id',
+    'incident_since',
+    'last_report',
+    'last_success_at',
+  ] as const) {
     if (!peerColNames.includes(col)) db.exec(`ALTER TABLE peers ADD COLUMN ${col} TEXT`)
   }
 
@@ -498,7 +522,8 @@ export function openStore(path: string): Store {
   const peerCols = `id, name, token, ip, last_seen AS lastSeen,
                     interval_sec AS intervalSec, alert_state AS alertState,
                     alert_ref AS alertRef, alert_msg_id AS alertMsgId,
-                    incident_since AS incidentSince, created_at AS createdAt`
+                    incident_since AS incidentSince, last_report AS lastReport,
+                    last_success_at AS lastSuccessAt, created_at AS createdAt`
   const listPeersStmt = db.prepare(`SELECT ${peerCols} FROM peers ORDER BY created_at`)
   const insertPeerStmt = db.prepare(
     `INSERT INTO peers (id, name, token, ip, last_seen, alert_state, created_at)
@@ -512,6 +537,12 @@ export function openStore(path: string): Store {
   )
   const setPeerIncidentStmt = db.prepare(
     'UPDATE peers SET alert_ref = ?, alert_msg_id = ?, incident_since = ? WHERE id = ?',
+  )
+  // Clearing a report leaves last_success_at in place; a fresh one replaces both.
+  const setPeerReportStmt = db.prepare(
+    `UPDATE peers SET last_report = ?,
+       last_success_at = COALESCE(?, last_success_at)
+     WHERE id = ?`,
   )
   const setPeerLastSeenStmt = db.prepare('UPDATE peers SET last_seen = ? WHERE id = ?')
   const setPeerAlertStateStmt = db.prepare('UPDATE peers SET alert_state = ? WHERE id = ?')
@@ -714,12 +745,22 @@ export function openStore(path: string): Store {
         alertRef: null,
         alertMsgId: null,
         incidentSince: null,
+        lastReport: null,
+        lastSuccessAt: null,
         createdAt: now,
       }
     },
 
     markPeerSeen(id: string, name: string, intervalSec = 0) {
       markPeerSeenStmt.run(new Date().toISOString(), name, intervalSec, intervalSec, id)
+    },
+
+    setPeerReport(id: string, report: PeerReport | null) {
+      setPeerReportStmt.run(
+        report ? JSON.stringify(report.misses) : null,
+        report?.lastSuccessAt ?? null,
+        id,
+      )
     },
 
     setPeerIncident(id: string, incident: PeerIncident | null) {
