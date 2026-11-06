@@ -1,6 +1,22 @@
 # Changelog
 
 
+## v1.7.1
+
+[compare changes](https://github.com/inf0matics/SrvKit/compare/v1.7.0...v1.7.1)
+
+### 🏡 Chore
+
+- Run on Node 26 ([c0fa107](https://github.com/inf0matics/SrvKit/commit/c0fa107))
+- **ci:** Enforce Node 26 and drive CI from .nvmrc ([a426de1](https://github.com/inf0matics/SrvKit/commit/a426de1))
+- **docker:** Apply engine-strict to the image's own install ([57d0fe0](https://github.com/inf0matics/SrvKit/commit/57d0fe0))
+- **deps:** Update dependencies — @playwright/test 1.64.1 -> 1.65.0, plus transitive minor/patch moves incl. vue 3.5.45 and vue-bundle-renderer 2.5.0 ([cc6bbee](https://github.com/inf0matics/SrvKit/commit/cc6bbee))
+- **deps:** Drop @types/bcryptjs — bcryptjs ships its own type definitions ([1ac3092](https://github.com/inf0matics/SrvKit/commit/1ac3092))
+
+### ❤️ Contributors
+
+- Inf0matics <fil@thespielplatz.com>
+
 ## v1.7.0
 
 [compare changes](https://github.com/inf0matics/SrvKit/compare/v1.6.0...v1.7.0)
