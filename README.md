@@ -123,3 +123,9 @@ npm run dev        # http://localhost:<auto-port>
 ```
 
 Checks: `npm run lint` · `npm run typecheck` · `npm run test:unit` · `npm run test:e2e`
+
+Runs on Node 26 (`.nvmrc` · `engines.node` · CI · the image all agree). `.npmrc` sets
+`engine-strict=true`, so an install on the wrong Node fails with `EBADENGINE` instead of
+warning. If a dependency update ever hard-stops on a package whose own `engines` exclude
+Node 26, `npm install --engine-strict=false` gets you past it — then fix the range rather
+than leaving the override in place.

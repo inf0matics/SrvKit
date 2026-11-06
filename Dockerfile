@@ -16,7 +16,15 @@ FROM base AS build
 # Install Git if package.json or package-lock.json contains dependencies that require it (e.g., dependencies with 'git+' URLs)
 RUN apt-get update && apt-get install -y git
 
-COPY --link package.json .
+# .npmrc rides along so engine-strict covers the install below. Without it the
+# engines range is only enforced later, by npm prune.
+# If .npmrc ever gains registry credentials, a secret mount here is not enough on
+# its own: the `COPY --link . .` below would copy the file anyway. Add it to a
+# .dockerignore first, then mount it on the install with `RUN --mount=type=secret`
+# -- and keep the guard, or engine-strict silently stops applying to this install.
+# (The runtime stage copies only .output and package.json, so build-stage layers
+# are not part of the pushed image.)
+COPY --link package.json .npmrc ./
 # ERROR  Cannot find native binding. npm has a bug related to optional dependencies (https://github.com/npm/cli/issues/4828). Please try npm i again after removing both package-lock.json and node_modules directory.
 # COPY package-lock.json .
 
