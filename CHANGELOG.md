@@ -1,6 +1,19 @@
 # Changelog
 
 
+## v1.8.0
+
+[compare changes](https://github.com/inf0matics/SrvKit/compare/v1.7.1...v1.8.0)
+
+### 🚀 Enhancements
+
+- **peers:** Configurable heartbeat timing, no alert on a single miss ([ce037a7](https://github.com/inf0matics/SrvKit/commit/ce037a7))
+- **peers:** Tell us why a heartbeat never arrived ([0f826b0](https://github.com/inf0matics/SrvKit/commit/0f826b0))
+
+### ❤️ Contributors
+
+- Inf0matics <fil@thespielplatz.com>
+
 ## v1.7.1
 
 [compare changes](https://github.com/inf0matics/SrvKit/compare/v1.7.0...v1.7.1)
